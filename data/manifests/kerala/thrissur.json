@@ -1,0 +1,142 @@
+{
+  "district_id": "KL_TSR",
+  "name": "Thrissur",
+  "state": "Kerala",
+  "status": "active_master_world",
+  "coordinate_system": {
+    "geographic_crs": "EPSG:4326",
+    "projected_crs": "EPSG:32643",
+    "unity_origin": {
+      "name": "Thrissur Swaraj Round",
+      "latitude": 10.5244,
+      "longitude": 76.2144,
+      "utm_x": 632850.0,
+      "utm_y": 1163900.0,
+      "elevation_m": 12.0
+    }
+  },
+  "destinations": [
+    {
+      "id": "DEST_SAKTHAN_STAND",
+      "name": "Sakthan Thampuran Bus Stand",
+      "name_ml": "ശക്തൻ തമ്പുരാൻ ബസ് സ്റ്റാൻഡ്",
+      "type": "terminal_hub",
+      "latitude": 10.5165,
+      "longitude": 76.2150,
+      "elevation_m": 11.5,
+      "is_player_spawn": true
+    },
+    {
+      "id": "DEST_VADAKKE_STAND",
+      "name": "Vadakke Stand",
+      "name_ml": "വടക്കേ ബസ് സ്റ്റാൻഡ്",
+      "type": "terminal_hub",
+      "latitude": 10.5285,
+      "longitude": 76.2135,
+      "elevation_m": 13.0,
+      "is_player_spawn": false
+    },
+    {
+      "id": "DEST_SWARAJ_ROUND",
+      "name": "Swaraj Round (Thrissur Round)",
+      "name_ml": "സ്വരാജ് റൗണ്ട്",
+      "type": "city_center_roundabout",
+      "latitude": 10.5244,
+      "longitude": 76.2144,
+      "elevation_m": 12.0
+    },
+    {
+      "id": "DEST_PUTHANPALLI",
+      "name": "Puthanpalli (Basilica of Our Lady of Dolours)",
+      "name_ml": "പുത്തൻപള്ളി (വ്യാകുലമാതാവിന്റെ ബസിലിക്ക)",
+      "type": "historic_religious_landmark",
+      "latitude": 10.5209,
+      "longitude": 76.2183,
+      "elevation_m": 12.0,
+      "bible_tower_height_m": 79.2
+    },
+    {
+      "id": "DEST_PALIYEKKARA_TOLL",
+      "name": "Paliyekkara Toll Plaza (NH 544)",
+      "name_ml": "പാലിയേക്കര ടോൾ പ്ലാസ",
+      "type": "highway_toll_plaza",
+      "latitude": 10.4428,
+      "longitude": 76.2600,
+      "elevation_m": 14.0,
+      "toll_fee_inr": 50
+    },
+    {
+      "id": "DEST_PEECHI_DAM",
+      "name": "Peechi Dam & Reservoir",
+      "name_ml": "പീച്ചി ഡാം",
+      "type": "dam_reservoir_scenic",
+      "latitude": 10.5300,
+      "longitude": 76.3698,
+      "elevation_m": 75.0
+    },
+    {
+      "id": "DEST_GURUVAYUR_TEMPLE",
+      "name": "Guruvayur Sri Krishna Temple",
+      "name_ml": "ഗുരുവായൂർ ശ്രീകൃഷ്ണ ക്ഷേത്രം",
+      "type": "historic_pilgrimage_town",
+      "latitude": 10.5945,
+      "longitude": 76.0394,
+      "elevation_m": 8.0
+    },
+    {
+      "id": "DEST_CHAVAKKAD_BEACH",
+      "name": "Chavakkad Beach",
+      "name_ml": "ചാവക്കാട് ബീച്ച്",
+      "type": "coastal_beach",
+      "latitude": 10.5720,
+      "longitude": 76.0080,
+      "elevation_m": 2.0
+    },
+    {
+      "id": "DEST_TRIPRAYAR_TEMPLE",
+      "name": "Triprayar Sree Rama Temple & Beach",
+      "name_ml": "തൃപ്രയാർ ശ്രീരാമസ്വാമി ക്ഷേത്രം",
+      "type": "riverside_pilgrimage_coastal",
+      "latitude": 10.4141,
+      "longitude": 76.1155,
+      "elevation_m": 4.0
+    }
+  ],
+  "highway_corridors": [
+    {
+      "corridor_id": "NH_544",
+      "name": "NH 544 (Salem - Kochi Highway)",
+      "classification": "national_highway",
+      "lanes": 4,
+      "speed_limit_kmh": 80
+    },
+    {
+      "corridor_id": "SH_69",
+      "name": "SH 69 (Thrissur - Guruvayur Road)",
+      "classification": "state_highway",
+      "lanes": 2,
+      "speed_limit_kmh": 50
+    },
+    {
+      "corridor_id": "SH_61",
+      "name": "SH 61 (Thrissur - Triprayar Road)",
+      "classification": "state_highway",
+      "lanes": 2,
+      "speed_limit_kmh": 50
+    },
+    {
+      "corridor_id": "SH_51",
+      "name": "Peechi Road / SH 51 (Mannuthy - Peechi Dam)",
+      "classification": "state_highway",
+      "lanes": 2,
+      "speed_limit_kmh": 45
+    },
+    {
+      "corridor_id": "NH_66",
+      "name": "NH 66 Coastal (Chavakkad - Triprayar)",
+      "classification": "national_highway",
+      "lanes": 2,
+      "speed_limit_kmh": 60
+    }
+  ]
+}

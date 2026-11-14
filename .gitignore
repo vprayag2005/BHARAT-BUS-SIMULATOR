@@ -1,0 +1,116 @@
+# Unity Generated & Transient Directories
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+Recordings/
+.utmp/
+[Uu]tmp/
+
+# Unity in subfolder
+unity/[Ll]ibrary/
+unity/[Tt]emp/
+unity/[Oo]bj/
+unity/[Bb]uild/
+unity/[Bb]uilds/
+unity/[Ll]ogs/
+unity/[Uu]ser[Ss]ettings/
+unity/[Mm]emoryCaptures/
+unity/Recordings/
+unity/.utmp/
+unity/[Uu]tmp/
+
+# Unity generated solution/project files
+*.csproj
+*.unityproj
+*.sln
+*.slnx
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+.vsconfig
+
+# Unity Auto-generated Assets
+unity/Assets/Plugins/Editor/JetBrains*
+.consulo/
+.idea/
+.vs/
+.vscode/
+
+# Build artifacts
+builds/
+*.apk
+*.aab
+*.obb
+artifacts/
+backups/
+unity/artifacts/
+unity/backups*/
+
+# Logs & Diagnostics
+*.log
+*.log*
+*.pid
+sysinfo.txt
+crash*
+
+# Python & Preprocessing
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Raw Geographic Datasets & DEMs (Large binary GIS files)
+data/raw/*
+!data/raw/.gitkeep
+*.osm
+*.pbf
+*.tif
+*.tiff
+*.dem
+*.hgt
+*.geotiff
+*.las
+*.laz
+
+# OS Generated
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# 3D / DCC Backups
+*.blend1
+*.blend2
+*.blend@
+
+# Local Environment & Secrets
+.env
+.env.*
+*.secret
+
+# Tooling Cache
+.freebuff/
+

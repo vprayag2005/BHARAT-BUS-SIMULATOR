@@ -1,0 +1,602 @@
+{
+  "coordinate_system": {
+    "geographic_crs": "EPSG:4326",
+    "projected_crs": "EPSG:32643",
+    "origin_datum": {
+      "name": "Thrissur Swaraj Round",
+      "lat": 10.5244,
+      "lon": 76.2144,
+      "utm_x": 632883.2,
+      "utm_y": 1163650.18
+    }
+  },
+  "nodes": [
+    {
+      "id": "NODE_SAKTHAN_BAY",
+      "name": "Sakthan Thampuran Stand - Starting Bay",
+      "lat": 10.5165,
+      "lon": 76.215,
+      "elevation": 11.5,
+      "type": "bay",
+      "utm_x": 632952.25,
+      "utm_y": 1162776.77,
+      "local_x_m": 69.05,
+      "local_z_m": -873.41
+    },
+    {
+      "id": "NODE_SAKTHAN_EXIT",
+      "name": "Sakthan Stand Exit Gate",
+      "lat": 10.5175,
+      "lon": 76.2152,
+      "elevation": 11.7,
+      "type": "junction",
+      "utm_x": 632973.71,
+      "utm_y": 1162887.45,
+      "local_x_m": 90.51,
+      "local_z_m": -762.73
+    },
+    {
+      "id": "NODE_PUTHANPALLI",
+      "name": "Puthanpalli (Dolours Basilica)",
+      "lat": 10.5209,
+      "lon": 76.2183,
+      "elevation": 12.0,
+      "type": "landmark",
+      "utm_x": 633311.51,
+      "utm_y": 1163264.77,
+      "local_x_m": 428.31,
+      "local_z_m": -385.41
+    },
+    {
+      "id": "NODE_HIGH_ROAD",
+      "name": "High Road Junction",
+      "lat": 10.523,
+      "lon": 76.2148,
+      "elevation": 12.0,
+      "type": "junction",
+      "utm_x": 632927.58,
+      "utm_y": 1163495.52,
+      "local_x_m": 44.37,
+      "local_z_m": -154.66
+    },
+    {
+      "id": "NODE_SWARAJ_SOUTH",
+      "name": "Swaraj Round South",
+      "lat": 10.5235,
+      "lon": 76.2144,
+      "elevation": 12.0,
+      "type": "roundabout",
+      "utm_x": 632883.59,
+      "utm_y": 1163550.65,
+      "local_x_m": 0.39,
+      "local_z_m": -99.53
+    },
+    {
+      "id": "NODE_SWARAJ_EAST",
+      "name": "Swaraj Round East",
+      "lat": 10.5244,
+      "lon": 76.2162,
+      "elevation": 12.0,
+      "type": "roundabout",
+      "utm_x": 633080.19,
+      "utm_y": 1163650.94,
+      "local_x_m": 196.99,
+      "local_z_m": 0.76
+    },
+    {
+      "id": "NODE_SWARAJ_NORTH",
+      "name": "Swaraj Round North",
+      "lat": 10.5255,
+      "lon": 76.2144,
+      "elevation": 12.0,
+      "type": "roundabout",
+      "utm_x": 632882.73,
+      "utm_y": 1163771.83,
+      "local_x_m": -0.47,
+      "local_z_m": 121.65
+    },
+    {
+      "id": "NODE_SWARAJ_WEST",
+      "name": "Swaraj Round West",
+      "lat": 10.5244,
+      "lon": 76.2126,
+      "elevation": 12.0,
+      "type": "roundabout",
+      "utm_x": 632686.21,
+      "utm_y": 1163649.42,
+      "local_x_m": -196.99,
+      "local_z_m": -0.76
+    },
+    {
+      "id": "NODE_VADAKKE_STAND",
+      "name": "Vadakke Stand Terminal",
+      "lat": 10.5285,
+      "lon": 76.2135,
+      "elevation": 13.0,
+      "type": "terminal",
+      "utm_x": 632782.95,
+      "utm_y": 1164103.22,
+      "local_x_m": -100.25,
+      "local_z_m": 453.04
+    },
+    {
+      "id": "NODE_EAST_FORT",
+      "name": "East Fort Junction",
+      "lat": 10.5238,
+      "lon": 76.2275,
+      "elevation": 12.5,
+      "type": "junction",
+      "utm_x": 634317.11,
+      "utm_y": 1163589.41,
+      "local_x_m": 1433.9,
+      "local_z_m": -60.77
+    },
+    {
+      "id": "NODE_MANNUTHY",
+      "name": "Mannuthy NH 544 Interchange",
+      "lat": 10.5332,
+      "lon": 76.2625,
+      "elevation": 16.0,
+      "type": "junction",
+      "utm_x": 638143.31,
+      "utm_y": 1164644.18,
+      "local_x_m": 5260.11,
+      "local_z_m": 994.0
+    },
+    {
+      "id": "NODE_NH544_OLLUR",
+      "name": "NH 544 Ollur Flyover",
+      "lat": 10.4785,
+      "lon": 76.242,
+      "elevation": 14.5,
+      "type": "highway",
+      "utm_x": 635923.77,
+      "utm_y": 1158585.87,
+      "local_x_m": 3040.57,
+      "local_z_m": -5064.31
+    },
+    {
+      "id": "NODE_NH544_AMBALLUR",
+      "name": "NH 544 Amballur",
+      "lat": 10.4505,
+      "lon": 76.258,
+      "elevation": 14.0,
+      "type": "highway",
+      "utm_x": 637687.42,
+      "utm_y": 1155496.25,
+      "local_x_m": 4804.21,
+      "local_z_m": -8153.93
+    },
+    {
+      "id": "NODE_PALIYEKKARA_APPROACH",
+      "name": "Paliyekkara Toll Approach",
+      "lat": 10.444,
+      "lon": 76.26,
+      "elevation": 14.0,
+      "type": "toll_approach",
+      "utm_x": 637909.21,
+      "utm_y": 1154778.27,
+      "local_x_m": 5026.01,
+      "local_z_m": -8871.91
+    },
+    {
+      "id": "NODE_PALIYEKKARA_TOLL",
+      "name": "Paliyekkara Toll Plaza",
+      "lat": 10.4428,
+      "lon": 76.26,
+      "elevation": 14.0,
+      "type": "toll_booth",
+      "utm_x": 637909.74,
+      "utm_y": 1154645.56,
+      "local_x_m": 5026.54,
+      "local_z_m": -9004.62
+    },
+    {
+      "id": "NODE_PALIYEKKARA_EXIT",
+      "name": "Paliyekkara Toll Exit",
+      "lat": 10.4415,
+      "lon": 76.26,
+      "elevation": 14.0,
+      "type": "toll_exit",
+      "utm_x": 637910.32,
+      "utm_y": 1154501.79,
+      "local_x_m": 5027.12,
+      "local_z_m": -9148.39
+    },
+    {
+      "id": "NODE_PEECHI_MID",
+      "name": "Peechi Road Midpoint",
+      "lat": 10.5315,
+      "lon": 76.315,
+      "elevation": 35.0,
+      "type": "road",
+      "utm_x": 643889.6,
+      "utm_y": 1164479.8,
+      "local_x_m": 11006.4,
+      "local_z_m": 829.62
+    },
+    {
+      "id": "NODE_PEECHI_DAM",
+      "name": "Peechi Dam & Reservoir",
+      "lat": 10.53,
+      "lon": 76.3698,
+      "elevation": 75.0,
+      "type": "dam",
+      "utm_x": 649887.69,
+      "utm_y": 1164339.59,
+      "local_x_m": 17004.49,
+      "local_z_m": 689.41
+    },
+    {
+      "id": "NODE_WEST_FORT",
+      "name": "West Fort Junction",
+      "lat": 10.5218,
+      "lon": 76.2025,
+      "elevation": 11.8,
+      "type": "junction",
+      "utm_x": 631581.99,
+      "utm_y": 1163357.63,
+      "local_x_m": -1301.21,
+      "local_z_m": -292.55
+    },
+    {
+      "id": "NODE_KANJANI",
+      "name": "Kanjani Junction",
+      "lat": 10.518,
+      "lon": 76.126,
+      "elevation": 9.0,
+      "type": "junction",
+      "utm_x": 623211.54,
+      "utm_y": 1162906.33,
+      "local_x_m": -9671.66,
+      "local_z_m": -743.85
+    },
+    {
+      "id": "NODE_CHOONDAL",
+      "name": "Choondal Junction",
+      "lat": 10.585,
+      "lon": 76.095,
+      "elevation": 10.5,
+      "type": "junction",
+      "utm_x": 619793.06,
+      "utm_y": 1170303.6,
+      "local_x_m": -13090.14,
+      "local_z_m": 6653.42
+    },
+    {
+      "id": "NODE_GURUVAYUR",
+      "name": "Guruvayur Temple East Nada",
+      "lat": 10.5945,
+      "lon": 76.0394,
+      "elevation": 8.0,
+      "type": "temple",
+      "utm_x": 613706.27,
+      "utm_y": 1171333.34,
+      "local_x_m": -19176.93,
+      "local_z_m": 7683.16
+    },
+    {
+      "id": "NODE_CHAVAKKAD_TOWN",
+      "name": "Chavakkad Town",
+      "lat": 10.58,
+      "lon": 76.015,
+      "elevation": 4.0,
+      "type": "town",
+      "utm_x": 611041.96,
+      "utm_y": 1169721.07,
+      "local_x_m": -21841.24,
+      "local_z_m": 6070.89
+    },
+    {
+      "id": "NODE_CHAVAKKAD_BEACH",
+      "name": "Chavakkad Beach Coast",
+      "lat": 10.572,
+      "lon": 76.008,
+      "elevation": 2.0,
+      "type": "beach",
+      "utm_x": 610278.94,
+      "utm_y": 1168833.92,
+      "local_x_m": -22604.26,
+      "local_z_m": 5183.74
+    },
+    {
+      "id": "NODE_VADANAPPALLY",
+      "name": "Vadanappally NH 66 Junction",
+      "lat": 10.485,
+      "lon": 76.102,
+      "elevation": 4.5,
+      "type": "junction",
+      "utm_x": 620597.85,
+      "utm_y": 1159247.66,
+      "local_x_m": -12285.35,
+      "local_z_m": -4402.52
+    },
+    {
+      "id": "NODE_TRIPRAYAR_TEMPLE",
+      "name": "Triprayar Sree Rama Temple",
+      "lat": 10.4141,
+      "lon": 76.1155,
+      "elevation": 4.0,
+      "type": "temple",
+      "utm_x": 622103.09,
+      "utm_y": 1151412.3,
+      "local_x_m": -10780.11,
+      "local_z_m": -12237.88
+    },
+    {
+      "id": "NODE_TRIPRAYAR_BEACH",
+      "name": "Triprayar Beach",
+      "lat": 10.4228,
+      "lon": 76.1065,
+      "elevation": 2.0,
+      "type": "beach",
+      "utm_x": 621114.47,
+      "utm_y": 1152370.94,
+      "local_x_m": -11768.73,
+      "local_z_m": -11279.24
+    }
+  ],
+  "edges": [
+    {
+      "id": "EDGE_SAKTHAN_DEP",
+      "from": "NODE_SAKTHAN_BAY",
+      "to": "NODE_SAKTHAN_EXIT",
+      "type": "terminal_lane",
+      "lanes": 2,
+      "width": 10.0,
+      "speed_limit": 20
+    },
+    {
+      "id": "EDGE_SAKTHAN_TO_PUTHAN",
+      "from": "NODE_SAKTHAN_EXIT",
+      "to": "NODE_PUTHANPALLI",
+      "type": "city_arterial",
+      "lanes": 2,
+      "width": 9.0,
+      "speed_limit": 40
+    },
+    {
+      "id": "EDGE_PUTHAN_TO_HIGHROAD",
+      "from": "NODE_PUTHANPALLI",
+      "to": "NODE_HIGH_ROAD",
+      "type": "city_arterial",
+      "lanes": 2,
+      "width": 9.0,
+      "speed_limit": 40
+    },
+    {
+      "id": "EDGE_HIGHROAD_TO_SWARAJ",
+      "from": "NODE_HIGH_ROAD",
+      "to": "NODE_SWARAJ_SOUTH",
+      "type": "city_arterial",
+      "lanes": 2,
+      "width": 10.0,
+      "speed_limit": 40
+    },
+    {
+      "id": "EDGE_SWARAJ_S_E",
+      "from": "NODE_SWARAJ_SOUTH",
+      "to": "NODE_SWARAJ_EAST",
+      "type": "roundabout",
+      "lanes": 3,
+      "width": 14.0,
+      "speed_limit": 30
+    },
+    {
+      "id": "EDGE_SWARAJ_E_N",
+      "from": "NODE_SWARAJ_EAST",
+      "to": "NODE_SWARAJ_NORTH",
+      "type": "roundabout",
+      "lanes": 3,
+      "width": 14.0,
+      "speed_limit": 30
+    },
+    {
+      "id": "EDGE_SWARAJ_N_W",
+      "from": "NODE_SWARAJ_NORTH",
+      "to": "NODE_SWARAJ_WEST",
+      "type": "roundabout",
+      "lanes": 3,
+      "width": 14.0,
+      "speed_limit": 30
+    },
+    {
+      "id": "EDGE_SWARAJ_W_S",
+      "from": "NODE_SWARAJ_WEST",
+      "to": "NODE_SWARAJ_SOUTH",
+      "type": "roundabout",
+      "lanes": 3,
+      "width": 14.0,
+      "speed_limit": 30
+    },
+    {
+      "id": "EDGE_SWARAJ_TO_VADAKKE",
+      "from": "NODE_SWARAJ_NORTH",
+      "to": "NODE_VADAKKE_STAND",
+      "type": "terminal_connector",
+      "lanes": 2,
+      "width": 9.0,
+      "speed_limit": 30
+    },
+    {
+      "id": "EDGE_SWARAJ_TO_EASTFORT",
+      "from": "NODE_SWARAJ_EAST",
+      "to": "NODE_EAST_FORT",
+      "type": "city_arterial",
+      "lanes": 2,
+      "width": 11.0,
+      "speed_limit": 50
+    },
+    {
+      "id": "EDGE_EASTFORT_TO_MANNUTHY",
+      "from": "NODE_EAST_FORT",
+      "to": "NODE_MANNUTHY",
+      "type": "state_highway",
+      "lanes": 2,
+      "width": 12.0,
+      "speed_limit": 60
+    },
+    {
+      "id": "EDGE_MANNUTHY_TO_OLLUR",
+      "from": "NODE_MANNUTHY",
+      "to": "NODE_NH544_OLLUR",
+      "type": "national_highway",
+      "lanes": 4,
+      "width": 16.0,
+      "speed_limit": 80
+    },
+    {
+      "id": "EDGE_OLLUR_TO_AMBALLUR",
+      "from": "NODE_NH544_OLLUR",
+      "to": "NODE_NH544_AMBALLUR",
+      "type": "national_highway",
+      "lanes": 4,
+      "width": 16.0,
+      "speed_limit": 80
+    },
+    {
+      "id": "EDGE_AMBALLUR_TO_TOLLAPP",
+      "from": "NODE_NH544_AMBALLUR",
+      "to": "NODE_PALIYEKKARA_APPROACH",
+      "type": "national_highway",
+      "lanes": 4,
+      "width": 18.0,
+      "speed_limit": 60
+    },
+    {
+      "id": "EDGE_TOLL_LANE",
+      "from": "NODE_PALIYEKKARA_APPROACH",
+      "to": "NODE_PALIYEKKARA_TOLL",
+      "type": "toll_plaza",
+      "lanes": 4,
+      "width": 22.0,
+      "speed_limit": 20
+    },
+    {
+      "id": "EDGE_TOLL_EXIT",
+      "from": "NODE_PALIYEKKARA_TOLL",
+      "to": "NODE_PALIYEKKARA_EXIT",
+      "type": "national_highway",
+      "lanes": 4,
+      "width": 18.0,
+      "speed_limit": 60
+    },
+    {
+      "id": "EDGE_MANNUTHY_TO_PEECHI_MID",
+      "from": "NODE_MANNUTHY",
+      "to": "NODE_PEECHI_MID",
+      "type": "state_highway",
+      "lanes": 2,
+      "width": 8.5,
+      "speed_limit": 50
+    },
+    {
+      "id": "EDGE_PEECHI_MID_TO_DAM",
+      "from": "NODE_PEECHI_MID",
+      "to": "NODE_PEECHI_DAM",
+      "type": "state_highway",
+      "lanes": 2,
+      "width": 8.5,
+      "speed_limit": 45
+    },
+    {
+      "id": "EDGE_SWARAJ_TO_WESTFORT",
+      "from": "NODE_SWARAJ_WEST",
+      "to": "NODE_WEST_FORT",
+      "type": "city_arterial",
+      "lanes": 2,
+      "width": 10.0,
+      "speed_limit": 50
+    },
+    {
+      "id": "EDGE_WESTFORT_TO_KANJANI",
+      "from": "NODE_WEST_FORT",
+      "to": "NODE_KANJANI",
+      "type": "state_highway",
+      "lanes": 2,
+      "width": 8.5,
+      "speed_limit": 50
+    },
+    {
+      "id": "EDGE_KANJANI_TO_CHOONDAL",
+      "from": "NODE_KANJANI",
+      "to": "NODE_CHOONDAL",
+      "type": "state_highway",
+      "lanes": 2,
+      "width": 8.5,
+      "speed_limit": 50
+    },
+    {
+      "id": "EDGE_CHOONDAL_TO_GURUVAYUR",
+      "from": "NODE_CHOONDAL",
+      "to": "NODE_GURUVAYUR",
+      "type": "state_highway",
+      "lanes": 2,
+      "width": 9.0,
+      "speed_limit": 50
+    },
+    {
+      "id": "EDGE_GURUVAYUR_TO_CHAVAKKAD_TOWN",
+      "from": "NODE_GURUVAYUR",
+      "to": "NODE_CHAVAKKAD_TOWN",
+      "type": "state_highway",
+      "lanes": 2,
+      "width": 8.5,
+      "speed_limit": 50
+    },
+    {
+      "id": "EDGE_CHAVAKKAD_TOWN_TO_BEACH",
+      "from": "NODE_CHAVAKKAD_TOWN",
+      "to": "NODE_CHAVAKKAD_BEACH",
+      "type": "coastal_road",
+      "lanes": 2,
+      "width": 8.0,
+      "speed_limit": 40
+    },
+    {
+      "id": "EDGE_CHAVAKKAD_TO_VADANAPPALLY",
+      "from": "NODE_CHAVAKKAD_TOWN",
+      "to": "NODE_VADANAPPALLY",
+      "type": "national_highway",
+      "lanes": 2,
+      "width": 10.0,
+      "speed_limit": 60
+    },
+    {
+      "id": "EDGE_VADANAPPALLY_TO_TRIPRAYAR",
+      "from": "NODE_VADANAPPALLY",
+      "to": "NODE_TRIPRAYAR_TEMPLE",
+      "type": "national_highway",
+      "lanes": 2,
+      "width": 10.0,
+      "speed_limit": 60
+    },
+    {
+      "id": "EDGE_TRIPRAYAR_TO_BEACH",
+      "from": "NODE_TRIPRAYAR_TEMPLE",
+      "to": "NODE_TRIPRAYAR_BEACH",
+      "type": "coastal_road",
+      "lanes": 2,
+      "width": 8.0,
+      "speed_limit": 40
+    },
+    {
+      "id": "EDGE_TRIPRAYAR_TO_KANJANI",
+      "from": "NODE_TRIPRAYAR_TEMPLE",
+      "to": "NODE_KANJANI",
+      "type": "state_highway",
+      "lanes": 2,
+      "width": 8.5,
+      "speed_limit": 50
+    },
+    {
+      "id": "EDGE_SAKTHAN_TO_OLLUR",
+      "from": "NODE_SAKTHAN_EXIT",
+      "to": "NODE_NH544_OLLUR",
+      "type": "city_arterial",
+      "lanes": 2,
+      "width": 9.0,
+      "speed_limit": 50
+    }
+  ]
+}
