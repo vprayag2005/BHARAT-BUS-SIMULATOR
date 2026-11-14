@@ -29,7 +29,16 @@ This register records all external data sources, digital elevation models, 3D mo
 
 ---
 
-## 3. Strict Compliance & Software Attribution Guidelines
-1. **No Proprietary BUSSID Assets:** Never extract, adapt, or copy 3D meshes, textures, sounds, or UI from *Bus Simulator Indonesia (BUSSID)* or any third-party simulator.
-2. **Attribution Display:** In-game credits and HUD diagnostics acknowledge: *"Map data © OpenStreetMap contributors"*.
-3. **Traceability:** Every road segment retains its topological identifier and road classification for verification and automated scene validation.
+## 3. 3D Vehicle Asset Register & CGTrader Royalty Free License Compliance
+
+| Asset ID | Model Title | Creator / Author | Source URL | License | Permitted Rights & Restrictions | Integration Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **VEH-HINO-RM2** | **Hino RM 2 Bus** (11.37m–12.0m Rear-Engine Intercity AC Luxury Coach) | **asrafullislamsiam** (CGTrader) | `https://www.cgtrader.com/free-3d-models/vehicle/bus/hino-rm-2-bus` | **CGTrader Royalty Free License (No AI)** | **Permitted:** Free integration into personal and commercial games, interactive 3D simulators, and visualizations (`HINO_RM2.blend`, `HINO_RM2.fbx`, and Android/Unity runtime 3D renderer).<br>**Prohibited:** Standalone redistribution, resale, or repackaging of the raw 3D model/textures on stock marketplaces; using the 3D geometry or textures for training generative AI models (**No AI** restriction).<br>**Technical Restoration:** Reconstructed missing panoramic front glass (`FRONT GLASS.png` / `front glass` mesh) and missing upload textures noted by the creator on CGTrader. | Active Primary Player Vehicle (`HinoBusFactory.cs` & `Thrissur3DRoadViewport.kt`) |
+
+---
+
+## 4. Strict Compliance & Software Attribution Guidelines
+1. **CGTrader Hino RM 2 Bus Attribution & License Compliance:** The primary player vehicle (**Hino RM 2 Bus** by **asrafullislamsiam**, `https://www.cgtrader.com/free-3d-models/vehicle/bus/hino-rm-2-bus`) is used under the **CGTrader Royalty Free License (No AI)**. Creator attribution and license terms are displayed in the in-game Vehicle & Route Inspector modal and documented in source headers.
+2. **No Proprietary BUSSID Assets:** Never extract, adapt, or copy 3D meshes, textures, sounds, or UI from *Bus Simulator Indonesia (BUSSID)* or any third-party simulator.
+3. **Attribution Display:** In-game credits and HUD diagnostics acknowledge: *"Map data © OpenStreetMap contributors"* and *"Hino RM 2 Bus 3D Model: asrafullislamsiam (CGTrader Royalty Free License - No AI)"*.
+4. **Traceability:** Every road segment retains its topological identifier and road classification for verification and automated scene validation.

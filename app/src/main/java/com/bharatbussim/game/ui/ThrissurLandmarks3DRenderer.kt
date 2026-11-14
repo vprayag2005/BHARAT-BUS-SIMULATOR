@@ -1,0 +1,3053 @@
+package com.bharatbussim.game.ui
+
+import android.graphics.Paint
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import com.bharatbussim.game.model.RoadFrame
+import com.bharatbussim.game.model.ThrissurOsmRoad
+import com.bharatbussim.game.model.Vec3
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.min
+import kotlin.math.sin
+
+// Authentic Kerala Temple, Thekkinkadu Maidan, Bus Terminal & Arabian Sea Coastal Material Palette
+private val MatLateriteStone = Color(0xFF8B3A22)
+private val MatLateriteDark = Color(0xFF682916)
+private val MatLateriteStepTop = Color(0xFF9C472C)
+private val MatKeralaWhitewash = Color(0xFFF4EFE6)
+private val MatKeralaCreamWall = Color(0xFFE8DFD1)
+private val MatTeakWoodCarved = Color(0xFF4A2C18)
+private val MatTeakWoodDeep = Color(0xFF2B180C)
+private val MatTerracottaTile = Color(0xFFB43E24)
+private val MatTerracottaRoofDark = Color(0xFF8C2D19)
+private val MatCopperRoof = Color(0xFF5C3A28)
+private val MatCopperRoofDark = Color(0xFF462B1D)
+private val MatTempleGold = Color(0xFFFACC15)
+private val MatTempleGoldDeep = Color(0xFFD97706)
+private val MatGranitePaving = Color(0xFF64748B)
+private val MatGraniteLight = Color(0xFF94A3B8)
+private val MatGraniteDark = Color(0xFF475569)
+private val MatMaidanGrass = Color(0xFF4F6239)
+private val MatMaidanGrassUpper = Color(0xFF586E40)
+private val MatMaidanPathEarthy = Color(0xFF7D6B57)
+private val MatTerminalConcrete = Color(0xFF2B3037)
+private val MatRoadMarkingYellow = Color(0xFFFACC15)
+private val MatRoadMarkingWhite = Color(0xFFF8FAFC)
+private val MatNhaiBoardGreen = Color(0xFF065F46)
+
+// Swaraj Round Outer Ring Commercial & Heritage Facade Palette (Round North, East, South, West)
+private val MatCoffeeHouseRed = Color(0xFFA93822)
+private val MatArcadeCream = Color(0xFFEFECE4)
+private val MatArcadeSandstone = Color(0xFFDCCEB8)
+private val MatArcadeGlass = Color(0xFF1E293B)
+private val MatArcadeRoofSlate = Color(0xFF475569)
+
+// Arabian Sea & Beach Palette (Chavakkad Beach & Triprayar Beach)
+private val MatArabianSeaDeep = Color(0xFF075985)
+private val MatArabianSeaMid = Color(0xFF0284C7)
+private val MatArabianSeaShallow = Color(0xFF06B6D4)
+private val MatSeaFoamWhite = Color(0xFFF0F9FF)
+private val MatGoldenBeachSand = Color(0xFFE5C88E)
+private val MatWetBeachSand = Color(0xFFC8A96E)
+private val MatSeawallGranite = Color(0xFF475569)
+private val MatPromenadeTile = Color(0xFFCBD5E1)
+private val MatLighthouseRed = Color(0xFFDC2626)
+private val MatLighthouseWhite = Color(0xFFF8FAFC)
+private val MatTemplePondWater = Color(0xFF0E7490)
+
+/**
+ * Renders ground-level plazas, Thekkinkadu Maidan lawn & stone approach walkways aligned with
+ * ROAD_SWARAJ_ROUND, bus terminal aprons, beach sand shores, seawalls, and Arabian Sea water surfaces.
+ */
+internal fun DrawScope.drawThrissurLandmarkGroundPlazas(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3,
+    roads: List<ThrissurOsmRoad>
+) {
+    drawSwarajRoundGroundPlaza(rig, path, camEye, roads)
+    drawVadakkeBusStandGround(rig, path, camEye)
+    drawPaliyekkaraTollPlazaGround(rig, path, camEye)
+    drawGuruvayurTempleAndStandGround(rig, path, camEye)
+    drawChavakkadBeachGround(rig, path, camEye)
+    drawTriprayarBeachGround(rig, path, camEye)
+}
+
+/**
+ * Renders all 3D Blender-matched architectural landmark structures, bus stands, Kerala roadside scenery,
+ * and Kerala PWD / NHAI green direction boards:
+ * - Swaraj Round, Thekkinkadu Maidan Stepped Laterite Terraces, Sree Vadakkumnathan Temple inside
+ *   Thekkinkadu sacred tree grove, Paramekkavu Devi Temple, Indian Coffee House & Outer Commercial Ring
+ * - Vadakke Stand (Thrissur North Bus Stand): Bays, platforms, shelter, ENTRY & EXIT lanes + strict stand labels
+ * - Paliyekkara Toll Plaza on NH 544 (10-Lane FASTag Plaza, Kerala Terracotta Canopy & 2-Tiered Gopuram Roof)
+ * - Guruvayur Sree Krishna Temple (East Nada, label-free) & Guruvayur Stand (strict stand labels only)
+ * - Chavakkad Beach & Azhi Estuary (Lighthouse, Seawall Promenade, Arabian Sea, Access Road)
+ * - Triprayar Beach & Triprayar Stand (Bays, platform, shelter, ENTRY & EXIT lanes + strict stand labels)
+ * - Kerala PWD / NHAI Green Junction Direction Boards (↑ Straight, ← Left, → Right) on outer road verge
+ * - Roadside Kerala-typical buildings, shops, walls, and trees strictly outside drivable road bounds
+ */
+internal fun DrawScope.drawThrissurLandmark3DStructures(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3,
+    roads: List<ThrissurOsmRoad>,
+    titlePaint: Paint,
+    subPaint: Paint
+) {
+    drawSwarajRoundVadakkumnathan3D(rig, path, camEye, roads)
+    drawVadakkeBusStand3D(rig, path, camEye, titlePaint, subPaint)
+    drawPaliyekkaraTollPlaza3D(rig, path, camEye)
+    drawGuruvayurTempleAndStand3D(rig, path, camEye, titlePaint, subPaint)
+    drawChavakkadBeach3D(rig, path, camEye)
+    drawTriprayarBeach3D(rig, path, camEye, titlePaint, subPaint)
+    drawRoadsideKeralaScenery3D(rig, path, camEye, roads)
+    drawNhaiGreenJunctionSignboards3D(rig, path, camEye, roads, titlePaint, subPaint)
+}
+
+private fun addBoxFaces(
+    faces: MutableList<QuadFace3D>,
+    minX: Float,
+    minY: Float,
+    minZ: Float,
+    maxX: Float,
+    maxY: Float,
+    maxZ: Float,
+    topCol: Color,
+    sideCol: Color,
+    frontBackCol: Color = sideCol,
+    stroke: Color? = Color(0x22000000),
+    bias: Float = 0f
+) {
+    faces.add(
+        QuadFace3D(
+            Vec3(minX, maxY, minZ),
+            Vec3(maxX, maxY, minZ),
+            Vec3(maxX, maxY, maxZ),
+            Vec3(minX, maxY, maxZ),
+            topCol,
+            stroke,
+            bias
+        )
+    )
+    faces.add(
+        QuadFace3D(
+            Vec3(minX, minY, minZ),
+            Vec3(maxX, minY, minZ),
+            Vec3(maxX, maxY, minZ),
+            Vec3(minX, maxY, minZ),
+            frontBackCol,
+            stroke,
+            bias
+        )
+    )
+    faces.add(
+        QuadFace3D(
+            Vec3(minX, minY, maxZ),
+            Vec3(maxX, minY, maxZ),
+            Vec3(maxX, maxY, maxZ),
+            Vec3(minX, maxY, maxZ),
+            frontBackCol,
+            stroke,
+            bias
+        )
+    )
+    faces.add(
+        QuadFace3D(
+            Vec3(minX, minY, minZ),
+            Vec3(minX, maxY, minZ),
+            Vec3(minX, maxY, maxZ),
+            Vec3(minX, minY, maxZ),
+            sideCol,
+            stroke,
+            bias
+        )
+    )
+    faces.add(
+        QuadFace3D(
+            Vec3(maxX, minY, minZ),
+            Vec3(maxX, maxY, minZ),
+            Vec3(maxX, maxY, maxZ),
+            Vec3(maxX, minY, maxZ),
+            sideCol,
+            stroke,
+            bias
+        )
+    )
+}
+
+/**
+ * Builds a pitched 4-hipped traditional Kerala roof pyramid frustum (for Gopurams, Sreekovils, Pavilions).
+ */
+private fun addPitchedKeralaRoof(
+    faces: MutableList<QuadFace3D>,
+    minX: Float,
+    maxX: Float,
+    minZ: Float,
+    maxZ: Float,
+    baseY: Float,
+    ridgeY: Float,
+    insetX: Float,
+    insetZ: Float,
+    roofColor: Color,
+    eaveColor: Color = MatTeakWoodCarved
+) {
+    val rMinX = minX + insetX
+    val rMaxX = maxX - insetX
+    val rMinZ = minZ + insetZ
+    val rMaxZ = maxZ - insetZ
+
+    // South slope (-Z)
+    faces.add(
+        QuadFace3D(
+            Vec3(minX, baseY, minZ),
+            Vec3(maxX, baseY, minZ),
+            Vec3(rMaxX, ridgeY, rMinZ),
+            Vec3(rMinX, ridgeY, rMinZ),
+            roofColor,
+            eaveColor
+        )
+    )
+    // North slope (+Z)
+    faces.add(
+        QuadFace3D(
+            Vec3(maxX, baseY, maxZ),
+            Vec3(minX, baseY, maxZ),
+            Vec3(rMinX, ridgeY, rMaxZ),
+            Vec3(rMaxX, ridgeY, rMaxZ),
+            roofColor,
+            eaveColor
+        )
+    )
+    // West slope (-X)
+    faces.add(
+        QuadFace3D(
+            Vec3(minX, baseY, maxZ),
+            Vec3(minX, baseY, minZ),
+            Vec3(rMinX, ridgeY, rMinZ),
+            Vec3(rMinX, ridgeY, rMaxZ),
+            roofColor,
+            eaveColor
+        )
+    )
+    // East slope (+X)
+    faces.add(
+        QuadFace3D(
+            Vec3(maxX, baseY, minZ),
+            Vec3(maxX, baseY, maxZ),
+            Vec3(rMaxX, ridgeY, rMaxZ),
+            Vec3(rMaxX, ridgeY, rMinZ),
+            roofColor,
+            eaveColor
+        )
+    )
+    // Ridge cap
+    faces.add(
+        QuadFace3D(
+            Vec3(rMinX, ridgeY, rMinZ),
+            Vec3(rMaxX, ridgeY, rMinZ),
+            Vec3(rMaxX, ridgeY, rMaxZ),
+            Vec3(rMinX, ridgeY, rMaxZ),
+            MatTempleGoldDeep,
+            null
+        )
+    )
+}
+
+private fun DrawScope.renderSortedFaces(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3,
+    faces: MutableList<QuadFace3D>
+) {
+    faces.sortByDescending { face ->
+        val cx = (face.v0.x + face.v1.x + face.v2.x + face.v3.x) * 0.25f - camEye.x
+        val cy = (face.v0.y + face.v1.y + face.v2.y + face.v3.y) * 0.25f - camEye.y
+        val cz = (face.v0.z + face.v1.z + face.v2.z + face.v3.z) * 0.25f - camEye.z
+        hypot(hypot(cx, cy), cz) + face.biasDist
+    }
+    for (face in faces) {
+        if (rig.buildClippedQuadPath(path, face.v0, face.v1, face.v2, face.v3)) {
+            drawPath(path, face.color)
+            if (face.strokeColor != null) {
+                drawPath(path, face.strokeColor, style = Stroke(width = 1f))
+            }
+        }
+    }
+}
+
+// ============================================================================
+// 1. SATELLITE-ACCURATE THRISSUR SWARAJ ROUND, THEKKINKADU MAIDAN TREE GROVE,
+//    NEHRU PARK & SREE VADAKKUMNATHAN TEMPLE (Ref: image_9a4e2fdd.png & r1_3317f25d.jpeg)
+// ============================================================================
+
+private val MatMaidanLateriteSoil = Color(0xFF6B4C3B)
+private val MatMaidanSoilLight = Color(0xFF7D5A47)
+private val MatWalkwayAsphaltGrey = Color(0xFF737B84)
+private val MatWalkwayBorder = Color(0xFF949CA6)
+private val MatTreeTrunkBark = Color(0xFF3D2616)
+private val MatTreeCanopyShadow = Color(0xFF1B3B22)
+private val MatTreeCanopyMid = Color(0xFF254D2C)
+private val MatTreeCanopyCrown = Color(0xFF316137)
+private val MatTreeCanopyHighlight = Color(0xFF3D7344)
+
+/**
+ * Checks if an inner-circle point on ROAD_SWARAJ_ROUND falls inside one of the 4 cardinal
+ * Gopuram processional approach walkways (Nadas) or Nehru Park gate so the laterite steps open cleanly.
+ */
+private fun isInsideMaidanNadaOpening(pt: Vec3, tcx: Float, tcz: Float): Boolean {
+    val dx = pt.x - tcx
+    val dz = pt.z - tcz
+    // South Nada (aligned with M.O. Road & South Gopuram)
+    if (dz < -14.0f && abs(dx - 3.5f) < 4.5f) return true
+    // North Nada (aligned with Shornur Road & North Gopuram)
+    if (dz > 14.0f && abs(dx - 1.5f) < 4.5f) return true
+    // West Nada Double-Boulevard (aligned with M.G. Road / West Fort & West Gopuram)
+    if (dx < -14.0f && abs(dz - (-3.5f)) < 5.5f) return true
+    // East Nada (aligned with Thrissur-Palghat Road & East Gopuram)
+    if (dx > 14.0f && abs(dz - (-2.5f)) < 4.5f) return true
+    return false
+}
+
+/**
+ * Draws a curved ribbon arc between [angleStartDeg..angleEndDeg] around (cx, cz) at [radiusInner..radiusOuter].
+ */
+private fun DrawScope.drawMaidanArcWalkway(
+    rig: CameraRig,
+    path: Path,
+    cx: Float,
+    cz: Float,
+    radiusInner: Float,
+    radiusOuter: Float,
+    angleStartDeg: Float,
+    angleEndDeg: Float,
+    steps: Int,
+    yHeight: Float,
+    color: Color
+) {
+    for (i in 0 until steps) {
+        val t0 = i.toFloat() / steps
+        val t1 = (i + 1).toFloat() / steps
+        val a0 = Math.toRadians((angleStartDeg + (angleEndDeg - angleStartDeg) * t0).toDouble()).toFloat()
+        val a1 = Math.toRadians((angleStartDeg + (angleEndDeg - angleStartDeg) * t1).toDouble()).toFloat()
+        val v0 = Vec3(cx + cos(a0) * radiusInner, yHeight, cz + sin(a0) * radiusInner)
+        val v1 = Vec3(cx + cos(a0) * radiusOuter, yHeight, cz + sin(a0) * radiusOuter)
+        val v2 = Vec3(cx + cos(a1) * radiusOuter, yHeight, cz + sin(a1) * radiusOuter)
+        val v3 = Vec3(cx + cos(a1) * radiusInner, yHeight, cz + sin(a1) * radiusInner)
+        if (rig.buildClippedQuadPath(path, v0, v1, v2, v3)) {
+            drawPath(path, color)
+        }
+    }
+}
+
+private fun DrawScope.drawSwarajRoundGroundPlaza(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3,
+    roads: List<ThrissurOsmRoad>
+) {
+    val cx = 3.1f
+    val cz = 9.5f
+    if (hypot(camEye.x - cx, camEye.z - cz) > 380f) return
+
+    // Temple center is slightly South-Center of Thekkinkadu Maidan (matching image_9a4e2fdd.png)
+    val tcx = 1.8f
+    val tcz = 4.5f
+
+    val swarajRoad = roads.firstOrNull { it.id == "ROAD_SWARAJ_ROUND" }
+    val frames = swarajRoad?.frames
+
+    // 1. Base Thekkinkadu Maidan Reddish-Earth & Turf Ground (Ref: image_9a4e2fdd.png)
+    if (frames != null && frames.size >= 4) {
+        val centerTop = Vec3(cx, 0.44f, cz)
+        for (i in 0 until frames.size - 1) {
+            val f0 = frames[i]
+            val f1 = frames[i + 1]
+            val inOff0 = f0.halfWidthM + 1.85f
+            val inOff1 = f1.halfWidthM + 1.85f
+            val p0 = Vec3(f0.pos.x + f0.right.x * inOff0, 0.42f, f0.pos.z + f0.right.z * inOff0)
+            val p1 = Vec3(f1.pos.x + f1.right.x * inOff1, 0.42f, f1.pos.z + f1.right.z * inOff1)
+            // Alternate open reddish laterite Pooram ground on West/South with lush green turf in Center/NE
+            val midX = (p0.x + p1.x) * 0.5f - cx
+            val midZ = (p0.z + p1.z) * 0.5f - cz
+            val sectorCol = if (midX < -8.0f || midZ < -10.0f) MatMaidanLateriteSoil else MatMaidanGrass
+            if (rig.buildClippedQuadPath(path, centerTop, p0, p1, centerTop)) {
+                drawPath(path, sectorCol)
+            }
+        }
+
+        // Outer Ring Pedestrian Sidewalk along Round North, East, South, West (stops at radial road junctions)
+        var runStart = 0
+        while (runStart < frames.lastIndex) {
+            while (runStart < frames.lastIndex && frames[runStart].leftEdgeCovered) runStart++
+            if (runStart >= frames.lastIndex) break
+            var runEnd = runStart + 1
+            while (runEnd < frames.lastIndex && !frames[runEnd].leftEdgeCovered) runEnd++
+            if (rig.buildVariableRibbonPath(
+                    path = path,
+                    frames = frames,
+                    startIdx = runStart,
+                    endIdx = runEnd,
+                    offsetLFn = { -it.halfWidthM - 3.80f },
+                    offsetRFn = { -it.halfWidthM - 0.32f },
+                    yHeight = 0.065f
+                )
+            ) {
+                drawPath(path, MatPromenadeTile)
+            }
+            runStart = runEnd
+        }
+    }
+
+    // 2. Inner Forested Canopy Turf Zone around Sree Vadakkumnathan Temple & Nehru Park (Dark Green Under-Canopy Ground)
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(tcx - 21.5f, 0.45f, tcz - 20.5f),
+            Vec3(tcx + 22.5f, 0.45f, tcz - 20.5f),
+            Vec3(tcx + 24.5f, 0.45f, tcz + 26.5f),
+            Vec3(tcx - 19.5f, 0.45f, tcz + 26.5f)
+        )
+    ) {
+        drawPath(path, Color(0xFF2B472C))
+    }
+
+    // 3. Concentric Curved Grey Pedestrian Walkways across Thekkinkadu Maidan (Exact match to image_9a4e2fdd.png!)
+    //    - Twin South & South-East Curved Walkways (sweeping from SW at -145° around South & East to +10°)
+    drawMaidanArcWalkway(rig, path, cx, cz, 25.2f, 27.0f, -148f, 12f, 20, 0.46f, MatWalkwayAsphaltGrey)
+    drawMaidanArcWalkway(rig, path, cx, cz, 29.2f, 30.8f, -142f, 8f, 20, 0.46f, MatWalkwayAsphaltGrey)
+    //    - Twin North-West Curved Walkways (sweeping from West +105° to North +195° near Naikkanal Junction)
+    drawMaidanArcWalkway(rig, path, cx, cz, 24.5f, 26.3f, 102f, 196f, 16, 0.46f, MatWalkwayAsphaltGrey)
+    drawMaidanArcWalkway(rig, path, cx, cz, 28.5f, 30.2f, 106f, 192f, 16, 0.46f, MatWalkwayAsphaltGrey)
+    //    - Nehru Park Looping Garden Walkways in North-East Quadrant (cx + 6..26, cz + 10..32)
+    drawMaidanArcWalkway(rig, path, cx + 14.5f, cz + 19.5f, 5.5f, 6.8f, 0f, 360f, 16, 0.465f, MatWalkwayBorder)
+    drawMaidanArcWalkway(rig, path, cx + 15.5f, cz + 20.5f, 9.5f, 10.8f, -45f, 215f, 14, 0.465f, MatWalkwayBorder)
+
+    // 4. Outer Pradakshinapatha Stone Walkway Ring around Sree Vadakkumnathan Temple Wall (with NE loop from image_9a4e2fdd.png)
+    val wR = 11.8f
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(tcx - wR - 2.6f, 0.47f, tcz - wR - 2.6f),
+            Vec3(tcx + wR + 2.6f, 0.47f, tcz - wR - 2.6f),
+            Vec3(tcx + wR + 2.6f, 0.47f, tcz + wR + 2.6f),
+            Vec3(tcx - wR - 2.6f, 0.47f, tcz + wR + 2.6f)
+        )
+    ) {
+        drawPath(path, MatWalkwayAsphaltGrey)
+    }
+    // North-East Pradakshinapatha Corner Loop (distinctive diagonal loop at NE corner of Temple in image_9a4e2fdd.png)
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(tcx + wR, 0.47f, tcz + wR + 1.0f),
+            Vec3(tcx + wR + 8.5f, 0.47f, tcz + wR + 7.5f),
+            Vec3(tcx + wR + 10.5f, 0.47f, tcz + wR + 5.0f),
+            Vec3(tcx + wR + 2.0f, 0.47f, tcz + wR - 1.5f)
+        )
+    ) {
+        drawPath(path, MatWalkwayAsphaltGrey)
+    }
+
+    // 5. Sacred Temple Pond (Vadakkumnathan Kulam) just North of the Temple inside the Tree Grove (image_9a4e2fdd.png)
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(tcx - 2.5f, 0.46f, tcz + wR + 5.0f),
+            Vec3(tcx + 5.5f, 0.46f, tcz + wR + 5.0f),
+            Vec3(tcx + 5.5f, 0.46f, tcz + wR + 12.5f),
+            Vec3(tcx - 2.5f, 0.46f, tcz + wR + 12.5f)
+        )
+    ) {
+        drawPath(path, MatTemplePondWater)
+    }
+}
+
+/**
+ * Adds a realistic 3D tropical Kerala tree (Banyan / Teak / Peepal) with a 3D bark trunk and
+ * multi-tiered 3D domed/pitched foliage canopy so Sree Vadakkumnathan Temple sits inside a lush
+ * sacred forest grove (Thekkinkadu) visible from both street level and top-down satellite view.
+ */
+private fun addRealisticMaidanTree3D(
+    faces: MutableList<QuadFace3D>,
+    tx: Float,
+    tz: Float,
+    baseY: Float,
+    crownRadius: Float,
+    treeHeight: Float
+) {
+    val trunkHalfW = (crownRadius * 0.16f).coerceIn(0.28f, 0.65f)
+    val trunkTopY = baseY + treeHeight * 0.42f
+    // 1. 3D Tree Trunk
+    addBoxFaces(
+        faces,
+        tx - trunkHalfW, baseY, tz - trunkHalfW,
+        tx + trunkHalfW, trunkTopY, tz + trunkHalfW,
+        topCol = MatTreeTrunkBark,
+        sideCol = MatTreeTrunkBark,
+        frontBackCol = MatTeakWoodDeep,
+        stroke = null,
+        bias = 1.5f
+    )
+
+    // 2. Lower Spreading Bough Canopy Tier (Wide dark-green under-canopy)
+    val r1 = crownRadius
+    val y1Bot = baseY + treeHeight * 0.34f
+    val y1Top = baseY + treeHeight * 0.66f
+    addPitchedKeralaRoof(
+        faces,
+        tx - r1, tx + r1,
+        tz - r1, tz + r1,
+        baseY = y1Bot,
+        ridgeY = y1Top,
+        insetX = r1 * 0.28f,
+        insetZ = r1 * 0.28f,
+        roofColor = MatTreeCanopyShadow,
+        eaveColor = MatTreeCanopyShadow
+    )
+
+    // 3. Middle Lush Foliage Canopy Tier
+    val r2 = crownRadius * 0.82f
+    val y2Bot = baseY + treeHeight * 0.56f
+    val y2Top = baseY + treeHeight * 0.86f
+    addPitchedKeralaRoof(
+        faces,
+        tx - r2, tx + r2,
+        tz - r2, tz + r2,
+        baseY = y2Bot,
+        ridgeY = y2Top,
+        insetX = r2 * 0.35f,
+        insetZ = r2 * 0.35f,
+        roofColor = MatTreeCanopyMid,
+        eaveColor = MatTreeCanopyShadow
+    )
+
+    // 4. Upper Sunlit Crown Cap
+    val r3 = crownRadius * 0.58f
+    val y3Bot = baseY + treeHeight * 0.78f
+    val y3Top = baseY + treeHeight
+    addPitchedKeralaRoof(
+        faces,
+        tx - r3, tx + r3,
+        tz - r3, tz + r3,
+        baseY = y3Bot,
+        ridgeY = y3Top,
+        insetX = r3 * 0.48f,
+        insetZ = r3 * 0.48f,
+        roofColor = MatTreeCanopyCrown,
+        eaveColor = MatTreeCanopyHighlight
+    )
+}
+
+private fun DrawScope.drawSwarajRoundVadakkumnathan3D(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3,
+    roads: List<ThrissurOsmRoad>
+) {
+    val cx = 3.1f
+    val cz = 9.5f
+    if (hypot(camEye.x - cx, camEye.z - cz) > 380f) return
+
+    // Temple center inside Thekkinkadu Maidan (matching satellite image_9a4e2fdd.png)
+    val tcx = 1.8f
+    val tcz = 4.5f
+    val wR = 11.8f // Realistic compact Maryada wall radius so the surrounding Maidan & tree grove are expansive!
+    val templeBaseY = 0.62f
+
+    val faces = ArrayList<QuadFace3D>(920)
+    val swarajFrames = roads.firstOrNull { it.id == "ROAD_SWARAJ_ROUND" }?.frames
+
+    // =========================================================================
+    // A. THEKKINKADU MAIDAN 3-STEPPED LATERITE STONE TERRACES (Ref: r1_3317f25d.jpeg)
+    //    Built directly along the inner edge of ROAD_SWARAJ_ROUND (+right),
+    //    with 4 clean openings for the 4 Gopuram processional avenues!
+    // =========================================================================
+    if (swarajFrames != null && swarajFrames.size >= 4) {
+        val stepConfigs = arrayOf(
+            floatArrayOf(0.32f, 0.90f, 0.06f, 0.19f),
+            floatArrayOf(0.90f, 1.48f, 0.19f, 0.32f),
+            floatArrayOf(1.48f, 2.06f, 0.32f, 0.45f)
+        )
+        for (i in 0 until swarajFrames.size - 1) {
+            val f0 = swarajFrames[i]
+            val f1 = swarajFrames[i + 1]
+            val midCheck = Vec3(
+                (f0.pos.x + f1.pos.x) * 0.5f + f0.right.x * (f0.halfWidthM + 1.2f),
+                0.2f,
+                (f0.pos.z + f1.pos.z) * 0.5f + f0.right.z * (f0.halfWidthM + 1.2f)
+            )
+            if (isInsideMaidanNadaOpening(midCheck, tcx, tcz)) continue
+
+            for (sIdx in stepConfigs.indices) {
+                val cfg = stepConfigs[sIdx]
+                val dOut0 = f0.halfWidthM + cfg[0]
+                val dIn0 = f0.halfWidthM + cfg[1]
+                val dOut1 = f1.halfWidthM + cfg[0]
+                val dIn1 = f1.halfWidthM + cfg[1]
+                val yBot = cfg[2]
+                val yTop = cfg[3]
+
+                val pOut0 = Vec3(f0.pos.x + f0.right.x * dOut0, yTop, f0.pos.z + f0.right.z * dOut0)
+                val pOut1 = Vec3(f1.pos.x + f1.right.x * dOut1, yTop, f1.pos.z + f1.right.z * dOut1)
+                val pIn1 = Vec3(f1.pos.x + f1.right.x * dIn1, yTop, f1.pos.z + f1.right.z * dIn1)
+                val pIn0 = Vec3(f0.pos.x + f0.right.x * dIn0, yTop, f0.pos.z + f0.right.z * dIn0)
+
+                faces.add(
+                    QuadFace3D(
+                        pOut0, pOut1, pIn1, pIn0,
+                        color = if (sIdx == 2) MatGranitePaving else MatLateriteStepTop,
+                        strokeColor = Color(0x28000000),
+                        biasDist = 4.0f
+                    )
+                )
+                faces.add(
+                    QuadFace3D(
+                        Vec3(pOut0.x, yBot, pOut0.z),
+                        Vec3(pOut1.x, yBot, pOut1.z),
+                        pOut1,
+                        pOut0,
+                        color = if (sIdx % 2 == 0) MatLateriteStone else MatLateriteDark,
+                        strokeColor = Color(0x33000000),
+                        biasDist = 3.8f
+                    )
+                )
+            }
+        }
+    }
+
+    // =========================================================================
+    // B. 4 PAVED PROCESSIONAL AVENUES (NADAS) CONNECTING SWARAJ ROUND TO THE 4 GOPURAMS
+    //    (Including the Divided Double-Lane West Avenue visible in image_9a4e2fdd.png!)
+    // =========================================================================
+    fun addProcessionalAvenue(vRoadL: Vec3, vRoadR: Vec3, vGateR: Vec3, vGateL: Vec3) {
+        faces.add(
+            QuadFace3D(
+                vRoadL, vRoadR, vGateR, vGateL,
+                color = MatWalkwayAsphaltGrey,
+                strokeColor = MatWalkwayBorder,
+                biasDist = 2.8f
+            )
+        )
+    }
+
+    // 1. South Processional Avenue (M.O. Road / Ragam Theatre side -> South Gopuram)
+    addProcessionalAvenue(
+        vRoadL = Vec3(tcx + 0.5f, 0.08f, cz - 34.8f),
+        vRoadR = Vec3(tcx + 5.5f, 0.08f, cz - 34.8f),
+        vGateR = Vec3(tcx + 5.0f, templeBaseY, tcz - wR),
+        vGateL = Vec3(tcx + 1.0f, templeBaseY, tcz - wR)
+    )
+    // 2. North Processional Avenue (Swaraj Round N / Shornur Road -> North Gopuram)
+    addProcessionalAvenue(
+        vRoadL = Vec3(tcx + 3.2f, 0.08f, cz + 35.8f),
+        vRoadR = Vec3(tcx - 1.8f, 0.08f, cz + 35.8f),
+        vGateR = Vec3(tcx - 1.5f, templeBaseY, tcz + wR),
+        vGateL = Vec3(tcx + 2.5f, templeBaseY, tcz + wR)
+    )
+    // 3. West Divided Double-Boulevard Avenue (Swaraj Round S/W Rd -> West Gopuram, Ref: image_9a4e2fdd.png)
+    addProcessionalAvenue(
+        vRoadL = Vec3(cx - 35.2f, 0.08f, tcz - 0.2f),
+        vRoadR = Vec3(cx - 35.2f, 0.08f, tcz - 2.6f),
+        vGateR = Vec3(tcx - wR - 2.0f, templeBaseY, tcz - 2.4f),
+        vGateL = Vec3(tcx - wR - 2.0f, templeBaseY, tcz - 0.4f)
+    )
+    addProcessionalAvenue(
+        vRoadL = Vec3(cx - 35.2f, 0.08f, tcz - 4.2f),
+        vRoadR = Vec3(cx - 35.2f, 0.08f, tcz - 6.6f),
+        vGateR = Vec3(tcx - wR - 2.0f, templeBaseY, tcz - 6.4f),
+        vGateL = Vec3(tcx - wR - 2.0f, templeBaseY, tcz - 4.4f)
+    )
+    // Diagonal NW walkway from Naikkanal Junction to West Gopuram (clearly visible in image_9a4e2fdd.png!)
+    addProcessionalAvenue(
+        vRoadL = Vec3(cx - 25.5f, 0.46f, cz + 26.5f),
+        vRoadR = Vec3(cx - 23.2f, 0.46f, cz + 27.5f),
+        vGateR = Vec3(tcx - wR - 1.5f, templeBaseY, tcz + 1.5f),
+        vGateL = Vec3(tcx - wR - 3.5f, templeBaseY, tcz + 0.5f)
+    )
+    // 4. East Processional Avenue (Swaraj Round East -> East Gopuram)
+    addProcessionalAvenue(
+        vRoadL = Vec3(cx + 34.5f, 0.08f, tcz - 4.8f),
+        vRoadR = Vec3(cx + 34.5f, 0.08f, tcz - 0.2f),
+        vGateR = Vec3(tcx + wR, templeBaseY, tcz - 0.5f),
+        vGateL = Vec3(tcx + wR, templeBaseY, tcz - 4.5f)
+    )
+
+    // =========================================================================
+    // C. SREE VADAKKUMNATHAN TEMPLE COMPOUND (NESTLED INSIDE THE TREE GROVE)
+    //    (Maryada Wall + 4 Kerala Gopurams + Rectangular Nalambalam + Sreekovils + Koothambalam)
+    // =========================================================================
+    // Inner Temple Courtyard Stone Paving
+    addBoxFaces(
+        faces,
+        tcx - wR + 0.4f, 0.45f, tcz - wR + 0.4f,
+        tcx + wR - 0.4f, templeBaseY, tcz + wR - 0.4f,
+        topCol = MatGranitePaving,
+        sideCol = MatGraniteDark,
+        bias = 4.5f
+    )
+
+    fun addMaryadaWallSegment(minX: Float, minZ: Float, maxX: Float, maxZ: Float, isNorthSouth: Boolean) {
+        addBoxFaces(
+            faces,
+            minX, templeBaseY, minZ,
+            maxX, templeBaseY + 1.45f, maxZ,
+            topCol = MatKeralaWhitewash,
+            sideCol = MatKeralaWhitewash,
+            frontBackCol = MatKeralaCreamWall
+        )
+        addBoxFaces(
+            faces,
+            minX, templeBaseY + 1.45f, minZ,
+            maxX, templeBaseY + 2.30f, maxZ,
+            topCol = MatLateriteStone,
+            sideCol = MatLateriteStone,
+            frontBackCol = MatLateriteDark
+        )
+        val overhang = 0.24f
+        addPitchedKeralaRoof(
+            faces,
+            minX - overhang, maxX + overhang,
+            minZ - overhang, maxZ + overhang,
+            baseY = templeBaseY + 2.25f,
+            ridgeY = templeBaseY + 2.75f,
+            insetX = if (isNorthSouth) 0.12f else (maxX - minX) * 0.45f,
+            insetZ = if (isNorthSouth) (maxZ - minZ) * 0.45f else 0.12f,
+            roofColor = MatTerracottaTile
+        )
+    }
+
+    // South Maryada Wall (split around South Gopuram at tcx + 3.0m)
+    addMaryadaWallSegment(tcx - wR, tcz - wR, tcx - 0.6f, tcz - wR + 0.8f, isNorthSouth = true)
+    addMaryadaWallSegment(tcx + 6.6f, tcz - wR, tcx + wR, tcz - wR + 0.8f, isNorthSouth = true)
+    // North Maryada Wall (split around North Gopuram at tcx + 0.5m)
+    addMaryadaWallSegment(tcx - wR, tcz + wR - 0.8f, tcx - 3.1f, tcz + wR, isNorthSouth = true)
+    addMaryadaWallSegment(tcx + 4.1f, tcz + wR - 0.8f, tcx + wR, tcz + wR, isNorthSouth = true)
+    // West Maryada Wall (split around West Gopuram at tcz - 3.4m)
+    addMaryadaWallSegment(tcx - wR, tcz - wR, tcx - wR + 0.8f, tcz - 7.0f, isNorthSouth = false)
+    addMaryadaWallSegment(tcx - wR, tcz + 0.2f, tcx - wR + 0.8f, tcz + wR, isNorthSouth = false)
+    // East Maryada Wall (split around East Gopuram at tcz - 2.5m)
+    addMaryadaWallSegment(tcx + wR - 0.8f, tcz - wR, tcx + wR, tcz - 6.1f, isNorthSouth = false)
+    addMaryadaWallSegment(tcx + wR - 0.8f, tcz + 1.1f, tcx + wR, tcz + wR, isNorthSouth = false)
+
+    // 4 Authentic 3-Tiered Kerala Gopurams (Proportioned to sit majestically inside the tree canopy)
+    fun addAuthenticVadakkumnathanGopuram(
+        gx: Float,
+        gz: Float,
+        halfW: Float,
+        halfD: Float,
+        facesNorthSouth: Boolean
+    ) {
+        val y0 = templeBaseY
+        addBoxFaces(
+            faces,
+            gx - halfW - 0.25f, y0, gz - halfD - 0.25f,
+            gx + halfW + 0.25f, y0 + 0.50f, gz + halfD + 0.25f,
+            topCol = MatGraniteLight,
+            sideCol = MatGraniteDark,
+            frontBackCol = MatGranitePaving
+        )
+
+        if (facesNorthSouth) {
+            val doorHalfW = 1.05f
+            addBoxFaces(faces, gx - halfW, y0 + 0.50f, gz - halfD, gx - doorHalfW, y0 + 3.40f, gz + halfD, MatTeakWoodCarved, MatKeralaCreamWall, MatKeralaWhitewash)
+            addBoxFaces(faces, gx + doorHalfW, y0 + 0.50f, gz - halfD, gx + halfW, y0 + 3.40f, gz + halfD, MatTeakWoodCarved, MatKeralaCreamWall, MatKeralaWhitewash)
+            addBoxFaces(faces, gx - doorHalfW, y0 + 0.50f, gz - halfD + 0.20f, gx + doorHalfW, y0 + 3.40f, gz + halfD - 0.20f, MatTeakWoodDeep, MatTeakWoodDeep, MatTeakWoodDeep)
+        } else {
+            val doorHalfD = 1.05f
+            addBoxFaces(faces, gx - halfW, y0 + 0.50f, gz - halfD, gx + halfW, y0 + 3.40f, gz - doorHalfD, MatTeakWoodCarved, MatKeralaWhitewash, MatKeralaCreamWall)
+            addBoxFaces(faces, gx - halfW, y0 + 0.50f, gz + doorHalfD, gx + halfW, y0 + 3.40f, gz + halfD, MatTeakWoodCarved, MatKeralaWhitewash, MatKeralaCreamWall)
+            addBoxFaces(faces, gx - halfW + 0.20f, y0 + 0.50f, gz - doorHalfD, gx + halfW - 0.20f, y0 + 3.40f, gz + doorHalfD, MatTeakWoodDeep, MatTeakWoodDeep, MatTeakWoodDeep)
+        }
+
+        // Tier 1 Sloped Roof
+        addPitchedKeralaRoof(
+            faces,
+            gx - halfW - 1.05f, gx + halfW + 1.05f,
+            gz - halfD - 1.05f, gz + halfD + 1.05f,
+            baseY = y0 + 3.25f, ridgeY = y0 + 5.10f,
+            insetX = 1.20f, insetZ = 1.20f,
+            roofColor = MatTerracottaRoofDark,
+            eaveColor = MatTeakWoodCarved
+        )
+        // Tier 2 Carved Teakwood Hall + Sloped Roof
+        addBoxFaces(
+            faces,
+            gx - halfW * 0.78f, y0 + 4.95f, gz - halfD * 0.78f,
+            gx + halfW * 0.78f, y0 + 6.60f, gz + halfD * 0.78f,
+            topCol = MatTeakWoodCarved,
+            sideCol = MatTeakWoodCarved,
+            frontBackCol = MatTeakWoodCarved
+        )
+        addPitchedKeralaRoof(
+            faces,
+            gx - halfW * 0.98f, gx + halfW * 0.98f,
+            gz - halfD * 0.98f, gz + halfD * 0.98f,
+            baseY = y0 + 6.45f, ridgeY = y0 + 8.35f,
+            insetX = 1.10f, insetZ = 1.10f,
+            roofColor = MatCopperRoof,
+            eaveColor = MatTeakWoodCarved
+        )
+        // Tier 3 Uppermost Steep Roof + Central Mukhappu Gable
+        addPitchedKeralaRoof(
+            faces,
+            gx - halfW * 0.76f, gx + halfW * 0.76f,
+            gz - halfD * 0.76f, gz + halfD * 0.76f,
+            baseY = y0 + 8.20f, ridgeY = y0 + 10.65f,
+            insetX = if (facesNorthSouth) halfW * 0.28f else halfW * 0.68f,
+            insetZ = if (facesNorthSouth) halfD * 0.68f else halfD * 0.28f,
+            roofColor = MatTerracottaRoofDark,
+            eaveColor = MatKeralaWhitewash
+        )
+        val mukW = if (facesNorthSouth) 1.25f else halfW * 0.70f
+        val mukD = if (facesNorthSouth) halfD * 0.70f else 1.25f
+        addPitchedKeralaRoof(
+            faces,
+            gx - mukW, gx + mukW,
+            gz - mukD, gz + mukD,
+            baseY = y0 + 7.80f, ridgeY = y0 + 10.25f,
+            insetX = if (facesNorthSouth) mukW * 0.85f else 0.20f,
+            insetZ = if (facesNorthSouth) 0.20f else mukD * 0.85f,
+            roofColor = MatCopperRoofDark,
+            eaveColor = MatKeralaWhitewash
+        )
+    }
+
+    addAuthenticVadakkumnathanGopuram(tcx + 3.0f, tcz - wR, halfW = 3.8f, halfD = 2.3f, facesNorthSouth = true)   // South Gopuram
+    addAuthenticVadakkumnathanGopuram(tcx + 0.5f, tcz + wR, halfW = 3.8f, halfD = 2.3f, facesNorthSouth = true)   // North Gopuram
+    addAuthenticVadakkumnathanGopuram(tcx - wR, tcz - 3.4f, halfW = 2.3f, halfD = 3.8f, facesNorthSouth = false)  // West Gopuram
+    addAuthenticVadakkumnathanGopuram(tcx + wR, tcz - 2.5f, halfW = 2.3f, halfD = 3.8f, facesNorthSouth = false)  // East Gopuram
+
+    // Inner Rectangular Nalambalam Cloister & Sreekovils (Ref: image_9a4e2fdd.png center-south rectangle)
+    val nalW = 6.2f
+    val nalD = 7.6f
+    addBoxFaces(
+        faces,
+        tcx - nalW, templeBaseY + 0.05f, tcz - nalD,
+        tcx + nalW, templeBaseY + 2.60f, tcz + nalD,
+        topCol = MatTeakWoodCarved,
+        sideCol = MatKeralaWhitewash,
+        frontBackCol = MatKeralaCreamWall
+    )
+    addPitchedKeralaRoof(
+        faces,
+        tcx - nalW - 0.5f, tcx + nalW + 0.5f,
+        tcz - nalD - 0.5f, tcz + nalD + 0.5f,
+        baseY = templeBaseY + 2.50f,
+        ridgeY = templeBaseY + 4.10f,
+        insetX = 1.8f, insetZ = 1.8f,
+        roofColor = MatTerracottaTile
+    )
+    // Conical Copper-Roofed Vadakkumnathan & Sri Rama Sreekovils inside Nalambalam
+    addPitchedKeralaRoof(
+        faces,
+        tcx - 3.6f, tcx + 3.6f,
+        tcz + 0.2f, tcz + 6.2f,
+        baseY = templeBaseY + 3.85f,
+        ridgeY = templeBaseY + 7.80f,
+        insetX = 3.3f, insetZ = 2.8f,
+        roofColor = MatCopperRoof
+    )
+    addPitchedKeralaRoof(
+        faces,
+        tcx - 3.2f, tcx + 3.2f,
+        tcz - 6.2f, tcz - 0.6f,
+        baseY = templeBaseY + 3.85f,
+        ridgeY = templeBaseY + 7.10f,
+        insetX = 2.9f, insetZ = 2.6f,
+        roofColor = MatCopperRoofDark
+    )
+    // Koothambalam (Red-tiled rectangular temple theatre in NW temple courtyard, visible in image_9a4e2fdd.png)
+    addBoxFaces(
+        faces,
+        tcx - 10.2f, templeBaseY + 0.05f, tcz + 1.8f,
+        tcx - 7.0f, templeBaseY + 2.80f, tcz + 9.2f,
+        topCol = MatTeakWoodCarved,
+        sideCol = MatKeralaWhitewash,
+        frontBackCol = MatTeakWoodCarved
+    )
+    addPitchedKeralaRoof(
+        faces,
+        tcx - 10.7f, tcx - 6.5f,
+        tcz + 1.3f, tcz + 9.7f,
+        baseY = templeBaseY + 2.70f,
+        ridgeY = templeBaseY + 6.40f,
+        insetX = 1.8f, insetZ = 2.4f,
+        roofColor = MatTerracottaTile
+    )
+
+    // =========================================================================
+    // D. LUSH 3D SACRED TREE CANOPY ("THEKKINKADU" FOREST GROVE) SURROUNDING
+    //    THE TEMPLE, NEHRU PARK & MAIDAN PERIMETER (Ref: image_9a4e2fdd.png & r1_3317f25d.jpeg)
+    //    (Leaves the 4 Nada avenues open so the 4 Gopurams are framed by the trees!)
+    // =========================================================================
+    val maidanTrees = arrayOf(
+        // Inner Sacred Grove Ring directly surrounding Sree Vadakkumnathan Temple Compound Wall
+        // South-West Grove (between West Nada & South Nada)
+        floatArrayOf(tcx - 16.5f, tcz - 10.5f, 4.4f, 9.8f),
+        floatArrayOf(tcx - 12.0f, tcz - 16.5f, 4.8f, 10.6f),
+        floatArrayOf(tcx - 5.5f, tcz - 16.8f, 4.5f, 10.2f),
+        floatArrayOf(tcx - 18.8f, tcz - 15.8f, 4.2f, 9.4f),
+        // South-East Grove (between South Nada & East Nada)
+        floatArrayOf(tcx + 10.2f, tcz - 16.5f, 4.6f, 10.4f),
+        floatArrayOf(tcx + 15.8f, tcz - 14.5f, 4.8f, 10.8f),
+        floatArrayOf(tcx + 16.8f, tcz - 8.8f, 4.4f, 9.8f),
+        floatArrayOf(tcx + 12.5f, tcz - 19.8f, 4.0f, 9.0f),
+        // North-East Grove (between East Nada, Temple Pond & Nehru Park)
+        floatArrayOf(tcx + 16.5f, tcz + 4.2f, 4.8f, 10.8f),
+        floatArrayOf(tcx + 15.5f, tcz + 11.2f, 5.0f, 11.2f),
+        floatArrayOf(tcx + 10.5f, tcz + 16.2f, 4.6f, 10.4f),
+        floatArrayOf(tcx + 11.8f, tcz + 22.0f, 4.8f, 10.6f),
+        floatArrayOf(tcx + 6.5f, tcz + 21.5f, 4.4f, 9.8f),
+        // North-West Grove (between North Nada & West Nada)
+        floatArrayOf(tcx - 5.5f, tcz + 16.5f, 4.8f, 10.8f),
+        floatArrayOf(tcx - 12.2f, tcz + 15.5f, 5.0f, 11.0f),
+        floatArrayOf(tcx - 16.8f, tcz + 10.2f, 4.6f, 10.2f),
+        floatArrayOf(tcx - 16.5f, tcz + 3.8f, 4.4f, 9.8f),
+        floatArrayOf(tcx - 8.5f, tcz + 22.5f, 4.5f, 10.0f),
+        floatArrayOf(tcx - 14.8f, tcz + 21.0f, 4.2f, 9.5f),
+
+        // Nehru Park Lush Tree Canopy in North-East Quadrant of Thekkinkadu Maidan (Ref: image_9a4e2fdd.png)
+        floatArrayOf(cx + 12.0f, cz + 25.0f, 4.5f, 10.2f),
+        floatArrayOf(cx + 19.5f, cz + 24.5f, 4.8f, 10.6f),
+        floatArrayOf(cx + 24.5f, cz + 18.0f, 4.4f, 9.8f),
+        floatArrayOf(cx + 18.5f, cz + 14.0f, 4.6f, 10.4f),
+        floatArrayOf(cx + 6.0f, cz + 28.5f, 4.2f, 9.6f),
+
+        // Outer Maidan Perimeter Tree Clusters (SW corner, NW Naikkanal border, SE border — Ref: image_9a4e2fdd.png)
+        floatArrayOf(cx - 24.5f, cz - 19.5f, 4.4f, 9.8f),
+        floatArrayOf(cx - 18.5f, cz - 25.0f, 4.2f, 9.4f),
+        floatArrayOf(cx - 28.5f, cz + 14.5f, 4.2f, 9.5f),
+        floatArrayOf(cx - 20.5f, cz + 27.5f, 4.4f, 9.8f),
+        floatArrayOf(cx + 22.5f, cz - 18.5f, 4.2f, 9.4f),
+        floatArrayOf(cx + 27.0f, cz - 11.0f, 4.0f, 9.0f)
+    )
+
+    for (t in maidanTrees) {
+        addRealisticMaidanTree3D(
+            faces = faces,
+            tx = t[0],
+            tz = t[1],
+            baseY = 0.45f,
+            crownRadius = t[2],
+            treeHeight = t[3]
+        )
+    }
+
+    // =========================================================================
+    // E. EAST-SIDE WATER AUTHORITY BUILDING & CIRCULAR TANKS + NEHRU PARK PAVILION
+    //    (Clearly visible on the East & NE side inside Swaraj Round in image_9a4e2fdd.png!)
+    // =========================================================================
+    // White Rectangular Water Authority Building (East of Temple grove at cx + 19.5m..23.0m, cz - 1.0m..+8.5m)
+    addBoxFaces(
+        faces,
+        cx + 19.2f, 0.46f, cz - 1.5f,
+        cx + 22.8f, 3.20f, cz + 8.0f,
+        topCol = MatPromenadeTile,
+        sideCol = MatKeralaWhitewash,
+        frontBackCol = MatKeralaCreamWall
+    )
+    // 3 White Circular/Octagonal Water Tanks next to the building (visible in image_9a4e2fdd.png)
+    for ((wtX, wtZ) in arrayOf(
+        Pair(cx + 25.0f, cz + 6.5f),
+        Pair(cx + 25.0f, cz + 2.5f),
+        Pair(cx + 28.2f, cz + 4.5f)
+    )) {
+        addBoxFaces(
+            faces,
+            wtX - 1.3f, 0.46f, wtZ - 1.3f,
+            wtX + 1.3f, 2.40f, wtZ + 1.3f,
+            topCol = MatFastagWhite,
+            sideCol = MatPromenadeTile,
+            frontBackCol = MatKeralaWhitewash
+        )
+    }
+
+    // =========================================================================
+    // F. SWARAJ ROUND OUTER RING LANDMARKS & HERITAGE ARCADES (Ref: image_9a4e2fdd.png)
+    //    All positioned outside the outer sidewalk with wide clearance for all 4 radial roads!
+    // =========================================================================
+    // 1. PARAMEKKAVU BAGAVATHI TEMPLE (Round East — North-East of Thrissur-Palghat Road junction)
+    addBoxFaces(
+        faces,
+        63.5f, 0.06f, 10.0f,
+        64.4f, 2.60f, 30.0f,
+        topCol = MatTerracottaTile,
+        sideCol = MatKeralaWhitewash,
+        frontBackCol = MatLateriteStone
+    )
+    addBoxFaces(
+        faces,
+        62.8f, 0.06f, 16.5f,
+        68.5f, 4.40f, 23.5f,
+        topCol = MatTeakWoodCarved,
+        sideCol = MatKeralaWhitewash,
+        frontBackCol = MatKeralaCreamWall
+    )
+    addPitchedKeralaRoof(
+        faces,
+        61.8f, 69.5f,
+        15.5f, 24.5f,
+        baseY = 4.25f, ridgeY = 6.80f,
+        insetX = 1.4f, insetZ = 1.4f,
+        roofColor = MatTerracottaTile
+    )
+    addPitchedKeralaRoof(
+        faces,
+        62.6f, 68.7f,
+        16.3f, 23.7f,
+        baseY = 6.65f, ridgeY = 9.40f,
+        insetX = 2.4f, insetZ = 2.2f,
+        roofColor = MatTerracottaRoofDark
+    )
+    addBoxFaces(
+        faces,
+        60.2f, 0.06f, 19.5f,
+        61.1f, 12.50f, 20.5f,
+        topCol = MatTempleGold,
+        sideCol = MatTempleGold,
+        frontBackCol = MatTempleGoldDeep
+    )
+
+    // 2. INDIAN COFFEE HOUSE, RAGAM THEATRE & ROUND SOUTH HERITAGE ARCADES
+    addBoxFaces(
+        faces,
+        38.0f, 0.06f, -42.0f,
+        48.0f, 8.60f, -31.0f,
+        topCol = MatTerracottaRoofDark,
+        sideCol = MatCoffeeHouseRed,
+        frontBackCol = MatCoffeeHouseRed
+    )
+    addPitchedKeralaRoof(
+        faces,
+        37.2f, 48.8f,
+        -42.8f, -30.2f,
+        baseY = 8.45f, ridgeY = 10.60f,
+        insetX = 4.2f, insetZ = 4.2f,
+        roofColor = MatTerracottaTile
+    )
+    addBoxFaces(
+        faces,
+        -22.0f, 0.06f, -59.5f,
+        0.5f, 7.80f, -50.5f,
+        topCol = MatArcadeRoofSlate,
+        sideCol = MatArcadeCream,
+        frontBackCol = MatArcadeSandstone
+    )
+    addPitchedKeralaRoof(
+        faces,
+        -22.6f, 1.1f,
+        -60.1f, -49.9f,
+        baseY = 7.70f, ridgeY = 9.50f,
+        insetX = 2.5f, insetZ = 3.8f,
+        roofColor = MatTerracottaTile
+    )
+
+    // 3. CITY CENTRE, DEVAKI DAIRY & ROUND WEST COMMERCIAL ARCADES
+    addBoxFaces(
+        faces,
+        -67.5f, 0.06f, 15.0f,
+        -57.0f, 8.40f, 38.0f,
+        topCol = MatArcadeRoofSlate,
+        sideCol = MatArcadeCream,
+        frontBackCol = MatArcadeSandstone
+    )
+    addBoxFaces(
+        faces,
+        -57.2f, 0.50f, 16.5f,
+        -56.8f, 3.60f, 36.5f,
+        topCol = MatArcadeGlass,
+        sideCol = MatArcadeGlass,
+        frontBackCol = MatArcadeGlass
+    )
+
+    // 4. ROUND NORTH & SHORNUR ROAD JUNCTION HERITAGE BLOCKS
+    addBoxFaces(
+        faces,
+        18.5f, 0.06f, 62.5f,
+        41.5f, 7.60f, 71.5f,
+        topCol = MatTerracottaRoofDark,
+        sideCol = MatKeralaCreamWall,
+        frontBackCol = MatKeralaWhitewash
+    )
+    addPitchedKeralaRoof(
+        faces,
+        17.8f, 42.2f,
+        61.8f, 72.2f,
+        baseY = 7.50f, ridgeY = 9.40f,
+        insetX = 3.0f, insetZ = 4.0f,
+        roofColor = MatTerracottaTile
+    )
+
+    renderSortedFaces(rig, path, camEye, faces)
+}
+
+// ============================================================================
+// 2. GURUVAYUR SREE KRISHNA TEMPLE (EAST NADA) & GURUVAYUR BUS STAND
+//    Aligned with ROAD_KANJANI_TO_GURUVAYUR_CHAVAKKAD along Z = 1260.0m
+// ============================================================================
+
+private fun DrawScope.drawGuruvayurTempleAndStandGround(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3
+) {
+    if (hypot(camEye.x - (-2700f), camEye.z - 1275f) > 420f) return
+
+    // A. Guruvayur East Nada Pedestrian Stone Plaza (X = -2645m..-2565m, Z = 1232m..1288m)
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-2645.0f, 0.058f, 1232.0f),
+            Vec3(-2565.0f, 0.058f, 1232.0f),
+            Vec3(-2565.0f, 0.058f, 1288.0f),
+            Vec3(-2645.0f, 0.058f, 1288.0f)
+        )
+    ) {
+        drawPath(path, MatGranitePaving)
+    }
+
+    // Sacred Rudratheertham Temple Pond (North of Temple at X = -2628m..-2578m, Z = 1290m..1328m)
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-2630.0f, 0.057f, 1288.0f),
+            Vec3(-2576.0f, 0.057f, 1288.0f),
+            Vec3(-2576.0f, 0.057f, 1330.0f),
+            Vec3(-2630.0f, 0.057f, 1330.0f)
+        )
+    ) {
+        drawPath(path, MatLateriteStone)
+    }
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-2626.0f, 0.059f, 1292.0f),
+            Vec3(-2580.0f, 0.059f, 1292.0f),
+            Vec3(-2580.0f, 0.059f, 1326.0f),
+            Vec3(-2626.0f, 0.059f, 1326.0f)
+        )
+    ) {
+        drawPath(path, MatTemplePondWater)
+    }
+
+    // B. Guruvayur Municipal Bus Stand Concrete Terminal Apron
+    val yardMinX = -2780.0f
+    val yardMaxX = -2690.0f
+    val yardMinZ = 1267.8f
+    val yardMaxZ = 1326.0f
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(yardMinX, 0.058f, yardMinZ),
+            Vec3(yardMaxX, 0.058f, yardMinZ),
+            Vec3(yardMaxX, 0.058f, yardMaxZ),
+            Vec3(yardMinX, 0.058f, yardMaxZ)
+        )
+    ) {
+        drawPath(path, MatTerminalConcrete)
+    }
+
+    // 10 Yellow Bus Parking Bays inside Guruvayur Stand (Z = 1285m..1302m)
+    for (bIdx in 0 until 10) {
+        val bx = -2768.0f + bIdx * 7.6f
+        val lSeg = rig.projectSegmentClipped(Vec3(bx - 2.0f, 0.062f, 1285.0f), Vec3(bx - 2.0f, 0.062f, 1302.0f))
+        if (lSeg != null) drawLine(MatRoadMarkingYellow, lSeg.first, lSeg.second, strokeWidth = 2.4f)
+        val rSeg = rig.projectSegmentClipped(Vec3(bx + 2.0f, 0.062f, 1285.0f), Vec3(bx + 2.0f, 0.062f, 1302.0f))
+        if (rSeg != null) drawLine(MatRoadMarkingYellow, rSeg.first, rSeg.second, strokeWidth = 2.4f)
+    }
+
+    // Aligned Left Entry Driveway (X = -2713m..-2703m) & Right Exit Driveway (X = -2765m..-2755m)
+    for (driveX in floatArrayOf(-2713.0f, -2703.0f, -2765.0f, -2755.0f)) {
+        val seg = rig.projectSegmentClipped(Vec3(driveX, 0.063f, 1267.8f), Vec3(driveX, 0.063f, 1283.0f))
+        if (seg != null) drawLine(MatRoadMarkingWhite, seg.first, seg.second, strokeWidth = 2.5f)
+    }
+}
+
+private fun DrawScope.drawGuruvayurTempleAndStand3D(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3,
+    titlePaint: Paint,
+    subPaint: Paint
+) {
+    if (hypot(camEye.x - (-2700f), camEye.z - 1275f) > 420f) return
+
+    val faces = ArrayList<QuadFace3D>(300)
+
+    // A. GURUVAYUR SREE KRISHNA TEMPLE (EAST NADA) — No text or labels on the temple model
+    addBoxFaces(faces, -2628.0f, 0.08f, 1236.0f, -2572.0f, 3.6f, 1237.2f, MatTerracottaTile, MatKeralaWhitewash)
+    addBoxFaces(faces, -2628.0f, 0.08f, 1282.8f, -2572.0f, 3.6f, 1284.0f, MatTerracottaTile, MatKeralaWhitewash)
+    addBoxFaces(faces, -2573.2f, 0.08f, 1236.0f, -2572.0f, 3.6f, 1284.0f, MatTerracottaTile, MatKeralaWhitewash)
+    addBoxFaces(faces, -2628.0f, 0.08f, 1236.0f, -2626.5f, 3.6f, 1251.0f, MatTerracottaTile, MatKeralaWhitewash)
+    addBoxFaces(faces, -2628.0f, 0.08f, 1269.0f, -2626.5f, 3.6f, 1284.0f, MatTerracottaTile, MatKeralaWhitewash)
+    addBoxFaces(faces, -2628.2f, 1.8f, 1236.0f, -2627.8f, 2.2f, 1251.0f, MatTempleGold, MatTempleGold, stroke = null)
+    addBoxFaces(faces, -2628.2f, 1.8f, 1269.0f, -2627.8f, 2.2f, 1284.0f, MatTempleGold, MatTempleGold, stroke = null)
+
+    // Iconic 3-Storey Guruvayur East Nada Gopuram (X = -2626m, Z = 1260m)
+    addBoxFaces(faces, -2629.5f, 0.08f, 1251.0f, -2621.5f, 5.2f, 1269.0f, MatTeakWoodCarved, MatKeralaWhitewash)
+    addPitchedKeralaRoof(faces, -2631.0f, -2620.0f, 1249.5f, 1270.5f, 5.0f, 7.8f, 1.4f, 1.6f, MatTerracottaTile)
+    addBoxFaces(faces, -2628.5f, 7.6f, 1253.0f, -2622.5f, 10.2f, 1267.0f, MatTeakWoodCarved, MatTeakWoodCarved)
+    addPitchedKeralaRoof(faces, -2630.0f, -2621.0f, 1251.5f, 1268.5f, 10.0f, 13.6f, 3.8f, 3.0f, MatTerracottaRoofDark)
+    for (fz in floatArrayOf(1257.0f, 1260.0f, 1263.0f)) {
+        addBoxFaces(faces, -2626.0f, 13.5f, fz - 0.45f, -2625.0f, 15.2f, fz + 0.45f, MatTempleGold, MatTempleGold)
+    }
+
+    // 33.5m Gold-Plated Dwajasthambham (Flagstaff) & Twin Multi-Tiered Golden Deepastambhams
+    addBoxFaces(faces, -2635.6f, 0.08f, 1259.4f, -2634.4f, 22.5f, 1260.6f, MatTempleGold, MatTempleGold, MatTempleGoldDeep)
+    for (dz in floatArrayOf(1254.5f, 1265.5f)) {
+        addBoxFaces(faces, -2638.5f, 0.08f, dz - 0.9f, -2636.7f, 8.8f, dz + 0.9f, MatTempleGold, MatTempleGoldDeep, MatTempleGold)
+    }
+
+    // Inner Sreekovil with Pure Gold-Plated Roof & Thazhikakudam
+    addBoxFaces(faces, -2608.0f, 0.08f, 1251.0f, -2590.0f, 5.2f, 1269.0f, MatTempleGoldDeep, MatKeralaWhitewash)
+    addPitchedKeralaRoof(faces, -2609.5f, -2588.5f, 1249.5f, 1270.5f, 5.0f, 10.4f, 9.8f, 9.8f, MatTempleGold)
+    addBoxFaces(faces, -2599.8f, 10.3f, 1259.2f, -2598.2f, 12.8f, 1260.8f, MatTempleGold, MatTempleGold)
+
+    // B. GURUVAYUR MUNICIPAL BUS STAND (X = -2780m..-2690m, Z = 1267.8m..1326m)
+    addBoxFaces(faces, -2780.0f, 0.06f, 1267.8f, -2765.5f, 1.4f, 1268.6f, MatKeralaWhitewash, MatLateriteStone)
+    addBoxFaces(faces, -2754.5f, 0.06f, 1267.8f, -2713.5f, 1.4f, 1268.6f, MatKeralaWhitewash, MatLateriteStone)
+    addBoxFaces(faces, -2702.5f, 0.06f, 1267.8f, -2690.0f, 1.4f, 1268.6f, MatKeralaWhitewash, MatLateriteStone)
+
+    addBoxFaces(faces, -2714.0f, 0.06f, 1267.6f, -2713.2f, 5.8f, 1268.4f, MatTerracottaRoofDark, MatTerracottaTile)
+    addBoxFaces(faces, -2702.8f, 0.06f, 1267.6f, -2702.0f, 5.8f, 1268.4f, MatTerracottaRoofDark, MatTerracottaTile)
+    addBoxFaces(faces, -2766.0f, 0.06f, 1267.6f, -2765.2f, 5.8f, 1268.4f, MatTerracottaRoofDark, MatTerracottaTile)
+    addBoxFaces(faces, -2754.8f, 0.06f, 1267.6f, -2754.0f, 5.8f, 1268.4f, MatTerracottaRoofDark, MatTerracottaTile)
+
+    // Raised passenger boarding platform under shelter
+    addBoxFaces(faces, -2774.0f, 0.06f, 1302.5f, -2696.0f, 0.36f, 1312.0f, MatPromenadeTile, MatGraniteDark)
+    addBoxFaces(faces, -2774.0f, 5.8f, 1283.0f, -2696.0f, 6.5f, 1306.0f, MatGranitePaving, MatTerracottaTile)
+    addBoxFaces(faces, -2776.0f, 0.06f, 1312.0f, -2694.0f, 8.2f, 1324.0f, MatTerracottaRoofDark, MatKeralaCreamWall)
+
+    val colors = arrayOf(Color(0xFFB91C1C), Color(0xFF1D4ED8), Color(0xFF047857), Color(0xFFC2410C))
+    for (bIdx in intArrayOf(1, 3, 6, 8)) {
+        val bx = -2768.0f + bIdx * 7.6f
+        val col = colors[bIdx % colors.size]
+        addBoxFaces(faces, bx - 1.2f, 0.4f, 1288.0f, bx + 1.2f, 3.1f, 1299.0f, Color(0xFFE2E8F0), col, col)
+    }
+
+    renderSortedFaces(rig, path, camEye, faces)
+
+    // Strict Stand Text Rule on Guruvayur Stand: Stand name, ENTRY, and EXIT only!
+    drawOriented3DSignboard(
+        rig = rig,
+        path = path,
+        leftVec = Vec3(-2752.0f, 0f, 1282.85f),
+        rightVec = Vec3(-2718.0f, 0f, 1282.85f),
+        bottomY = 5.65f,
+        topY = 6.95f,
+        bgColor = Color(0xFF7C2D12),
+        borderColor = Color(0xFFFACC15),
+        lines = listOf("GURUVAYUR STAND"),
+        textColor = Color(0xFFFEF08A),
+        titlePaint = titlePaint,
+        subPaint = subPaint
+    )
+    drawOriented3DSignboard(
+        rig = rig,
+        path = path,
+        leftVec = Vec3(-2713.5f, 0f, 1267.55f),
+        rightVec = Vec3(-2702.5f, 0f, 1267.55f),
+        bottomY = 4.65f,
+        topY = 5.85f,
+        bgColor = Color(0xFF1E3A8A),
+        borderColor = Color(0xFF38BDF8),
+        lines = listOf("ENTRY"),
+        textColor = Color(0xFFFFFFFF),
+        titlePaint = titlePaint,
+        subPaint = subPaint
+    )
+    drawOriented3DSignboard(
+        rig = rig,
+        path = path,
+        leftVec = Vec3(-2765.5f, 0f, 1267.55f),
+        rightVec = Vec3(-2754.5f, 0f, 1267.55f),
+        bottomY = 4.65f,
+        topY = 5.85f,
+        bgColor = Color(0xFF065F46),
+        borderColor = Color(0xFFFACC15),
+        lines = listOf("EXIT"),
+        textColor = Color(0xFFFFFFFF),
+        titlePaint = titlePaint,
+        subPaint = subPaint
+    )
+}
+
+// ============================================================================
+// 3. CHAVAKKAD BEACH, AZHI ESTUARY, LIGHTHOUSE & BEACH BUS STAND
+//    Aligned with X = -4500.0m Coastal Drive (Z = 1020.0m..1140.0m)
+// ============================================================================
+
+private fun DrawScope.drawChavakkadBeachGround(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3
+) {
+    if (hypot(camEye.x - (-4500f), camEye.z - 1080f) > 440f) return
+
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-4518.0f, 0.059f, 995.0f),
+            Vec3(-4508.5f, 0.059f, 995.0f),
+            Vec3(-4508.5f, 0.059f, 1165.0f),
+            Vec3(-4518.0f, 0.059f, 1165.0f)
+        )
+    ) {
+        drawPath(path, MatPromenadeTile)
+    }
+
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-4555.0f, 0.055f, 975.0f),
+            Vec3(-4518.0f, 0.055f, 975.0f),
+            Vec3(-4518.0f, 0.055f, 1185.0f),
+            Vec3(-4555.0f, 0.055f, 1185.0f)
+        )
+    ) {
+        drawPath(path, MatGoldenBeachSand)
+    }
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-4568.0f, 0.054f, 975.0f),
+            Vec3(-4555.0f, 0.054f, 975.0f),
+            Vec3(-4555.0f, 0.054f, 1185.0f),
+            Vec3(-4568.0f, 0.054f, 1185.0f)
+        )
+    ) {
+        drawPath(path, MatWetBeachSand)
+    }
+
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-4605.0f, 0.053f, 960.0f),
+            Vec3(-4568.0f, 0.053f, 960.0f),
+            Vec3(-4568.0f, 0.053f, 1200.0f),
+            Vec3(-4605.0f, 0.053f, 1200.0f)
+        )
+    ) {
+        drawPath(path, MatArabianSeaShallow)
+    }
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-4740.0f, 0.052f, 960.0f),
+            Vec3(-4605.0f, 0.052f, 960.0f),
+            Vec3(-4605.0f, 0.052f, 1200.0f),
+            Vec3(-4740.0f, 0.052f, 1200.0f)
+        )
+    ) {
+        drawPath(path, MatArabianSeaDeep)
+    }
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-4568.0f, 0.056f, 1158.0f),
+            Vec3(-4518.0f, 0.056f, 1158.0f),
+            Vec3(-4518.0f, 0.056f, 1192.0f),
+            Vec3(-4568.0f, 0.056f, 1192.0f)
+        )
+    ) {
+        drawPath(path, MatArabianSeaMid)
+    }
+
+    for (foamX in floatArrayOf(-4567.5f, -4576.0f, -4588.0f)) {
+        val seg = rig.projectSegmentClipped(Vec3(foamX, 0.058f, 975.0f), Vec3(foamX, 0.058f, 1185.0f))
+        if (seg != null) drawLine(MatSeaFoamWhite, seg.first, seg.second, strokeWidth = 3.0f)
+    }
+
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-4491.5f, 0.058f, 1038.0f),
+            Vec3(-4456.0f, 0.058f, 1038.0f),
+            Vec3(-4456.0f, 0.058f, 1122.0f),
+            Vec3(-4491.5f, 0.058f, 1122.0f)
+        )
+    ) {
+        drawPath(path, MatTerminalConcrete)
+    }
+}
+
+private fun DrawScope.drawChavakkadBeach3D(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3
+) {
+    if (hypot(camEye.x - (-4500f), camEye.z - 1080f) > 440f) return
+
+    val faces = ArrayList<QuadFace3D>(220)
+
+    addBoxFaces(faces, -4509.2f, 0.06f, 1000.0f, -4508.4f, 0.85f, 1072.0f, MatKeralaWhitewash, MatSeawallGranite)
+    addBoxFaces(faces, -4509.2f, 0.06f, 1088.0f, -4508.4f, 0.85f, 1160.0f, MatKeralaWhitewash, MatSeawallGranite)
+
+    val lx = -4524.0f
+    val lz = 1125.0f
+    addBoxFaces(faces, lx - 3.2f, 0.06f, lz - 3.2f, lx + 3.2f, 4.5f, lz + 3.2f, MatLighthouseWhite, MatLighthouseRed)
+    addBoxFaces(faces, lx - 2.7f, 4.5f, lz - 2.7f, lx + 2.7f, 9.0f, lz + 2.7f, MatLighthouseRed, MatLighthouseWhite)
+    addBoxFaces(faces, lx - 2.3f, 9.0f, lz - 2.3f, lx + 2.3f, 13.5f, lz + 2.3f, MatLighthouseWhite, MatLighthouseRed)
+    addBoxFaces(faces, lx - 2.0f, 13.5f, lz - 2.0f, lx + 2.0f, 18.0f, lz + 2.0f, MatLighthouseRed, MatLighthouseWhite)
+    addBoxFaces(faces, lx - 2.6f, 18.0f, lz - 2.6f, lx + 2.6f, 20.5f, lz + 2.6f, MatTempleGold, Color(0xFF0F172A))
+    addPitchedKeralaRoof(faces, lx - 3.0f, lx + 3.0f, lz - 3.0f, lz + 3.0f, 20.5f, 22.8f, 2.7f, 2.7f, MatLighthouseRed)
+
+    addBoxFaces(faces, -4582.0f, 0.8f, 1076.0f, -4514.0f, 1.3f, 1084.0f, MatPromenadeTile, MatTeakWoodCarved)
+    addBoxFaces(faces, -4584.0f, 1.3f, 1074.0f, -4572.0f, 4.2f, 1086.0f, MatTeakWoodCarved, MatKeralaWhitewash)
+    addPitchedKeralaRoof(faces, -4585.5f, -4570.5f, 1072.5f, 1087.5f, 4.0f, 6.6f, 6.5f, 6.5f, MatTerracottaTile)
+
+    addBoxFaces(faces, -4486.0f, 5.4f, 1052.0f, -4466.0f, 6.1f, 1108.0f, MatGranitePaving, MatTerracottaTile)
+    addBoxFaces(faces, -4466.0f, 0.06f, 1050.0f, -4458.0f, 7.6f, 1110.0f, MatTerracottaRoofDark, MatKeralaCreamWall)
+    addBoxFaces(faces, -4483.0f, 0.4f, 1062.0f, -4471.0f, 3.1f, 1064.5f, Color(0xFFE2E8F0), Color(0xFF1D4ED8))
+    addBoxFaces(faces, -4483.0f, 0.4f, 1094.0f, -4471.0f, 3.1f, 1096.5f, Color(0xFFE2E8F0), Color(0xFFB91C1C))
+
+    renderSortedFaces(rig, path, camEye, faces)
+}
+
+// ============================================================================
+// 4. TRIPRAYAR - NATTIKA BEACH, FISHING VALLAMS & TRIPRAYAR STAND
+//    Aligned with X = -2220.0m NH 66 Coastal Terminus (Z = -2470.0m..-2340.0m)
+// ============================================================================
+
+private fun DrawScope.drawTriprayarBeachGround(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3
+) {
+    if (hypot(camEye.x - (-2220f), camEye.z - (-2410f)) > 440f) return
+
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-2239.0f, 0.059f, -2485.0f),
+            Vec3(-2229.0f, 0.059f, -2485.0f),
+            Vec3(-2229.0f, 0.059f, -2335.0f),
+            Vec3(-2239.0f, 0.059f, -2335.0f)
+        )
+    ) {
+        drawPath(path, MatPromenadeTile)
+    }
+
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-2278.0f, 0.055f, -2500.0f),
+            Vec3(-2239.0f, 0.055f, -2500.0f),
+            Vec3(-2239.0f, 0.055f, -2320.0f),
+            Vec3(-2278.0f, 0.055f, -2320.0f)
+        )
+    ) {
+        drawPath(path, MatGoldenBeachSand)
+    }
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-2292.0f, 0.054f, -2500.0f),
+            Vec3(-2278.0f, 0.054f, -2500.0f),
+            Vec3(-2278.0f, 0.054f, -2320.0f),
+            Vec3(-2292.0f, 0.054f, -2320.0f)
+        )
+    ) {
+        drawPath(path, MatWetBeachSand)
+    }
+
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-2330.0f, 0.053f, -2515.0f),
+            Vec3(-2292.0f, 0.053f, -2515.0f),
+            Vec3(-2292.0f, 0.053f, -2305.0f),
+            Vec3(-2330.0f, 0.053f, -2305.0f)
+        )
+    ) {
+        drawPath(path, MatArabianSeaShallow)
+    }
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-2460.0f, 0.052f, -2515.0f),
+            Vec3(-2330.0f, 0.052f, -2515.0f),
+            Vec3(-2330.0f, 0.052f, -2305.0f),
+            Vec3(-2460.0f, 0.052f, -2305.0f)
+        )
+    ) {
+        drawPath(path, MatArabianSeaDeep)
+    }
+
+    for (foamX in floatArrayOf(-2291.5f, -2300.0f, -2312.0f)) {
+        val seg = rig.projectSegmentClipped(Vec3(foamX, 0.058f, -2500.0f), Vec3(foamX, 0.058f, -2320.0f))
+        if (seg != null) drawLine(MatSeaFoamWhite, seg.first, seg.second, strokeWidth = 3.0f)
+    }
+
+    // Triprayar Stand Concrete Terminal Apron
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-2211.0f, 0.058f, -2456.0f),
+            Vec3(-2176.0f, 0.058f, -2456.0f),
+            Vec3(-2176.0f, 0.058f, -2364.0f),
+            Vec3(-2211.0f, 0.058f, -2364.0f)
+        )
+    ) {
+        drawPath(path, MatTerminalConcrete)
+    }
+
+    // 8 Painted Yellow Bus Bays inside Triprayar Stand
+    for (bIdx in 0 until 8) {
+        val bz = -2437.0f + bIdx * 7.8f
+        val lSeg = rig.projectSegmentClipped(Vec3(-2204.0f, 0.062f, bz - 1.9f), Vec3(-2188.0f, 0.062f, bz - 1.9f))
+        if (lSeg != null) drawLine(MatRoadMarkingYellow, lSeg.first, lSeg.second, strokeWidth = 2.4f)
+        val rSeg = rig.projectSegmentClipped(Vec3(-2204.0f, 0.062f, bz + 1.9f), Vec3(-2188.0f, 0.062f, bz + 1.9f))
+        if (rSeg != null) drawLine(MatRoadMarkingYellow, rSeg.first, rSeg.second, strokeWidth = 2.4f)
+    }
+
+    // Entry (Z = -2396..-2384) & Exit (Z = -2436..-2424) White Driveway Guide Lines
+    for (driveZ in floatArrayOf(-2436.0f, -2424.0f, -2396.0f, -2384.0f)) {
+        val seg = rig.projectSegmentClipped(Vec3(-2211.0f, 0.063f, driveZ), Vec3(-2204.0f, 0.063f, driveZ))
+        if (seg != null) drawLine(MatRoadMarkingWhite, seg.first, seg.second, strokeWidth = 2.5f)
+    }
+}
+
+private fun DrawScope.drawTriprayarBeach3D(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3,
+    titlePaint: Paint,
+    subPaint: Paint
+) {
+    if (hypot(camEye.x - (-2220f), camEye.z - (-2410f)) > 440f) return
+
+    val faces = ArrayList<QuadFace3D>(260)
+
+    addBoxFaces(faces, -2229.8f, 0.06f, -2480.0f, -2229.0f, 0.85f, -2418.0f, MatKeralaWhitewash, MatSeawallGranite)
+    addBoxFaces(faces, -2229.8f, 0.06f, -2402.0f, -2229.0f, 0.85f, -2340.0f, MatKeralaWhitewash, MatSeawallGranite)
+
+    for (gz in floatArrayOf(-2435.0f, -2385.0f)) {
+        addBoxFaces(faces, -2256.0f, 0.06f, gz - 4.0f, -2246.0f, 3.2f, gz + 4.0f, MatPromenadeTile, MatKeralaWhitewash)
+        addPitchedKeralaRoof(faces, -2257.5f, -2244.5f, gz - 5.5f, gz + 5.5f, 3.1f, 5.8f, 5.8f, 5.8f, MatTerracottaTile)
+    }
+    for ((vz, hullCol) in arrayOf(Pair(-2452.0f, Color(0xFF0284C7)), Pair(-2410.0f, Color(0xFFDC2626)), Pair(-2368.0f, Color(0xFF059669)))) {
+        addBoxFaces(faces, -2274.0f, 0.08f, vz - 1.1f, -2262.0f, 1.15f, vz + 1.1f, MatTeakWoodCarved, hullCol, MatTeakWoodCarved)
+    }
+
+    addBoxFaces(faces, -2304.0f, 0.8f, -2414.0f, -2236.0f, 1.3f, -2406.0f, MatPromenadeTile, MatTeakWoodCarved)
+    addBoxFaces(faces, -2248.0f, 0.06f, -2356.0f, -2242.0f, 16.5f, -2350.0f, MatTempleGold, MatKeralaWhitewash, MatTerracottaTile)
+
+    // Triprayar Stand Perimeter Wall & Entry / Exit Gate Pillars at X = -2210.8m
+    addBoxFaces(faces, -2211.0f, 0.06f, -2456.0f, -2210.2f, 1.35f, -2436.5f, MatKeralaWhitewash, MatLateriteStone)
+    addBoxFaces(faces, -2211.0f, 0.06f, -2423.5f, -2210.2f, 1.35f, -2396.5f, MatKeralaWhitewash, MatLateriteStone)
+    addBoxFaces(faces, -2211.0f, 0.06f, -2383.5f, -2210.2f, 1.35f, -2364.0f, MatKeralaWhitewash, MatLateriteStone)
+    for (pz in floatArrayOf(-2436.2f, -2423.8f, -2396.2f, -2383.8f)) {
+        addBoxFaces(faces, -2211.0f, 0.06f, pz - 0.4f, -2210.2f, 5.8f, pz + 0.4f, MatTerracottaRoofDark, MatTerracottaTile)
+    }
+
+    // Raised Passenger Boarding Platform, Canopy Shelter & Terminal Building
+    addBoxFaces(faces, -2189.5f, 0.06f, -2442.0f, -2186.0f, 0.36f, -2378.0f, MatPromenadeTile, MatGraniteDark)
+    addBoxFaces(faces, -2206.0f, 5.4f, -2442.0f, -2186.0f, 6.1f, -2378.0f, MatGranitePaving, MatTerracottaTile)
+    addBoxFaces(faces, -2186.0f, 0.06f, -2444.0f, -2178.0f, 7.6f, -2376.0f, MatTerracottaRoofDark, MatKeralaCreamWall)
+    addBoxFaces(faces, -2203.0f, 0.4f, -2428.0f, -2191.0f, 3.1f, -2425.5f, Color(0xFFE2E8F0), Color(0xFF047857))
+    addBoxFaces(faces, -2203.0f, 0.4f, -2396.0f, -2191.0f, 3.1f, -2393.5f, Color(0xFFE2E8F0), Color(0xFFC2410C))
+
+    renderSortedFaces(rig, path, camEye, faces)
+
+    // Strict Stand Text Rule on Triprayar Stand: Stand name, ENTRY, and EXIT only!
+    drawOriented3DSignboard(
+        rig = rig,
+        path = path,
+        leftVec = Vec3(-2206.15f, 0f, -2394.0f),
+        rightVec = Vec3(-2206.15f, 0f, -2426.0f),
+        bottomY = 5.45f,
+        topY = 6.75f,
+        bgColor = Color(0xFF7C2D12),
+        borderColor = Color(0xFFFACC15),
+        lines = listOf("TRIPRAYAR STAND"),
+        textColor = Color(0xFFFEF08A),
+        titlePaint = titlePaint,
+        subPaint = subPaint
+    )
+    drawOriented3DSignboard(
+        rig = rig,
+        path = path,
+        leftVec = Vec3(-2211.05f, 0f, -2384.0f),
+        rightVec = Vec3(-2211.05f, 0f, -2396.0f),
+        bottomY = 4.65f,
+        topY = 5.85f,
+        bgColor = Color(0xFF1E3A8A),
+        borderColor = Color(0xFF38BDF8),
+        lines = listOf("ENTRY"),
+        textColor = Color(0xFFFFFFFF),
+        titlePaint = titlePaint,
+        subPaint = subPaint
+    )
+    drawOriented3DSignboard(
+        rig = rig,
+        path = path,
+        leftVec = Vec3(-2211.05f, 0f, -2424.0f),
+        rightVec = Vec3(-2211.05f, 0f, -2436.0f),
+        bottomY = 4.65f,
+        topY = 5.85f,
+        bgColor = Color(0xFF065F46),
+        borderColor = Color(0xFFFACC15),
+        lines = listOf("EXIT"),
+        textColor = Color(0xFFFFFFFF),
+        titlePaint = titlePaint,
+        subPaint = subPaint
+    )
+}
+
+// ============================================================================
+// 5. ULTRA-REALISTIC PALIYEKKARA TOLL PLAZA ON NH 544 (Ref: toll1, toll2, toll3)
+//    Aligned directly with ROAD_NH544_MANNUTHY_TO_PALIYEKKARA at X = 999.5m, Z = -1806.0m
+// ============================================================================
+
+private val MatTollConcreteApron = Color(0xFF3E4652)
+private val MatTollLaneAsphalt = Color(0xFF2B313A)
+private val MatTollRoofRed = Color(0xFFC84630)
+private val MatTollRoofRedDark = Color(0xFF9E3220)
+private val MatTollTrussDark = Color(0xFF1A202C)
+private val MatFastagWhite = Color(0xFFF8FAFC)
+private val MatFastagOrange = Color(0xFFF97316)
+private val MatFastagGreen = Color(0xFF16A34A)
+private val MatHazardYellow = Color(0xFFFACC15)
+private val MatHazardBlack = Color(0xFF18181B)
+
+private fun DrawScope.drawPaliyekkaraTollPlazaGround(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3
+) {
+    val tx = 999.5f
+    val tz = -1806.0f
+    if (hypot(camEye.x - tx, camEye.z - tz) > 440f) return
+
+    // 1. North Approach Flared Concrete Taper (Z = -1754m .. -1782m, flaring from 24m highway to 58m 10-lane plaza)
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(tx - 12.2f, 0.058f, -1754.0f),
+            Vec3(tx + 12.2f, 0.058f, -1754.0f),
+            Vec3(tx + 29.0f, 0.058f, -1782.0f),
+            Vec3(tx - 29.0f, 0.058f, -1782.0f)
+        )
+    ) {
+        drawPath(path, MatTollConcreteApron)
+    }
+
+    // 2. Main 10-Lane Concrete Toll Plaza Apron (X = tx - 29.0m .. tx + 29.0m, Z = -1782.0m .. -1830.0m)
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(tx - 29.0f, 0.058f, -1782.0f),
+            Vec3(tx + 29.0f, 0.058f, -1782.0f),
+            Vec3(tx + 29.0f, 0.058f, -1830.0f),
+            Vec3(tx - 29.0f, 0.058f, -1830.0f)
+        )
+    ) {
+        drawPath(path, MatTollConcreteApron)
+    }
+
+    // 3. South Exit Flared Concrete Taper (Z = -1830m .. -1858m, converging from 58m plaza back to 24m highway)
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(tx - 29.0f, 0.058f, -1830.0f),
+            Vec3(tx + 29.0f, 0.058f, -1830.0f),
+            Vec3(tx + 12.2f, 0.058f, -1858.0f),
+            Vec3(tx - 12.2f, 0.058f, -1858.0f)
+        )
+    ) {
+        drawPath(path, MatTollConcreteApron)
+    }
+
+    // 4. 10 Individual Toll Lane Wear Strips, White Lane Guide Lines & Yellow-Black Speed Bumps (Ref: toll3_673df7db.jpeg)
+    val lanePitch = 5.6f
+    for (laneIdx in 0 until 10) {
+        val laneCenterX = tx + (laneIdx - 4.5f) * lanePitch
+        // Subtle darker tire-wear strip along each toll lane
+        if (rig.buildClippedQuadPath(
+                path,
+                Vec3(laneCenterX - 1.9f, 0.061f, -1782.0f),
+                Vec3(laneCenterX + 1.9f, 0.061f, -1782.0f),
+                Vec3(laneCenterX + 1.9f, 0.061f, -1830.0f),
+                Vec3(laneCenterX - 1.9f, 0.061f, -1830.0f)
+            )
+        ) {
+            drawPath(path, MatTollLaneAsphalt)
+        }
+
+        // White lane guide lines on approach and exit aprons
+        val lLine = rig.projectSegmentClipped(
+            Vec3(laneCenterX - 2.35f, 0.063f, -1780.0f),
+            Vec3(laneCenterX - 2.35f, 0.063f, -1832.0f)
+        )
+        if (lLine != null) drawLine(MatRoadMarkingWhite, lLine.first, lLine.second, strokeWidth = 2.0f)
+
+        // Yellow-and-Black Speed Bump / Rumble Strip before the booth (Ref: toll3_673df7db.jpeg)
+        for (bumpZ in floatArrayOf(-1795.5f, -1816.5f)) {
+            if (rig.buildClippedQuadPath(
+                    path,
+                    Vec3(laneCenterX - 2.1f, 0.064f, bumpZ - 0.35f),
+                    Vec3(laneCenterX + 2.1f, 0.064f, bumpZ - 0.35f),
+                    Vec3(laneCenterX + 2.1f, 0.064f, bumpZ + 0.35f),
+                    Vec3(laneCenterX - 2.1f, 0.064f, bumpZ + 0.35f)
+                )
+            ) {
+                drawPath(path, MatHazardYellow)
+            }
+        }
+    }
+}
+
+private fun DrawScope.drawPaliyekkaraTollPlaza3D(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3
+) {
+    val tx = 999.5f
+    val tz = -1806.0f
+    if (hypot(camEye.x - tx, camEye.z - tz) > 440f) return
+
+    val faces = ArrayList<QuadFace3D>(620)
+    val lanePitch = 5.6f
+    val canopyHalfW = 30.8f // Full 61.6m width across all 10 lanes + wing pavilions
+
+    // =========================================================================
+    // A. 11 YELLOW-AND-BLACK STRIPED CONCRETE TOLL ISLANDS, YELLOW BOLLARDS,
+    //    GLAZED TOLL BOOTHS & AUTOMATIC BOOM BARRIERS (Ref: toll3_673df7db.jpeg)
+    // =========================================================================
+    for (iIdx in 0..10) {
+        val ix = tx + (iIdx - 5) * lanePitch
+        val iHalfW = if (iIdx == 5) 0.58f else 0.42f // Slightly wider central median island
+
+        // 1. Alternating Yellow & Black Striped Concrete Island Segments (Z = -1823m .. -1789m)
+        val segCount = 12
+        val zStart = -1823.0f
+        val zEnd = -1789.0f
+        val segLen = (zEnd - zStart) / segCount
+        for (s in 0 until segCount) {
+            val sz0 = zStart + s * segLen
+            val sz1 = sz0 + segLen
+            val col = if (s % 2 == 0) MatHazardYellow else MatHazardBlack
+            addBoxFaces(
+                faces,
+                ix - iHalfW, 0.06f, sz0,
+                ix + iHalfW, 0.38f, sz1,
+                topCol = if (iIdx == 5) MatGranitePaving else col,
+                sideCol = col,
+                frontBackCol = col,
+                stroke = null
+            )
+        }
+
+        // 2. Bright Yellow Tubular Steel Guard Bollards & White Lane Control Cabinets on Approach Ends
+        for (bz in floatArrayOf(-1790.2f, -1792.8f, -1819.2f, -1821.8f)) {
+            addBoxFaces(
+                faces,
+                ix - 0.14f, 0.38f, bz - 0.14f,
+                ix + 0.14f, 1.58f, bz + 0.14f,
+                topCol = MatHazardYellow,
+                sideCol = MatHazardYellow,
+                frontBackCol = MatTempleGoldDeep,
+                stroke = null
+            )
+        }
+        // White electronic lane-control cabinet (Ref: toll3_673df7db.jpeg center median & left island)
+        addBoxFaces(
+            faces,
+            ix - 0.30f, 0.90f, -1791.6f,
+            ix + 0.30f, 1.65f, -1791.0f,
+            topCol = MatFastagWhite,
+            sideCol = MatFastagWhite,
+            frontBackCol = MatPromenadeTile
+        )
+
+        // 3. Tall Cream Concrete Canopy Support Columns rising from each Island (Ref: toll3_673df7db.jpeg)
+        addBoxFaces(
+            faces,
+            ix - 0.34f, 0.38f, tz - 0.34f,
+            ix + 0.34f, 5.55f, tz + 0.34f,
+            topCol = MatKeralaCreamWall,
+            sideCol = MatKeralaCreamWall,
+            frontBackCol = MatKeralaWhitewash
+        )
+        // Flared column capital under the space-frame truss
+        addBoxFaces(
+            faces,
+            ix - 0.52f, 5.20f, tz - 0.52f,
+            ix + 0.52f, 5.55f, tz + 0.52f,
+            topCol = MatKeralaCreamWall,
+            sideCol = MatKeralaWhitewash,
+            frontBackCol = MatKeralaCreamWall
+        )
+
+        // 4. Glazed Toll Collector Booth Kiosks on Interior Islands (Ref: toll2 & toll3)
+        if (iIdx in 1..9) {
+            // Lower red/terracotta booth body
+            addBoxFaces(
+                faces,
+                ix - 0.40f, 0.38f, tz - 2.60f,
+                ix + 0.40f, 1.45f, tz + 2.60f,
+                topCol = MatTollRoofRed,
+                sideCol = MatTollRoofRed,
+                frontBackCol = MatTollRoofRedDark
+            )
+            // Upper dark-tinted glass booth cabin
+            addBoxFaces(
+                faces,
+                ix - 0.38f, 1.45f, tz - 2.45f,
+                ix + 0.38f, 2.85f, tz + 2.45f,
+                topCol = MatFastagWhite,
+                sideCol = MatArcadeGlass,
+                frontBackCol = MatArcadeGlass
+            )
+        }
+    }
+
+    // 5. Concrete Approach Median Kerb Stones along Centerline (Ref: toll1_d95fdb21.jpeg foreground right)
+    for (kIdx in 0 until 10) {
+        val kzNorth = -1782.0f + kIdx * 2.6f
+        val kzSouth = -1830.0f - (kIdx + 1) * 2.6f
+        val kCol = if (kIdx % 2 == 0) MatPromenadeTile else MatGranitePaving
+        addBoxFaces(faces, tx - 0.45f, 0.06f, kzNorth, tx + 0.45f, 0.42f, kzNorth + 1.9f, kCol, kCol)
+        addBoxFaces(faces, tx - 0.45f, 0.06f, kzSouth, tx + 0.45f, 0.42f, kzSouth + 1.9f, kCol, kCol)
+    }
+
+    // =========================================================================
+    // B. DARK SPACE-FRAME CEILING, WHITE "NETC FASTag" FASCIA BOARDS & LANE SIGNS
+    //    (Ref: toll2_5d53a19c.jpeg & toll3_673df7db.jpeg)
+    // =========================================================================
+    // 1. Dark Structural Steel Space-Frame Under-Canopy Box (Y = 5.45m .. 6.25m)
+    addBoxFaces(
+        faces,
+        tx - canopyHalfW, 5.45f, tz - 5.40f,
+        tx + canopyHalfW, 6.25f, tz + 5.40f,
+        topCol = MatTollTrussDark,
+        sideCol = MatTollTrussDark,
+        frontBackCol = MatTollTrussDark
+    )
+
+    // 2. White "NETC FASTag" Fascia Boards with Orange & Green FASTag Graphic Bars across all 10 Lanes (Ref: toll2_5d53a19c.jpeg)
+    for (laneIdx in 0 until 10) {
+        val lx = tx + (laneIdx - 4.5f) * lanePitch
+        val fMinX = lx - 2.55f
+        val fMaxX = lx + 2.55f
+
+        for (fasciaZ in floatArrayOf(tz + 5.44f, tz - 5.44f)) {
+            val zThickness = if (fasciaZ > tz) 0.12f else -0.12f
+            val z0 = minOf(fasciaZ, fasciaZ + zThickness)
+            val z1 = maxOf(fasciaZ, fasciaZ + zThickness)
+
+            // Crisp White NETC FASTag Fascia Background Board
+            addBoxFaces(
+                faces,
+                fMinX, 5.52f, z0,
+                fMaxX, 6.22f, z1,
+                topCol = MatFastagWhite,
+                sideCol = MatFastagWhite,
+                frontBackCol = MatFastagWhite,
+                stroke = MatTollTrussDark,
+                bias = -0.15f
+            )
+            // Left Orange "FAST" Bar of FASTag Logo
+            addBoxFaces(
+                faces,
+                lx - 1.15f, 5.74f, z0 - 0.02f,
+                lx + 0.25f, 6.04f, z1 + 0.02f,
+                topCol = MatFastagOrange,
+                sideCol = MatFastagOrange,
+                frontBackCol = MatFastagOrange,
+                stroke = null,
+                bias = -0.25f
+            )
+            // Right Green "tag" Bar of FASTag Logo
+            addBoxFaces(
+                faces,
+                lx + 0.30f, 5.74f, z0 - 0.02f,
+                lx + 1.85f, 6.04f, z1 + 0.02f,
+                topCol = MatFastagGreen,
+                sideCol = MatFastagGreen,
+                frontBackCol = MatFastagGreen,
+                stroke = null,
+                bias = -0.25f
+            )
+        }
+
+        // 3. Overhead Rectangular Green / Orange Lane Signboards mounted above the eaves (Ref: toll1, toll2, toll3)
+        val signColor = if (laneIdx == 3 || laneIdx == 6) MatFastagOrange else MatFastagGreen
+        for (signZ in floatArrayOf(tz + 5.55f, tz - 5.55f)) {
+            addBoxFaces(
+                faces,
+                lx - 0.85f, 6.30f, signZ - 0.08f,
+                lx + 0.85f, 7.25f, signZ + 0.08f,
+                topCol = MatFastagWhite,
+                sideCol = signColor,
+                frontBackCol = signColor,
+                stroke = MatFastagWhite,
+                bias = -0.20f
+            )
+        }
+    }
+
+    // =========================================================================
+    // C. FULL-WIDTH KERALA TERRACOTTA SLOPED ROOF CANOPY, CENTRAL 2-TIERED
+    //    GOPURAM TOWER & LEFT/RIGHT STEEP GABLE WING PAVILIONS (Ref: toll1, toll2, toll3)
+    // =========================================================================
+    // 1. Main Full-Width Pitched Terracotta-Red Kerala Roof Deck (X = tx - 30.8m .. tx + 30.8m, Y = 6.25m .. 7.75m)
+    addPitchedKeralaRoof(
+        faces,
+        tx - canopyHalfW - 0.6f, tx + canopyHalfW + 0.6f,
+        tz - 5.80f, tz + 5.80f,
+        baseY = 6.22f,
+        ridgeY = 7.75f,
+        insetX = 1.8f,
+        insetZ = 5.1f,
+        roofColor = MatTollRoofRed,
+        eaveColor = MatTollRoofRedDark
+    )
+
+    // Small Triangular Kerala Gable Dormers (Mukhappu) along the main roof over each lane (Ref: toll1 & toll3)
+    for (laneIdx in 0 until 10) {
+        val lx = tx + (laneIdx - 4.5f) * lanePitch
+        addPitchedKeralaRoof(
+            faces,
+            lx - 1.10f, lx + 1.10f,
+            tz - 5.75f, tz + 5.75f,
+            baseY = 6.25f,
+            ridgeY = 7.15f,
+            insetX = 0.95f,
+            insetZ = 0.25f,
+            roofColor = MatTollRoofRedDark,
+            eaveColor = MatTollTrussDark
+        )
+    }
+
+    // 2. Central 2-Tiered Kerala Gopuram Roof Tower above the Center Median (Ref: toll1, toll2, toll3)
+    //    - Lower Sloped Terracotta Roof Tier (X = tx - 9.8m .. tx + 9.8m, Y = 7.65m .. 9.95m)
+    addPitchedKeralaRoof(
+        faces,
+        tx - 9.8f, tx + 9.8f,
+        tz - 5.20f, tz + 5.20f,
+        baseY = 7.65f,
+        ridgeY = 9.95f,
+        insetX = 1.6f,
+        insetZ = 1.8f,
+        roofColor = MatTollRoofRed,
+        eaveColor = MatTollTrussDark
+    )
+    //    - White Clerestory Louver Band between the two central roof tiers (Ref: toll1_d95fdb21.jpeg)
+    addBoxFaces(
+        faces,
+        tx - 8.2f, 9.80f, tz - 3.40f,
+        tx + 8.2f, 11.15f, tz + 3.40f,
+        topCol = MatTollTrussDark,
+        sideCol = MatFastagWhite,
+        frontBackCol = MatFastagWhite,
+        stroke = MatTollTrussDark
+    )
+    //    - Upper Steep Pitched Terracotta Roof Tier (X = tx - 9.2m .. tx + 9.2m, Y = 11.05m .. 14.30m)
+    addPitchedKeralaRoof(
+        faces,
+        tx - 9.2f, tx + 9.2f,
+        tz - 4.80f, tz + 4.80f,
+        baseY = 11.05f,
+        ridgeY = 14.30f,
+        insetX = 1.4f,
+        insetZ = 4.2f,
+        roofColor = MatTollRoofRed,
+        eaveColor = MatTollRoofRedDark
+    )
+    //    - Central Triangular Mukhappu Gable on the Upper Roof (Ref: toll1, toll2, toll3)
+    addPitchedKeralaRoof(
+        faces,
+        tx - 2.35f, tx + 2.35f,
+        tz - 4.65f, tz + 4.65f,
+        baseY = 12.20f,
+        ridgeY = 14.75f,
+        insetX = 2.05f,
+        insetZ = 0.30f,
+        roofColor = MatTollRoofRedDark,
+        eaveColor = MatTollTrussDark
+    )
+
+    // 3. Left & Right Steep Pitched Triangular Gable Wing Pavilions (Ref: toll1_d95fdb21.jpeg & toll3_673df7db.jpeg)
+    for (wingCenterX in floatArrayOf(tx - canopyHalfW - 1.5f, tx + canopyHalfW + 1.5f)) {
+        // White outer support columns for the wing pavilion
+        for (wx in floatArrayOf(wingCenterX - 4.5f, wingCenterX + 4.5f)) {
+            for (wz in floatArrayOf(tz - 4.5f, tz + 4.5f)) {
+                addBoxFaces(
+                    faces,
+                    wx - 0.28f, 0.06f, wz - 0.28f,
+                    wx + 0.28f, 6.25f, wz + 0.28f,
+                    topCol = MatFastagWhite,
+                    sideCol = MatFastagWhite,
+                    frontBackCol = MatPromenadeTile
+                )
+            }
+        }
+        // Dark triangular truss gable core + steep terracotta-red pitched roof
+        addBoxFaces(
+            faces,
+            wingCenterX - 3.6f, 6.22f, tz - 5.2f,
+            wingCenterX + 3.6f, 8.60f, tz + 5.2f,
+            topCol = MatTollTrussDark,
+            sideCol = MatTollTrussDark,
+            frontBackCol = MatTollTrussDark
+        )
+        addPitchedKeralaRoof(
+            faces,
+            wingCenterX - 6.2f, wingCenterX + 6.2f,
+            tz - 6.0f, tz + 6.0f,
+            baseY = 6.22f,
+            ridgeY = 11.40f,
+            insetX = 5.4f,
+            insetZ = 0.6f,
+            roofColor = MatTollRoofRed,
+            eaveColor = MatTollTrussDark
+        )
+    }
+
+    // =========================================================================
+    // D. HIGH-MAST HIGHWAY FLOODLIGHT TOWERS & 2-STOREY SIDE ADMIN BUILDING
+    //    (Ref: toll1_d95fdb21.jpeg & toll3_673df7db.jpeg right side)
+    // =========================================================================
+    for (mastX in floatArrayOf(tx - 11.2f, tx + 16.8f)) {
+        val mz = tz + 14.0f
+        addBoxFaces(
+            faces,
+            mastX - 0.22f, 0.06f, mz - 0.22f,
+            mastX + 0.22f, 23.5f, mz + 0.22f,
+            topCol = MatGraniteLight,
+            sideCol = MatGranitePaving,
+            frontBackCol = MatGraniteLight
+        )
+        // Floodlight luminaire ring at top of mast
+        addBoxFaces(
+            faces,
+            mastX - 1.35f, 23.2f, mz - 1.35f,
+            mastX + 1.35f, 23.9f, mz + 1.35f,
+            topCol = MatFastagWhite,
+            sideCol = MatTempleGold,
+            frontBackCol = MatFastagWhite
+        )
+    }
+
+    // 2-Storey Paliyekkara Toll Plaza Administrative Building on West/Right side (Ref: toll3_673df7db.jpeg)
+    addBoxFaces(
+        faces,
+        tx + 34.5f, 0.06f, tz - 22.0f,
+        tx + 46.5f, 7.60f, tz + 12.0f,
+        topCol = MatGranitePaving,
+        sideCol = MatPromenadeTile,
+        frontBackCol = MatKeralaCreamWall
+    )
+    // Ribbon glass windows on admin building
+    addBoxFaces(
+        faces,
+        tx + 34.3f, 4.20f, tz - 20.0f,
+        tx + 34.6f, 6.40f, tz + 10.0f,
+        topCol = MatArcadeGlass,
+        sideCol = MatArcadeGlass,
+        frontBackCol = MatArcadeGlass
+    )
+    addPitchedKeralaRoof(
+        faces,
+        tx + 33.5f, tx + 47.5f,
+        tz - 23.0f, tz + 13.0f,
+        baseY = 7.50f,
+        ridgeY = 10.20f,
+        insetX = 5.5f,
+        insetZ = 4.0f,
+        roofColor = MatTollRoofRed
+    )
+
+    renderSortedFaces(rig, path, camEye, faces)
+}
+
+// ============================================================================
+// 6. VADAKKE STAND (THRISSUR NORTH BUS STAND)
+//    Aligned with North end of ROAD_SWARAJ_TO_VADAKKE at X = -62m..-10m, Z = 200.2m..246m
+// ============================================================================
+
+private fun DrawScope.drawVadakkeBusStandGround(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3
+) {
+    if (hypot(camEye.x - (-34f), camEye.z - 220f) > 360f) return
+
+    // Concrete terminal yard apron
+    val yardMinX = -62.0f
+    val yardMaxX = -10.0f
+    val yardMinZ = 200.16f
+    val yardMaxZ = 246.0f
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(yardMinX, 0.058f, yardMinZ),
+            Vec3(yardMaxX, 0.058f, yardMinZ),
+            Vec3(yardMaxX, 0.058f, yardMaxZ),
+            Vec3(yardMinX, 0.058f, yardMaxZ)
+        )
+    ) {
+        drawPath(path, MatTerminalConcrete)
+    }
+
+    // 8 Painted Yellow Bus Bays inside Vadakke Stand (Z = 216m..233m)
+    for (bIdx in 0 until 8) {
+        val bx = -55.0f + bIdx * 5.6f
+        val lSeg = rig.projectSegmentClipped(Vec3(bx - 1.85f, 0.062f, 216.0f), Vec3(bx - 1.85f, 0.062f, 233.0f))
+        if (lSeg != null) drawLine(MatRoadMarkingYellow, lSeg.first, lSeg.second, strokeWidth = 2.4f)
+        val rSeg = rig.projectSegmentClipped(Vec3(bx + 1.85f, 0.062f, 216.0f), Vec3(bx + 1.85f, 0.062f, 233.0f))
+        if (rSeg != null) drawLine(MatRoadMarkingYellow, rSeg.first, rSeg.second, strokeWidth = 2.4f)
+    }
+
+    // Entry Driveway (X = -28m..-16m) & Exit Driveway (X = -44m..-32m) White Guide Lines
+    for (driveX in floatArrayOf(-44.0f, -32.0f, -28.0f, -16.0f)) {
+        val seg = rig.projectSegmentClipped(Vec3(driveX, 0.063f, 200.16f), Vec3(driveX, 0.063f, 214.0f))
+        if (seg != null) drawLine(MatRoadMarkingWhite, seg.first, seg.second, strokeWidth = 2.5f)
+    }
+}
+
+private fun DrawScope.drawVadakkeBusStand3D(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3,
+    titlePaint: Paint,
+    subPaint: Paint
+) {
+    if (hypot(camEye.x - (-34f), camEye.z - 220f) > 360f) return
+
+    val faces = ArrayList<QuadFace3D>(180)
+
+    // South Perimeter Wall at far outer corners only (X = -62..-46.5 and X = -15.0..-10.0)
+    // Leaves the entire 31.5m entrance X = -46.5..-15.0 100% open & obstacle-free for ROAD_SWARAJ_TO_VADAKKE!
+    addBoxFaces(faces, -62.0f, 0.06f, 200.4f, -46.5f, 1.35f, 201.1f, MatKeralaWhitewash, MatLateriteStone)
+    addBoxFaces(faces, -15.0f, 0.06f, 200.4f, -10.0f, 1.35f, 201.1f, MatKeralaWhitewash, MatLateriteStone)
+
+    // Outer Gate Arch Columns at X = -46.2m and X = -15.3m (strictly outside road bounds)
+    for (px in floatArrayOf(-46.2f, -15.3f)) {
+        addBoxFaces(faces, px - 0.4f, 0.06f, 200.2f, px + 0.4f, 6.1f, 201.0f, MatTerracottaRoofDark, MatTerracottaTile)
+    }
+
+    // Raised Passenger Boarding Platform, Canopy Shelter & Waiting Terminal Hall
+    addBoxFaces(faces, -58.0f, 0.06f, 233.2f, -14.0f, 0.36f, 244.0f, MatPromenadeTile, MatGraniteDark)
+    for (colX in floatArrayOf(-56.0f, -42.0f, -28.0f, -16.0f)) {
+        addBoxFaces(faces, colX - 0.35f, 0.36f, 233.5f, colX + 0.35f, 5.6f, 234.2f, MatKeralaCreamWall, MatGranitePaving)
+    }
+    addBoxFaces(faces, -58.5f, 5.6f, 214.0f, -13.5f, 6.3f, 235.5f, MatGranitePaving, MatTerracottaTile)
+    addPitchedKeralaRoof(faces, -59.2f, -12.8f, 213.5f, 236.0f, 6.25f, 8.20f, 3.5f, 4.5f, MatTerracottaTile)
+    addBoxFaces(faces, -57.0f, 0.36f, 235.5f, -15.0f, 7.2f, 244.5f, MatTerracottaRoofDark, MatKeralaCreamWall)
+
+    // Parked Town Buses in Vadakke Stand Bays (North of Z = 218.5m, well clear of entrance)
+    val busColors = arrayOf(Color(0xFF1D4ED8), Color(0xFFB91C1C), Color(0xFF047857), Color(0xFFC2410C))
+    for ((idx, bIdx) in intArrayOf(1, 3, 5, 7).withIndex()) {
+        val bx = -55.0f + bIdx * 5.6f
+        val col = busColors[idx % busColors.size]
+        addBoxFaces(faces, bx - 1.15f, 0.4f, 218.5f, bx + 1.15f, 3.1f, 229.5f, Color(0xFFE2E8F0), col, col)
+    }
+
+    renderSortedFaces(rig, path, camEye, faces)
+
+    // Strict Stand Text Rule on Vadakke Stand: Stand name, ENTRY, and EXIT only (overhead at Y = 5.2..6.8m)!
+    drawOriented3DSignboard(
+        rig = rig,
+        path = path,
+        leftVec = Vec3(-50.0f, 0f, 213.85f),
+        rightVec = Vec3(-22.0f, 0f, 213.85f),
+        bottomY = 5.55f,
+        topY = 6.85f,
+        bgColor = Color(0xFF7C2D12),
+        borderColor = Color(0xFFFACC15),
+        lines = listOf("VADAKKE STAND"),
+        textColor = Color(0xFFFEF08A),
+        titlePaint = titlePaint,
+        subPaint = subPaint
+    )
+    drawOriented3DSignboard(
+        rig = rig,
+        path = path,
+        leftVec = Vec3(-28.5f, 0f, 200.4f),
+        rightVec = Vec3(-15.5f, 0f, 200.4f),
+        bottomY = 5.15f,
+        topY = 6.25f,
+        bgColor = Color(0xFF1E3A8A),
+        borderColor = Color(0xFF38BDF8),
+        lines = listOf("ENTRY"),
+        textColor = Color(0xFFFFFFFF),
+        titlePaint = titlePaint,
+        subPaint = subPaint
+    )
+    drawOriented3DSignboard(
+        rig = rig,
+        path = path,
+        leftVec = Vec3(-46.0f, 0f, 200.4f),
+        rightVec = Vec3(-33.0f, 0f, 200.4f),
+        bottomY = 5.15f,
+        topY = 6.25f,
+        bgColor = Color(0xFF065F46),
+        borderColor = Color(0xFFFACC15),
+        lines = listOf("EXIT"),
+        textColor = Color(0xFFFFFFFF),
+        titlePaint = titlePaint,
+        subPaint = subPaint
+    )
+}
+
+// ============================================================================
+// 7. ROADSIDE KERALA SCENERY (TILED-ROOF HOUSES, SHOPS, LATERITE WALLS & TREES)
+//    Strictly placed outside roadHalfW + 10.5m and clear of all junctions
+// ============================================================================
+
+private fun DrawScope.drawRoadsideKeralaScenery3D(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3,
+    roads: List<ThrissurOsmRoad>
+) {
+    val faces = ArrayList<QuadFace3D>(320)
+
+    for (road in roads) {
+        if (road.id == "ROAD_SWARAJ_ROUND" || road.id == "ROAD_SAKTHAN_STAND_ENTRY") continue
+        val frames = road.frames
+        if (frames.size < 8) continue
+
+        val roadHalfW = road.widthM * 0.5f
+        var idx = 5
+        while (idx < frames.size - 5) {
+            val f = frames[idx]
+            val distToCam = hypot(f.pos.x - camEye.x, f.pos.z - camEye.z)
+            if (distToCam <= 240f) {
+                for (side in intArrayOf(-1, 1)) {
+                    val latOffset = (roadHalfW + 11.5f) * side
+                    val bx = f.pos.x + f.right.x * latOffset
+                    val bz = f.pos.z + f.right.z * latOffset
+
+                    // Verify strict clearance from all drivable roads (never block or sit on any road)
+                    if (isPointClearOfAllRoads(bx, bz, roads, extraMarginM = 7.5f)) {
+                        val pattern = (idx + if (side > 0) 1 else 2) % 3
+                        if (pattern == 0) {
+                            addBoxFaces(
+                                faces,
+                                bx - 3.4f, 0.06f, bz - 3.0f,
+                                bx + 3.4f, 3.4f, bz + 3.0f,
+                                topCol = MatTeakWoodCarved,
+                                sideCol = MatKeralaWhitewash,
+                                frontBackCol = MatKeralaCreamWall
+                            )
+                            addPitchedKeralaRoof(
+                                faces,
+                                bx - 4.0f, bx + 4.0f,
+                                bz - 3.6f, bz + 3.6f,
+                                baseY = 3.3f,
+                                ridgeY = 5.4f,
+                                insetX = 1.6f,
+                                insetZ = 1.6f,
+                                roofColor = MatTerracottaTile
+                            )
+                        } else if (pattern == 1) {
+                            addBoxFaces(
+                                faces,
+                                bx - 3.8f, 0.06f, bz - 2.6f,
+                                bx + 3.8f, 5.2f, bz + 2.6f,
+                                topCol = MatArcadeRoofSlate,
+                                sideCol = MatArcadeCream,
+                                frontBackCol = MatArcadeSandstone
+                            )
+                        } else {
+                            addRealisticMaidanTree3D(
+                                faces = faces,
+                                tx = bx,
+                                tz = bz,
+                                baseY = 0.06f,
+                                crownRadius = 3.2f,
+                                treeHeight = 7.8f
+                            )
+                        }
+                    }
+                }
+            }
+            idx += 12
+        }
+    }
+
+    if (faces.isNotEmpty()) {
+        renderSortedFaces(rig, path, camEye, faces)
+    }
+}
+
+// ============================================================================
+// 8. REFERENCE-ACCURATE KERALA PWD & NHAI GREEN SIGNBOARDS (100% OBSTACLE-FREE)
+//    Matches the 5 Reference Images:
+//    - Style A (ROUNDABOUT_DIAGRAM, ref: images__4__e8d8f20c.jpeg):
+//      Teal-green board with white border, central white circular roundabout/junction
+//      ring with ↑ Straight, ← Left, → Right arrows, and Malayalam + English labels.
+//    - Style B (STACKED_3_PANEL, ref: images_223705b0.jpeg & images__3__51bcd60a.jpeg):
+//      3-panel stacked green board split by 2 white horizontal divider lines; each
+//      panel shows Malayalam + English place name on left, bold white arrow in middle,
+//      and distance in km on right, mounted on black-and-white roadside verge posts.
+//    - Style C (OVERHEAD_HIGHWAY_GANTRY, ref: images__1__0a48787b.jpeg):
+//      Full-span overhead highway gantry (Y = 6.2m..8.3m) with support columns planted
+//      5.5m outside the road shoulders on both sides (zero obstacles on any road!),
+//      split by vertical white lines into 3 destination panels with ↑ arrows & km.
+// ============================================================================
+
+private enum class KeralaSignStyle {
+    ROUNDABOUT_DIAGRAM,      // Ref: images__4__e8d8f20c.jpeg
+    STACKED_3_PANEL,         // Ref: images_223705b0.jpeg & images__3__51bcd60a.jpeg
+    OVERHEAD_HIGHWAY_GANTRY  // Ref: images__1__0a48787b.jpeg
+}
+
+private data class KeralaSignDestination(
+    val malName: String,
+    val engName: String,
+    val arrowDir: String, // "UP", "LEFT", "RIGHT"
+    val distKm: String
+)
+
+private data class KeralaRoadSignSpec(
+    val roadId: String,
+    val frameFraction: Float,
+    val side: Int, // -1 = Left verge, +1 = Right verge, 0 = Overhead Gantry
+    val style: KeralaSignStyle,
+    val headerTitle: String = "",
+    val straightDest: KeralaSignDestination,
+    val leftDest: KeralaSignDestination,
+    val rightDest: KeralaSignDestination
+)
+
+private val ThrissurAuthenticSignSpecs = listOf(
+    // 1. Sakthan Stand Exit -> Swaraj Round Approach (Style A: Roundabout Diagram, Ref: images__4__e8d8f20c.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_SAKTHAN_TO_SWARAJ",
+        frameFraction = 0.22f,
+        side = -1,
+        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
+        straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "UP", "0.8"),
+        leftDest = KeralaSignDestination("കൊക്കാലെ", "Kokkala", "LEFT", "1.2"),
+        rightDest = KeralaSignDestination("ഒല്ലൂർ", "Ollur", "RIGHT", "5.5")
+    ),
+    // 2. MO Road -> Swaraj Round South Entry (Style A: Roundabout Diagram, Ref: images__4__e8d8f20c.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_SAKTHAN_TO_SWARAJ",
+        frameFraction = 0.68f,
+        side = 1,
+        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
+        straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "UP", "0.3"),
+        leftDest = KeralaSignDestination("വെസ്റ്റ് ഫോർട്ട്", "West Fort", "LEFT", "2.0"),
+        rightDest = KeralaSignDestination("പുത്തൻപള്ളി", "Puthanpalli", "RIGHT", "0.6")
+    ),
+    // 3. Swaraj Round West Approach to MG Road / West Fort (Style B: 3-Panel Stacked, Ref: images_223705b0.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_SWARAJ_ROUND",
+        frameFraction = 0.28f,
+        side = 1,
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "UP", "0.9"),
+        leftDest = KeralaSignDestination("ഗുരുവായൂർ", "Guruvayur", "LEFT", "28"),
+        rightDest = KeralaSignDestination("കാഞ്ഞാണി", "Kanjani", "LEFT", "14")
+    ),
+    // 4. Swaraj Round North Approach to Vadakke Stand (Style A: Roundabout Diagram, Ref: images__4__e8d8f20c.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_SWARAJ_ROUND",
+        frameFraction = 0.50f,
+        side = 1,
+        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
+        straightDest = KeralaSignDestination("റൗണ്ട് ഈസ്റ്റ്", "Round East", "UP", "0.5"),
+        leftDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "LEFT", "0.4"),
+        rightDest = KeralaSignDestination("ക്ഷേത്രം", "Temple", "RIGHT", "0.2")
+    ),
+    // 5. Swaraj Round East Approach to Mannuthy Highway (Style B: 3-Panel Stacked, Ref: images_223705b0.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_SWARAJ_ROUND",
+        frameFraction = 0.78f,
+        side = 1,
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("ശക്തൻ സ്റ്റാൻഡ്", "Sakthan Stand", "UP", "1.1"),
+        leftDest = KeralaSignDestination("മണ്ണുത്തി NH 544", "Mannuthy", "LEFT", "6.5"),
+        rightDest = KeralaSignDestination("പാലക്കാട്", "Palakkad", "LEFT", "58")
+    ),
+    // 6. Shoranur Road Approaching Vadakke Stand (Style B: 3-Panel Stacked, Ref: images_223705b0.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_SWARAJ_TO_VADAKKE",
+        frameFraction = 0.55f,
+        side = -1,
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "UP", "0.2"),
+        leftDest = KeralaSignDestination("പൂങ്കുന്നം", "Punkunnam", "LEFT", "2.4"),
+        rightDest = KeralaSignDestination("വിയ്യൂർ", "Viyyur", "RIGHT", "3.8")
+    ),
+    // 7. Ollur Road Corridor (Style B: 3-Panel Stacked, Ref: images_223705b0.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_SAKTHAN_TO_OLLUR",
+        frameFraction = 0.35f,
+        side = -1,
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("ഒല്ലൂർ", "Ollur Town", "UP", "4.5"),
+        leftDest = KeralaSignDestination("തൃശ്ശൂർ", "Thrissur", "LEFT", "2.2"),
+        rightDest = KeralaSignDestination("ആമ്പല്ലൂർ", "Amballur", "RIGHT", "9.0")
+    ),
+    // 8. West Fort Road Approaching West Fort Junction (Style A: Roundabout Diagram, Ref: images__4__e8d8f20c.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_SWARAJ_TO_WEST_FORT",
+        frameFraction = 0.55f,
+        side = -1,
+        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
+        straightDest = KeralaSignDestination("കാഞ്ഞാണി", "Kanjani", "UP", "12"),
+        leftDest = KeralaSignDestination("അയ്യന്തോൾ", "Ayyanthole", "LEFT", "2.5"),
+        rightDest = KeralaSignDestination("ഗുരുവായൂർ", "Guruvayur", "RIGHT", "26")
+    ),
+    // 9. West Fort to Kanjani SH 75 Highway (Style C: Overhead Highway Gantry, Ref: images__1__0a48787b.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_WEST_FORT_TO_KANJANI",
+        frameFraction = 0.65f,
+        side = 0,
+        style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
+        headerTitle = "STATE HIGHWAY • SH 75 / SH 61",
+        straightDest = KeralaSignDestination("ഗുരുവായൂർ", "GURUVAYUR", "UP", "19 KM"),
+        leftDest = KeralaSignDestination("തൃപ്രയാർ", "TRIPRAYAR", "UP", "15 KM"),
+        rightDest = KeralaSignDestination("ചാവക്കാട്", "CHAVAKKAD", "UP", "22 KM")
+    ),
+    // 10. Kanjani to Guruvayur & Chavakkad Approach (Style B: 3-Panel Stacked, Ref: images_223705b0.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_KANJANI_TO_GURUVAYUR_CHAVAKKAD",
+        frameFraction = 0.52f,
+        side = -1,
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("ചാവക്കാട് ബീച്ച്", "Chavakkad Beach", "UP", "4.5"),
+        leftDest = KeralaSignDestination("ഗുരുവായൂർ ക്ഷേത്രം", "Guruvayur Temple", "LEFT", "0.4"),
+        rightDest = KeralaSignDestination("ഗുരുവായൂർ സ്റ്റാൻഡ്", "Guruvayur Stand", "RIGHT", "0.3")
+    ),
+    // 11. Chavakkad Beach & NH 66 Approach (Style A: Roundabout Diagram, Ref: images__4__e8d8f20c.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_KANJANI_TO_GURUVAYUR_CHAVAKKAD",
+        frameFraction = 0.85f,
+        side = 1,
+        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
+        straightDest = KeralaSignDestination("ചാവക്കാട് ബീച്ച്", "Chavakkad Beach", "UP", "0.6"),
+        leftDest = KeralaSignDestination("തൃപ്രയാർ", "Triprayar", "LEFT", "18"),
+        rightDest = KeralaSignDestination("പൊന്നാനി", "Ponnani", "RIGHT", "24")
+    ),
+    // 12. NH 66 Chavakkad to Triprayar Coastal Highway (Style C: Overhead Highway Gantry, Ref: images__1__0a48787b.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_NH66_CHAVAKKAD_TO_TRIPRAYAR",
+        frameFraction = 0.72f,
+        side = 0,
+        style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
+        headerTitle = "NATIONAL HIGHWAY • NH 66",
+        straightDest = KeralaSignDestination("തൃപ്രയാർ ബീച്ച്", "TRIPRAYAR BEACH", "UP", "2 KM"),
+        leftDest = KeralaSignDestination("തൃപ്രയാർ സ്റ്റാൻഡ്", "TRIPRAYAR STAND", "UP", "1.5 KM"),
+        rightDest = KeralaSignDestination("കൊടുങ്ങല്ലൂർ", "KODUNGALLUR", "UP", "25 KM")
+    ),
+    // 13. SH 61 Triprayar to Kanjani Approach (Style B: 3-Panel Stacked, Ref: images_223705b0.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_SH61_TRIPRAYAR_TO_KANJANI",
+        frameFraction = 0.25f,
+        side = -1,
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("തൃശ്ശൂർ", "Thrissur", "UP", "21"),
+        leftDest = KeralaSignDestination("തൃപ്രയാർ സ്റ്റാൻഡ്", "Triprayar Stand", "LEFT", "1.8"),
+        rightDest = KeralaSignDestination("തൃപ്രയാർ ബീച്ച്", "Triprayar Beach", "RIGHT", "2.4")
+    ),
+    // 14. Swaraj Round to Mannuthy NH 544 Bypass (Style C: Overhead Highway Gantry, Ref: images__1__0a48787b.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_SWARAJ_TO_MANNUTHY",
+        frameFraction = 0.68f,
+        side = 0,
+        style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
+        headerTitle = "NATIONAL HIGHWAY • NH 544 JUNCTION",
+        straightDest = KeralaSignDestination("പീച്ചി ഡാം", "PEECHI DAM", "UP", "14 KM"),
+        leftDest = KeralaSignDestination("പാലക്കാട്", "PALAKKAD", "UP", "54 KM"),
+        rightDest = KeralaSignDestination("ടോൾ പ്ലാസ", "TOLL PLAZA", "UP", "6 KM")
+    ),
+    // 15. NH 544 Approaching Paliyekkara Toll Plaza (Style C: Overhead Highway Gantry, Ref: images__1__0a48787b.jpeg)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_NH544_MANNUTHY_TO_PALIYEKKARA",
+        frameFraction = 0.78f,
+        side = 0,
+        style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
+        headerTitle = "NATIONAL HIGHWAY • NH 544",
+        straightDest = KeralaSignDestination("ടോൾ പ്ലാസ", "TOLL PLAZA", "UP", "500 M"),
+        leftDest = KeralaSignDestination("ചാലക്കുടി", "CHALAKUDY", "UP", "22 KM"),
+        rightDest = KeralaSignDestination("എറണാകുളം", "ERNAKULAM", "UP", "58 KM")
+    )
+)
+
+/**
+ * Mathematically verifies that a world-space point (px, pz) is strictly outside the asphalt +
+ * curb + shoulder + footpath envelope of EVERY road in the network.
+ */
+private fun isPointClearOfAllRoads(
+    px: Float,
+    pz: Float,
+    roads: List<ThrissurOsmRoad>,
+    extraMarginM: Float = 5.5f
+): Boolean {
+    for (road in roads) {
+        val minClearDist = road.widthM * 0.5f + extraMarginM
+        for (f in road.frames) {
+            if (hypot(px - f.pos.x, pz - f.pos.z) < minClearDist) {
+                return false
+            }
+        }
+    }
+    return true
+}
+
+/**
+ * Finds a road frame near `targetFraction` along `road` where the roadside board (or gantry columns)
+ * has 100% mathematical clearance from all roads and junction bellmouths.
+ */
+private fun findSafeSignPlacement(
+    spec: KeralaRoadSignSpec,
+    roads: List<ThrissurOsmRoad>
+): Triple<RoadFrame, Vec3, Vec3>? {
+    val road = roads.firstOrNull { it.id == spec.roadId } ?: return null
+    val frames = road.frames
+    if (frames.size < 6) return null
+
+    val baseIdx = (spec.frameFraction * (frames.size - 1)).toInt().coerceIn(2, frames.size - 3)
+    val roadHalfW = road.widthM * 0.5f
+
+    if (spec.style == KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY || spec.side == 0) {
+        // Overhead Gantry: Left & Right support columns sit 5.5m outside the road edge on both sides
+        val colOffset = roadHalfW + 5.8f
+        for (delta in intArrayOf(0, -2, 2, -4, 4, -6, 6)) {
+            val idx = (baseIdx + delta).coerceIn(2, frames.size - 3)
+            val f = frames[idx]
+            val leftCol = Vec3(f.pos.x - f.right.x * colOffset, 0f, f.pos.z - f.right.z * colOffset)
+            val rightCol = Vec3(f.pos.x + f.right.x * colOffset, 0f, f.pos.z + f.right.z * colOffset)
+            if (isPointClearOfAllRoads(leftCol.x, leftCol.z, roads, 4.2f) &&
+                isPointClearOfAllRoads(rightCol.x, rightCol.z, roads, 4.2f)
+            ) {
+                return Triple(f, leftCol, rightCol)
+            }
+        }
+        return null
+    }
+
+    // Roadside Board (Style A Roundabout Diagram or Style B 3-Panel Stacked):
+    // Inner edge of board sits at least roadHalfW + 6.2m outside the road centerline,
+    // and extends further outward to roadHalfW + 11.6m — 100% clear of all roads!
+    val boardW = 5.4f
+    for (extraShift in floatArrayOf(0f, 3.0f, 6.0f)) {
+        val innerDist = roadHalfW + 6.4f + extraShift
+        val outerDist = innerDist + boardW
+        for (delta in intArrayOf(0, -2, 2, -4, 4, -7, 7, -10, 10)) {
+            val idx = (baseIdx + delta).coerceIn(2, frames.size - 3)
+            val f = frames[idx]
+            val d1 = if (spec.side < 0) -outerDist else innerDist
+            val d2 = if (spec.side < 0) -innerDist else outerDist
+            val leftVec = Vec3(f.pos.x + f.right.x * d1, 0f, f.pos.z + f.right.z * d1)
+            val rightVec = Vec3(f.pos.x + f.right.x * d2, 0f, f.pos.z + f.right.z * d2)
+            val midVec = Vec3((leftVec.x + rightVec.x) * 0.5f, 0f, (leftVec.z + rightVec.z) * 0.5f)
+            if (isPointClearOfAllRoads(leftVec.x, leftVec.z, roads, 4.8f) &&
+                isPointClearOfAllRoads(rightVec.x, rightVec.z, roads, 4.8f) &&
+                isPointClearOfAllRoads(midVec.x, midVec.z, roads, 4.8f)
+            ) {
+                return Triple(f, leftVec, rightVec)
+            }
+        }
+    }
+    return null
+}
+
+private fun DrawScope.drawNhaiGreenJunctionSignboards3D(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3,
+    roads: List<ThrissurOsmRoad>,
+    titlePaint: Paint,
+    subPaint: Paint
+) {
+    val postFaces = ArrayList<QuadFace3D>(180)
+    val activePlacements = ArrayList<Pair<KeralaRoadSignSpec, Triple<RoadFrame, Vec3, Vec3>>>(16)
+
+    for (spec in ThrissurAuthenticSignSpecs) {
+        val placement = findSafeSignPlacement(spec, roads) ?: continue
+        val (_, leftPos, rightPos) = placement
+        val midX = (leftPos.x + rightPos.x) * 0.5f
+        val midZ = (leftPos.z + rightPos.z) * 0.5f
+        if (hypot(camEye.x - midX, camEye.z - midZ) > 340f) continue
+        activePlacements.add(Pair(spec, placement))
+
+        if (spec.style == KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY) {
+            // Overhead Gantry Steel Columns (planted 5.8m outside road edges) + Overhead Truss Beam
+            for (colPos in arrayOf(leftPos, rightPos)) {
+                addBoxFaces(
+                    postFaces,
+                    colPos.x - 0.24f, 0.05f, colPos.z - 0.24f,
+                    colPos.x + 0.24f, 8.25f, colPos.z + 0.24f,
+                    topCol = MatGraniteLight,
+                    sideCol = MatGraniteDark,
+                    frontBackCol = MatGranitePaving,
+                    stroke = null
+                )
+            }
+            // Horizontal overhead steel truss beam (Y = 6.95m..7.35m)
+            val minX = minOf(leftPos.x, rightPos.x) - 0.2f
+            val maxX = maxOf(leftPos.x, rightPos.x) + 0.2f
+            val minZ = minOf(leftPos.z, rightPos.z) - 0.2f
+            val maxZ = maxOf(leftPos.z, rightPos.z) + 0.2f
+            addBoxFaces(
+                postFaces,
+                minX, 6.95f, minZ,
+                maxX, 7.30f, maxZ,
+                topCol = MatGraniteDark,
+                sideCol = MatGranitePaving,
+                frontBackCol = MatGraniteDark,
+                stroke = null
+            )
+        } else {
+            // Roadside Board Support Posts (Black-and-white striped / concrete posts in outer verge, Ref: images__3__51bcd60a.jpeg)
+            for (t in floatArrayOf(0.18f, 0.82f)) {
+                val px = leftPos.x + (rightPos.x - leftPos.x) * t
+                val pz = leftPos.z + (rightPos.z - leftPos.z) * t
+                // Lower black post band
+                addBoxFaces(
+                    postFaces,
+                    px - 0.13f, 0.05f, pz - 0.13f,
+                    px + 0.13f, 1.35f, pz + 0.13f,
+                    topCol = MatHazardBlack,
+                    sideCol = MatHazardBlack,
+                    frontBackCol = MatHazardBlack,
+                    stroke = null
+                )
+                // Upper white post band
+                addBoxFaces(
+                    postFaces,
+                    px - 0.13f, 1.35f, pz - 0.13f,
+                    px + 0.13f, 2.75f, pz + 0.13f,
+                    topCol = MatRoadMarkingWhite,
+                    sideCol = MatRoadMarkingWhite,
+                    frontBackCol = MatPromenadeTile,
+                    stroke = null
+                )
+            }
+        }
+    }
+
+    if (postFaces.isNotEmpty()) {
+        renderSortedFaces(rig, path, camEye, postFaces)
+    }
+
+    // Sort active signboards far-to-near so closer boards render cleanly on top
+    activePlacements.sortByDescending { (_, placement) ->
+        val midX = (placement.second.x + placement.third.x) * 0.5f
+        val midZ = (placement.second.z + placement.third.z) * 0.5f
+        hypot(camEye.x - midX, camEye.z - midZ)
+    }
+
+    for ((spec, placement) in activePlacements) {
+        val (_, leftPos, rightPos) = placement
+        when (spec.style) {
+            KeralaSignStyle.ROUNDABOUT_DIAGRAM -> {
+                drawKeralaRoundaboutDiagramBoard3D(
+                    rig = rig,
+                    path = path,
+                    leftVec = leftPos,
+                    rightVec = rightPos,
+                    bottomY = 2.65f,
+                    topY = 5.45f,
+                    spec = spec,
+                    titlePaint = titlePaint,
+                    subPaint = subPaint
+                )
+            }
+            KeralaSignStyle.STACKED_3_PANEL -> {
+                drawKeralaStacked3PanelBoard3D(
+                    rig = rig,
+                    path = path,
+                    leftVec = leftPos,
+                    rightVec = rightPos,
+                    bottomY = 2.65f,
+                    topY = 5.65f,
+                    spec = spec,
+                    titlePaint = titlePaint,
+                    subPaint = subPaint
+                )
+            }
+            KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY -> {
+                // Span board across the roadway portion of the overhead gantry (Y = 6.15m..8.25m)
+                val gLeft = Vec3(
+                    leftPos.x + (rightPos.x - leftPos.x) * 0.10f,
+                    0f,
+                    leftPos.z + (rightPos.z - leftPos.z) * 0.10f
+                )
+                val gRight = Vec3(
+                    leftPos.x + (rightPos.x - leftPos.x) * 0.90f,
+                    0f,
+                    leftPos.z + (rightPos.z - leftPos.z) * 0.90f
+                )
+                drawOverheadHighwayGantryBoard3D(
+                    rig = rig,
+                    path = path,
+                    leftVec = gLeft,
+                    rightVec = gRight,
+                    bottomY = 6.15f,
+                    topY = 8.25f,
+                    spec = spec,
+                    titlePaint = titlePaint,
+                    subPaint = subPaint
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Style A: Kerala PWD Roundabout / Junction Schematic Diagram Board (Ref: images__4__e8d8f20c.jpeg).
+ * Renders the teal-green reflective board, white outer border, central white circular roundabout
+ * ring with 3 directional arrows (↑ Straight, ← Left, → Right), and bilingual Malayalam + English names.
+ */
+private fun DrawScope.drawKeralaRoundaboutDiagramBoard3D(
+    rig: CameraRig,
+    path: Path,
+    leftVec: Vec3,
+    rightVec: Vec3,
+    bottomY: Float,
+    topY: Float,
+    spec: KeralaRoadSignSpec,
+    titlePaint: Paint,
+    subPaint: Paint
+) {
+    val vBL = Vec3(leftVec.x, bottomY, leftVec.z)
+    val vBR = Vec3(rightVec.x, bottomY, rightVec.z)
+    val vTR = Vec3(rightVec.x, topY, rightVec.z)
+    val vTL = Vec3(leftVec.x, topY, leftVec.z)
+
+    if (!rig.buildClippedQuadPath(path, vBL, vBR, vTR, vTL)) return
+    drawPath(path, Color(0xFF006D5B))
+    drawPath(path, MatRoadMarkingWhite, style = Stroke(width = 2.6f))
+
+    val midY = (bottomY + topY) * 0.5f
+    val midX = (leftVec.x + rightVec.x) * 0.5f
+    val midZ = (leftVec.z + rightVec.z) * 0.5f
+    val pLeft = rig.projectPoint(Vec3(leftVec.x, midY, leftVec.z)) ?: return
+    val pRight = rig.projectPoint(Vec3(rightVec.x, midY, rightVec.z)) ?: return
+    val pTop = rig.projectPoint(Vec3(midX, topY, midZ)) ?: return
+    val pBottom = rig.projectPoint(Vec3(midX, bottomY, midZ)) ?: return
+
+    val pixelW = hypot(pRight.x - pLeft.x, pRight.y - pLeft.y)
+    val pixelH = hypot(pBottom.x - pTop.x, pBottom.y - pTop.y)
+    if (pixelW < 34f || pixelH < 18f) return
+
+    val centerX = (pLeft.x + pRight.x) * 0.5f
+    val centerY = (pTop.y + pBottom.y) * 0.5f
+    var angleDeg = Math.toDegrees(atan2((pRight.y - pLeft.y).toDouble(), (pRight.x - pLeft.x).toDouble())).toFloat()
+    if (angleDeg > 90f) angleDeg -= 180f
+    if (angleDeg < -90f) angleDeg += 180f
+
+    val nativeCanvas = drawContext.canvas.nativeCanvas
+    nativeCanvas.save()
+    nativeCanvas.translate(centerX, centerY)
+    nativeCanvas.rotate(angleDeg)
+
+    // 1. Central White Roundabout Ring + Stem + 3 Directional Arrows (Ref: images__4__e8d8f20c.jpeg)
+    val ringR = (min(pixelW, pixelH) * 0.16f).coerceIn(4f, 22f)
+    val strokeW = (ringR * 0.34f).coerceIn(1.8f, 6.5f)
+    val diagramPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = strokeW
+        strokeCap = Paint.Cap.BUTT
+    }
+    val arrowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.FILL
+    }
+
+    // Roundabout ring (with slight bottom-right break like ref image)
+    nativeCanvas.drawCircle(0f, 0f, ringR, diagramPaint)
+    // Bottom vertical entry stem
+    nativeCanvas.drawLine(0f, ringR, 0f, pixelH * 0.38f, diagramPaint)
+    // Top Straight Arrow (↑)
+    val topTipY = -pixelH * 0.38f
+    val headSz = (strokeW * 1.65f).coerceIn(3.5f, 11f)
+    nativeCanvas.drawLine(0f, -ringR, 0f, topTipY + headSz * 0.7f, diagramPaint)
+    val triPath = android.graphics.Path()
+    triPath.moveTo(0f, topTipY)
+    triPath.lineTo(-headSz, topTipY + headSz * 1.15f)
+    triPath.lineTo(headSz, topTipY + headSz * 1.15f)
+    triPath.close()
+    nativeCanvas.drawPath(triPath, arrowFillPaint)
+
+    // Left Turn Arrow (←)
+    val leftTipX = -pixelW * 0.25f
+    nativeCanvas.drawLine(-ringR, 0f, leftTipX + headSz * 0.7f, 0f, diagramPaint)
+    triPath.reset()
+    triPath.moveTo(leftTipX, 0f)
+    triPath.lineTo(leftTipX + headSz * 1.15f, -headSz)
+    triPath.lineTo(leftTipX + headSz * 1.15f, headSz)
+    triPath.close()
+    nativeCanvas.drawPath(triPath, arrowFillPaint)
+
+    // Right Turn Arrow (→)
+    val rightTipX = pixelW * 0.25f
+    nativeCanvas.drawLine(ringR, 0f, rightTipX - headSz * 0.7f, 0f, diagramPaint)
+    triPath.reset()
+    triPath.moveTo(rightTipX, 0f)
+    triPath.lineTo(rightTipX - headSz * 1.15f, -headSz)
+    triPath.lineTo(rightTipX - headSz * 1.15f, headSz)
+    triPath.close()
+    nativeCanvas.drawPath(triPath, arrowFillPaint)
+
+    // 2. Bilingual Malayalam + English Place Labels around the Diagram (Ref: images__4__e8d8f20c.jpeg)
+    val txtSz = min(pixelH * 0.115f, pixelW * 0.068f).coerceIn(6.5f, 16f)
+    titlePaint.color = android.graphics.Color.WHITE
+    titlePaint.textSize = txtSz
+    subPaint.color = android.graphics.Color.WHITE
+    subPaint.textSize = txtSz * 0.92f
+
+    // Top-left (Malayalam straight) & Top-right (English straight)
+    subPaint.textAlign = Paint.Align.CENTER
+    titlePaint.textAlign = Paint.Align.CENTER
+    nativeCanvas.drawText(spec.straightDest.malName, -pixelW * 0.25f, -pixelH * 0.22f, subPaint)
+    nativeCanvas.drawText(spec.straightDest.engName, pixelW * 0.25f, -pixelH * 0.22f, titlePaint)
+
+    // Bottom-left (Left turn Malayalam + English)
+    nativeCanvas.drawText(spec.leftDest.malName, -pixelW * 0.25f, pixelH * 0.19f, subPaint)
+    nativeCanvas.drawText(spec.leftDest.engName, -pixelW * 0.25f, pixelH * 0.34f, titlePaint)
+
+    // Bottom-right (Right turn Malayalam + English)
+    nativeCanvas.drawText(spec.rightDest.malName, pixelW * 0.25f, pixelH * 0.19f, subPaint)
+    nativeCanvas.drawText(spec.rightDest.engName, pixelW * 0.25f, pixelH * 0.34f, titlePaint)
+
+    nativeCanvas.restore()
+}
+
+/**
+ * Style B: 3-Panel Stacked Kerala PWD Direction & Distance Board (Ref: images_223705b0.jpeg & images__3__51bcd60a.jpeg).
+ * Divided by 2 horizontal white lines into 3 stacked compartments, each showing Malayalam + English
+ * destination on the left, bold white directional arrow in the middle, and km distance on the right.
+ */
+private fun DrawScope.drawKeralaStacked3PanelBoard3D(
+    rig: CameraRig,
+    path: Path,
+    leftVec: Vec3,
+    rightVec: Vec3,
+    bottomY: Float,
+    topY: Float,
+    spec: KeralaRoadSignSpec,
+    titlePaint: Paint,
+    subPaint: Paint
+) {
+    val vBL = Vec3(leftVec.x, bottomY, leftVec.z)
+    val vBR = Vec3(rightVec.x, bottomY, rightVec.z)
+    val vTR = Vec3(rightVec.x, topY, rightVec.z)
+    val vTL = Vec3(leftVec.x, topY, leftVec.z)
+
+    if (!rig.buildClippedQuadPath(path, vBL, vBR, vTR, vTL)) return
+    drawPath(path, Color(0xFF046A4E))
+    drawPath(path, MatRoadMarkingWhite, style = Stroke(width = 2.6f))
+
+    // 2 Horizontal White Divider Lines splitting the 3D board into 3 stacked panels (Ref: images_223705b0.jpeg)
+    val h1Y = bottomY + (topY - bottomY) * (1f / 3f)
+    val h2Y = bottomY + (topY - bottomY) * (2f / 3f)
+    rig.projectSegmentClipped(Vec3(leftVec.x, h1Y, leftVec.z), Vec3(rightVec.x, h1Y, rightVec.z))?.let {
+        drawLine(MatRoadMarkingWhite, it.first, it.second, strokeWidth = 2.0f)
+    }
+    rig.projectSegmentClipped(Vec3(leftVec.x, h2Y, leftVec.z), Vec3(rightVec.x, h2Y, rightVec.z))?.let {
+        drawLine(MatRoadMarkingWhite, it.first, it.second, strokeWidth = 2.0f)
+    }
+
+    val midY = (bottomY + topY) * 0.5f
+    val midX = (leftVec.x + rightVec.x) * 0.5f
+    val midZ = (leftVec.z + rightVec.z) * 0.5f
+    val pLeft = rig.projectPoint(Vec3(leftVec.x, midY, leftVec.z)) ?: return
+    val pRight = rig.projectPoint(Vec3(rightVec.x, midY, rightVec.z)) ?: return
+    val pTop = rig.projectPoint(Vec3(midX, topY, midZ)) ?: return
+    val pBottom = rig.projectPoint(Vec3(midX, bottomY, midZ)) ?: return
+
+    val pixelW = hypot(pRight.x - pLeft.x, pRight.y - pLeft.y)
+    val pixelH = hypot(pBottom.x - pTop.x, pBottom.y - pTop.y)
+    if (pixelW < 34f || pixelH < 18f) return
+
+    val centerX = (pLeft.x + pRight.x) * 0.5f
+    val centerY = (pTop.y + pBottom.y) * 0.5f
+    var angleDeg = Math.toDegrees(atan2((pRight.y - pLeft.y).toDouble(), (pRight.x - pLeft.x).toDouble())).toFloat()
+    if (angleDeg > 90f) angleDeg -= 180f
+    if (angleDeg < -90f) angleDeg += 180f
+
+    val nativeCanvas = drawContext.canvas.nativeCanvas
+    nativeCanvas.save()
+    nativeCanvas.translate(centerX, centerY)
+    nativeCanvas.rotate(angleDeg)
+
+    val rows = arrayOf(spec.straightDest, spec.leftDest, spec.rightDest)
+    val rowH = pixelH / 3f
+    val engSz = min(rowH * 0.36f, pixelW * 0.072f).coerceIn(6.5f, 15.5f)
+    val malSz = (engSz * 0.88f).coerceIn(6.0f, 14.0f)
+
+    titlePaint.color = android.graphics.Color.WHITE
+    subPaint.color = android.graphics.Color.WHITE
+
+    for (rIdx in 0..2) {
+        val rowCenterY = -pixelH * 0.5f + (rIdx + 0.5f) * rowH
+        val dest = rows[rIdx]
+
+        // Left: Malayalam on top, English below (left-aligned inside panel, Ref: images_223705b0.jpeg)
+        subPaint.textAlign = Paint.Align.LEFT
+        subPaint.textSize = malSz
+        nativeCanvas.drawText(dest.malName, -pixelW * 0.44f, rowCenterY - rowH * 0.08f, subPaint)
+
+        titlePaint.textAlign = Paint.Align.LEFT
+        titlePaint.textSize = engSz
+        nativeCanvas.drawText(dest.engName, -pixelW * 0.44f, rowCenterY + rowH * 0.32f, titlePaint)
+
+        // Middle-Right: Bold White Arrow Symbol + Far-Right Distance Number (Ref: images_223705b0.jpeg)
+        val arrowGlyph = when (dest.arrowDir) {
+            "LEFT" -> "⬅"
+            "RIGHT" -> "➡"
+            else -> "⬆"
+        }
+        titlePaint.textAlign = Paint.Align.CENTER
+        titlePaint.textSize = (engSz * 1.15f).coerceIn(7.5f, 18f)
+        nativeCanvas.drawText(arrowGlyph, pixelW * 0.16f, rowCenterY + rowH * 0.14f, titlePaint)
+
+        titlePaint.textAlign = Paint.Align.RIGHT
+        titlePaint.textSize = engSz
+        nativeCanvas.drawText(dest.distKm, pixelW * 0.44f, rowCenterY + rowH * 0.14f, titlePaint)
+    }
+
+    titlePaint.textAlign = Paint.Align.CENTER
+    subPaint.textAlign = Paint.Align.CENTER
+    nativeCanvas.restore()
+}
+
+/**
+ * Style C: Overhead Multi-Lane National Highway Gantry Board (Ref: images__1__0a48787b.jpeg).
+ * Spans high above the highway (Y = 6.15m..8.25m) with support columns 5.8m outside the road edges,
+ * divided by vertical white lines into 3 destination panels with ↑ arrows, Malayalam + English names, and KM.
+ */
+private fun DrawScope.drawOverheadHighwayGantryBoard3D(
+    rig: CameraRig,
+    path: Path,
+    leftVec: Vec3,
+    rightVec: Vec3,
+    bottomY: Float,
+    topY: Float,
+    spec: KeralaRoadSignSpec,
+    titlePaint: Paint,
+    subPaint: Paint
+) {
+    val vBL = Vec3(leftVec.x, bottomY, leftVec.z)
+    val vBR = Vec3(rightVec.x, bottomY, rightVec.z)
+    val vTR = Vec3(rightVec.x, topY, rightVec.z)
+    val vTL = Vec3(leftVec.x, topY, leftVec.z)
+
+    if (!rig.buildClippedQuadPath(path, vBL, vBR, vTR, vTL)) return
+    drawPath(path, Color(0xFF057A55))
+    drawPath(path, MatRoadMarkingWhite, style = Stroke(width = 2.6f))
+
+    // 2 Vertical White Divider Lines splitting the overhead gantry into 3 compartments (Ref: images__1__0a48787b.jpeg)
+    for (frac in floatArrayOf(1f / 3f, 2f / 3f)) {
+        val vx = leftVec.x + (rightVec.x - leftVec.x) * frac
+        val vz = leftVec.z + (rightVec.z - leftVec.z) * frac
+        rig.projectSegmentClipped(Vec3(vx, bottomY + 0.15f, vz), Vec3(vx, topY - 0.35f, vz))?.let {
+            drawLine(MatRoadMarkingWhite, it.first, it.second, strokeWidth = 2.0f)
+        }
+    }
+
+    val midY = (bottomY + topY) * 0.5f
+    val midX = (leftVec.x + rightVec.x) * 0.5f
+    val midZ = (leftVec.z + rightVec.z) * 0.5f
+    val pLeft = rig.projectPoint(Vec3(leftVec.x, midY, leftVec.z)) ?: return
+    val pRight = rig.projectPoint(Vec3(rightVec.x, midY, rightVec.z)) ?: return
+    val pTop = rig.projectPoint(Vec3(midX, topY, midZ)) ?: return
+    val pBottom = rig.projectPoint(Vec3(midX, bottomY, midZ)) ?: return
+
+    val pixelW = hypot(pRight.x - pLeft.x, pRight.y - pLeft.y)
+    val pixelH = hypot(pBottom.x - pTop.x, pBottom.y - pTop.y)
+    if (pixelW < 42f || pixelH < 14f) return
+
+    val centerX = (pLeft.x + pRight.x) * 0.5f
+    val centerY = (pTop.y + pBottom.y) * 0.5f
+    var angleDeg = Math.toDegrees(atan2((pRight.y - pLeft.y).toDouble(), (pRight.x - pLeft.x).toDouble())).toFloat()
+    if (angleDeg > 90f) angleDeg -= 180f
+    if (angleDeg < -90f) angleDeg += 180f
+
+    val nativeCanvas = drawContext.canvas.nativeCanvas
+    nativeCanvas.save()
+    nativeCanvas.translate(centerX, centerY)
+    nativeCanvas.rotate(angleDeg)
+
+    titlePaint.color = android.graphics.Color.WHITE
+    subPaint.color = android.graphics.Color.WHITE
+    titlePaint.textAlign = Paint.Align.CENTER
+    subPaint.textAlign = Paint.Align.CENTER
+
+    // Top Header ("NATIONAL HIGHWAY • NH 544", Ref: images__1__0a48787b.jpeg)
+    val hdrSz = min(pixelH * 0.16f, pixelW * 0.032f).coerceIn(6.0f, 12.5f)
+    subPaint.textSize = hdrSz
+    nativeCanvas.drawText(spec.headerTitle, 0f, -pixelH * 0.33f, subPaint)
+
+    // 3 Compartments (Left, Center, Right) each with ↑ Arrow, English, Malayalam, and KM
+    val cols = arrayOf(spec.leftDest, spec.straightDest, spec.rightDest)
+    val colW = pixelW / 3f
+    val mainSz = min(pixelH * 0.22f, colW * 0.11f).coerceIn(6.5f, 15.0f)
+
+    for (cIdx in 0..2) {
+        val colCenterX = (cIdx - 1) * colW
+        val dest = cols[cIdx]
+        titlePaint.textSize = mainSz
+        nativeCanvas.drawText("⬆ ${dest.engName}", colCenterX, -pixelH * 0.02f, titlePaint)
+        subPaint.textSize = (mainSz * 0.88f).coerceIn(6.0f, 13.5f)
+        nativeCanvas.drawText("${dest.malName}  ${dest.distKm}", colCenterX, pixelH * 0.28f, subPaint)
+    }
+
+    nativeCanvas.restore()
+}
+
+private fun DrawScope.drawOriented3DSignboard(
+    rig: CameraRig,
+    path: Path,
+    leftVec: Vec3,
+    rightVec: Vec3,
+    bottomY: Float,
+    topY: Float,
+    bgColor: Color,
+    borderColor: Color,
+    lines: List<String>,
+    textColor: Color,
+    titlePaint: Paint,
+    subPaint: Paint
+) {
+    val vBL = Vec3(leftVec.x, bottomY, leftVec.z)
+    val vBR = Vec3(rightVec.x, bottomY, rightVec.z)
+    val vTR = Vec3(rightVec.x, topY, rightVec.z)
+    val vTL = Vec3(leftVec.x, topY, leftVec.z)
+
+    if (!rig.buildClippedQuadPath(path, vBL, vBR, vTR, vTL)) return
+    drawPath(path, bgColor)
+    drawPath(path, borderColor, style = Stroke(width = 2.2f))
+
+    if (lines.isEmpty()) return
+
+    val midY = (bottomY + topY) * 0.5f
+    val midX = (leftVec.x + rightVec.x) * 0.5f
+    val midZ = (leftVec.z + rightVec.z) * 0.5f
+    val pLeft = rig.projectPoint(Vec3(leftVec.x, midY, leftVec.z)) ?: return
+    val pRight = rig.projectPoint(Vec3(rightVec.x, midY, rightVec.z)) ?: return
+    val pTop = rig.projectPoint(Vec3(midX, topY, midZ)) ?: return
+    val pBottom = rig.projectPoint(Vec3(midX, bottomY, midZ)) ?: return
+
+    val pixelW = hypot(pRight.x - pLeft.x, pRight.y - pLeft.y)
+    val pixelH = hypot(pBottom.x - pTop.x, pBottom.y - pTop.y)
+    if (pixelW < 28f || pixelH < 9f) return
+
+    val centerX = (pLeft.x + pRight.x) * 0.5f
+    val centerY = (pTop.y + pBottom.y) * 0.5f
+    var angleDeg = Math.toDegrees(atan2((pRight.y - pLeft.y).toDouble(), (pRight.x - pLeft.x).toDouble())).toFloat()
+    if (angleDeg > 90f) angleDeg -= 180f
+    if (angleDeg < -90f) angleDeg += 180f
+
+    val maxChars = lines.maxOf { it.length }.coerceAtLeast(6)
+    val nativeCanvas = drawContext.canvas.nativeCanvas
+    nativeCanvas.save()
+    nativeCanvas.translate(centerX, centerY)
+    nativeCanvas.rotate(angleDeg)
+
+    titlePaint.textAlign = Paint.Align.CENTER
+    subPaint.textAlign = Paint.Align.CENTER
+
+    if (lines.size == 1) {
+        val textSizePx = min(pixelH * 0.52f, pixelW / (maxChars * 0.62f)).coerceIn(9f, 26f)
+        titlePaint.color = textColor.toArgb()
+        titlePaint.textSize = textSizePx
+        nativeCanvas.drawText(lines[0], 0f, textSizePx * 0.34f, titlePaint)
+    } else {
+        val lineStep = pixelH / (lines.size + 0.5f)
+        val textSizePx = min(lineStep * 0.72f, pixelW / (maxChars * 0.58f)).coerceIn(7.5f, 18f)
+        subPaint.color = textColor.toArgb()
+        subPaint.textSize = textSizePx
+        val startY = -((lines.size - 1) * 0.5f) * lineStep + textSizePx * 0.32f
+        for (i in lines.indices) {
+            nativeCanvas.drawText(lines[i], 0f, startY + i * lineStep, subPaint)
+        }
+    }
+    nativeCanvas.restore()
+}
+
+

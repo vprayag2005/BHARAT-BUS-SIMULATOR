@@ -375,12 +375,15 @@ namespace BharatBusSim.Editor
             // 3. Connected Real-World Thrissur Road Network (Built in Blender from OSM/OSRM)
             ThrissurBlenderRoadBuilder.ApplyToCurrentScene();
 
-            // 5. Regional Landmarks
+            // 5. Regional Landmarks (with all trees and duplicate road rings stripped)
             var landmarksParent = new GameObject("World_Landmarks");
             var landmarksGo = LandmarkBuilder.BuildAllLandmarks(landmarksParent.transform, concreteMat, goldMat, roofMat, wallMat, glassMat);
             SakthanStandFactory.BuildRealisticSakthanStand(landmarksGo.transform);
             SwarajRoundFactory.BuildSwarajRound(landmarksGo.transform, goldMat, roofMat);
             PaliyekkaraTollFactory.Build6LaneTollPlaza(landmarksGo.transform, redSignMat, greenSignMat, concreteMat);
+
+            // Strip any embedded trees or duplicate roads from imported landmark FBXs ("for now no trees, realistic Thrissur roads only")
+            ThrissurBlenderRoadBuilder.RemoveAllTreesInScene();
 
             // 6. Functional Toll Plaza System (Paliyekkara Toll Plaza on NH 544)
             SetupPaliyekkaraTollSystem(redSignMat, greenSignMat, concreteMat);

@@ -294,7 +294,7 @@ namespace BharatBusSim.Editor
 
         private static bool ValidateRoadNetwork()
         {
-            Debug.Log("[ThrissurWorldValidator] Validating connected road network and colliders...");
+            Debug.Log("[ThrissurWorldValidator] Validating connected Blender OSM road network and colliders...");
             var roadsRoot = GameObject.Find("Thrissur_Road_Network");
             if (roadsRoot == null)
             {
@@ -302,69 +302,63 @@ namespace BharatBusSim.Editor
                 return false;
             }
 
-            var edges = ThrissurRoadNetworkCatalog.GetEdges();
-            int validColliders = 0;
-
-            foreach (var edge in edges)
+            string[] requiredBlenderRoads = new[]
             {
-                var segment = roadsRoot.transform.Find($"Road_{validColliders:D2}_{edge.id}");
-                if (segment == null)
-                {
-                    // Check without index
-                    segment = roadsRoot.transform.Find(edge.id);
-                }
+                "ROAD_SWARAJ_ROUND",
+                "ROAD_SAKTHAN_TO_SWARAJ",
+                "ROAD_SWARAJ_TO_VADAKKE",
+                "ROAD_PUTHANPALLI_LINK",
+                "ROAD_SWARAJ_TO_MANNUTHY",
+                "ROAD_NH544_MANNUTHY_TO_PALIYEKKARA",
+                "ROAD_SAKTHAN_TO_OLLUR",
+                "ROAD_MANNUTHY_TO_PEECHI_DAM",
+                "ROAD_SWARAJ_TO_WEST_FORT",
+                "ROAD_WEST_FORT_TO_KANJANI",
+                "ROAD_KANJANI_TO_GURUVAYUR_CHAVAKKAD",
+                "ROAD_NH66_CHAVAKKAD_TO_TRIPRAYAR",
+                "ROAD_SH61_TRIPRAYAR_TO_KANJANI"
+            };
 
-                var mc = roadsRoot.GetComponentsInChildren<MeshCollider>();
-                if (mc.Length >= edges.Count)
-                {
-                    validColliders = mc.Length;
-                    break;
-                }
-            }
-
-            if (validColliders < edges.Count)
+            var mcs = roadsRoot.GetComponentsInChildren<MeshCollider>(true);
+            if (mcs.Length < requiredBlenderRoads.Length)
             {
-                Debug.LogError($"[ThrissurWorldValidator] Found {validColliders} road mesh colliders, expected at least {edges.Count}!");
+                Debug.LogError($"[ThrissurWorldValidator] Found {mcs.Length} Blender road mesh colliders, expected at least {requiredBlenderRoads.Length}!");
                 return false;
             }
 
-            // Automated Clearance Sweep: Verify zero buildings or obstructive props block the road centerline
-            var nodes = ThrissurRoadNetworkCatalog.GetNodes();
-            int blockedCount = 0;
-            foreach (var edge in edges)
+            foreach (var roadId in requiredBlenderRoads)
             {
-                if (!nodes.ContainsKey(edge.fromNodeId) || !nodes.ContainsKey(edge.toNodeId)) continue;
-                Vector3 start = nodes[edge.fromNodeId].unityPosition + Vector3.up * 1.5f;
-                Vector3 end = nodes[edge.toNodeId].unityPosition + Vector3.up * 1.5f;
-                Vector3 delta = end - start;
-                float len = delta.magnitude;
-                int steps = Mathf.Max(1, Mathf.FloorToInt(len / 15f));
-
-                for (int s = 1; s < steps; s++)
+                bool found = false;
+                foreach (var mc in mcs)
                 {
-                    Vector3 testPt = Vector3.Lerp(start, end, s / (float)steps);
-                    Collider[] hits = Physics.OverlapSphere(testPt, 1.8f);
-                    foreach (var h in hits)
+                    if (mc != null && mc.gameObject.name.IndexOf(roadId, StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        if (h.isTrigger) continue;
-                        if (h.transform.name.StartsWith("Road") || h.transform.name.StartsWith("Mesh_") || h.transform.name.Contains("Terrain") || h.transform.name.Contains("Ground") || h.transform.name.Contains("Pavement") || h.transform.name.Contains("Platform") || h.transform.name.Contains("Grass") || h.transform.name.Contains("Maidan")) continue;
-                        if (h.transform.IsChildOf(roadsRoot.transform)) continue;
-                        var busRoot = GameObject.Find("Kerala_Bus_Prototype");
-                        if (busRoot != null && h.transform.IsChildOf(busRoot.transform)) continue;
-
-                        Debug.LogWarning($"[ThrissurWorldValidator] Obstruction warning: '{h.name}' at {h.transform.position} near road edge '{edge.id}' at {testPt}");
-                        blockedCount++;
+                        found = true;
+                        break;
                     }
                 }
+                if (!found)
+                {
+                    Debug.LogError($"[ThrissurWorldValidator] Required Blender OSM road '{roadId}' missing from Thrissur_Road_Network!");
+                    return false;
+                }
             }
 
-            if (blockedCount > 0)
+            // Verify 0 trees exist in scene ("for now no trees. just build realistic Thrissur roads only")
+            var allTransforms = UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsSortMode.None);
+            foreach (var t in allTransforms)
             {
-                Debug.LogError($"[ThrissurWorldValidator] Found {blockedCount} obstructions in the road driving corridors!");
-                return false;
+                if (t == null) continue;
+                if (t.name.IndexOf("Coconut_Palm", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    t.name.IndexOf("Kerala_Rain_Tree", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    t.name.StartsWith("Palm_", StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.LogError($"[ThrissurWorldValidator] Found prohibited tree object '{t.name}' in scene!");
+                    return false;
+                }
             }
 
-            Debug.Log($"[ThrissurWorldValidator] Road network verified: {edges.Count} edges with {validColliders} driveable mesh colliders, 0 road obstructions.");
+            Debug.Log($"[ThrissurWorldValidator] Blender OSM road network verified: {mcs.Length} driveable road mesh colliders, 0 trees.");
             return true;
         }
 

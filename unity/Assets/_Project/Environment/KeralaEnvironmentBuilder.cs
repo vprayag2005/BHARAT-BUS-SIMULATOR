@@ -11,6 +11,8 @@ namespace BharatBusSim.Environment
     /// </summary>
     public static class KeralaEnvironmentBuilder
     {
+        public static bool EnableTrees = false;
+
         public static GameObject BuildEnvironment(Transform parent, Material grassMat, Material waterMat, Material sandMat, Material woodMat, Material palmLeafMat, Material wallMat, Material roofMat)
         {
             var envGo = new GameObject("Kerala_Environment_Scenery");
@@ -31,8 +33,11 @@ namespace BharatBusSim.Environment
             BuildCoastalBeach(envGo.transform, "Chavakkad_Beach_Shoreline", new Vector3(-4550f, 0.05f, 1050f), sandMat, waterMat);
             BuildCoastalBeach(envGo.transform, "Triprayar_Beach_Shoreline", new Vector3(-2300f, 0.05f, -2250f), sandMat, waterMat);
 
-            // 4. Coconut Palm Groves & Sprawling Tropical Trees
-            BuildVegetationClusters(envGo.transform, woodMat, palmLeafMat, grassMat);
+            // 4. Trees disabled ("for now no trees. just build realistic Thrissur roads only")
+            if (EnableTrees)
+            {
+                BuildVegetationClusters(envGo.transform, woodMat, palmLeafMat, grassMat);
+            }
 
             // 5. Authentic Kerala Roadside Commercial Architecture
             BuildRoadsideArchitecture(envGo.transform, wallMat, roofMat, concreteMat: wallMat);

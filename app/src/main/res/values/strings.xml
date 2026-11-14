@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">Bharat Bus Simulator</string>
+    <string name="hud_wallet_label">WALLET</string>
+    <string name="hud_speed_unit">KM/H</string>
+    <string name="hud_diesel_label">DIESEL</string>
+    <string name="hud_air_brake_label">AIR BRAKE</string>
+    <string name="hud_park_brake">PARK BRAKE</string>
+    <string name="hud_gas">GAS</string>
+    <string name="hud_brake">BRAKE</string>
+    <string name="hud_horn">HORN</string>
+    <string name="hud_beam">BEAM</string>
+    <string name="hud_wiper">WIPER</string>
+    <string name="hud_hazard">HAZARD</string>
+    <string name="hud_rear_cam">REAR</string>
+    <string name="hud_routes_btn">THRISSUR OSM ROUTES</string>
+    <string name="hud_reset_btn">RESET BUS</string>
+    <string name="no_trees_badge">BLENDER OSM ROADS • NO TREES</string>
+</resources>

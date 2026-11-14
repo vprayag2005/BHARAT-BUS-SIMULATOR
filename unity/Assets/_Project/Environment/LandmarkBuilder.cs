@@ -230,8 +230,14 @@ namespace BharatBusSim.Environment
             var cpr = gatePillarR.GetComponent<Collider>();
             if (cpr != null) UnityEngine.Object.DestroyImmediate(cpr);
 
-            // Exit Gate Welcome Header Signboard (Elevated to 7.8m height)
-            CreatePlatformSign(standGo.transform, new Vector3(12.0f, 7.8f, 31.3f), "ശക്തൻ തമ്പുരാൻ ബസ് സ്റ്റാൻഡ് — തൃശൂർ\nSAKTHAN THAMPURAN BUS STAND, THRISSUR");
+            // Exit Gate Welcome & Exit Header Signboard (Elevated to 7.8m height)
+            CreatePlatformSign(standGo.transform, new Vector3(12.0f, 7.8f, 31.3f), "▲ STAND EXIT • പുറത്തേക്ക് — TO M.O. ROAD & SWARAJ ROUND ▲\nSAKTHAN THAMPURAN BUS STAND, THRISSUR");
+
+            // Main Terminal Concourse Fascia Banner above Bay 01
+            CreatePlatformSign(standGo.transform, new Vector3(12.0f, 6.2f, 14.0f), "ശക്തൻ തമ്പുരാൻ ബസ് സ്റ്റാൻഡ് — തൃശ്ശൂർ\nSAKTHAN THAMPURAN BUS STAND • BAY 01: SWARAJ ROUND");
+
+            // Dedicated Stand Entry Gate Arch & Signboard
+            CreatePlatformSign(standGo.transform, new Vector3(-2.0f, 7.2f, 31.3f), "▼ STAND ENTRY • പ്രവേശനം — SAKTHAN TERMINAL BAYS 01–12 ▼\nWELCOME TO SAKTHAN THAMPURAN STAND");
 
             // Dedicated Player Starting Bay Marker
             var spawnSlot = new GameObject("Spawn_Bay_Slot_1");

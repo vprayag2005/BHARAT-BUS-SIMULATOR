@@ -8,8 +8,21 @@ using BharatBusSim.UI;
 
 namespace BharatBusSim.Editor
 {
+    /// <summary>
+    /// Factory for the Hino RM 2 Rear-Engine Intercity AC Luxury Coach.
+    /// Source URL : https://www.cgtrader.com/free-3d-models/vehicle/bus/hino-rm-2-bus
+    /// Creator    : asrafullislamsiam (CGTrader)
+    /// License    : CGTrader Royalty Free License (No AI)
+    ///              Permits integration into games/interactive 3D applications;
+    ///              prohibits standalone redistribution of raw 3D files and AI training usage.
+    /// </summary>
     public static class HinoBusFactory
     {
+        public const string AssetTitle = "Hino RM 2 Bus";
+        public const string AssetCreator = "asrafullislamsiam";
+        public const string AssetSourceUrl = "https://www.cgtrader.com/free-3d-models/vehicle/bus/hino-rm-2-bus";
+        public const string AssetLicense = "CGTrader Royalty Free License (No AI)";
+
         public const string FbxPath = "Assets/_Project/Vehicles/Models/Hino/HINO_RM2.fbx";
         public const string WheelsFbxPath = "Assets/_Project/Vehicles/Models/BUS_ECOLINE.fbx";
 

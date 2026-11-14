@@ -10,7 +10,7 @@ namespace BharatBusSim.Editor
     /// <summary>
     /// Replaces all legacy/modular roads in 03_Thrissur_RealisticWorld.unity with
     /// the real-world OpenStreetMap Thrissur road network built in Blender.
-    /// Removes all trees and ensures a clean, non-magenta ground plane.
+    /// Removes all trees and duplicate road meshes, and ensures a clean ground plane.
     /// </summary>
     public static class ThrissurBlenderRoadBuilder
     {
@@ -30,9 +30,10 @@ namespace BharatBusSim.Editor
             }
 
             ApplyToCurrentScene();
+            RemoveAllTreesInScene();
             EditorSceneManager.SaveScene(scene, ScenePath);
             AssetDatabase.SaveAssets();
-            Debug.Log("[ThrissurBlenderRoadBuilder] Saved 03_Thrissur_RealisticWorld.unity with new Blender Thrissur roads.");
+            Debug.Log("[ThrissurBlenderRoadBuilder] Saved 03_Thrissur_RealisticWorld.unity with new Blender Thrissur roads (0 trees).");
         }
 
         public static void RunFromCommandLine()
@@ -51,13 +52,15 @@ namespace BharatBusSim.Editor
 
         public static GameObject ApplyToCurrentScene()
         {
-            // 1. Remove all old roads
+            // 1. Remove all old/legacy/modular road roots
             string[] oldRoadRoots =
             {
                 "Mannuthy_Ollur_RoadKit_Corridor",
                 "World_Roads",
                 "Thrissur_Road_Network",
-                "Kerala_Environment_Scenery"
+                "Kerala_Environment_Scenery",
+                "ProvingGround_Track",
+                "Vegetation_Clusters"
             };
             foreach (var rootName in oldRoadRoots)
             {
@@ -70,10 +73,10 @@ namespace BharatBusSim.Editor
                 }
             }
 
-            // 2. Remove any trees anywhere in the scene ("for now no trees")
+            // 2. Remove any trees or duplicate legacy road meshes anywhere in the scene
             RemoveAllTreesInScene();
 
-            // 3. Ensure clean non-magenta ground plane
+            // 3. Ensure clean non-magenta ground plane covering full Thrissur district network
             EnsureCleanGroundPlane();
 
             // 4. Import & instantiate Blender Thrissur Roads FBX
@@ -98,7 +101,7 @@ namespace BharatBusSim.Editor
             instance.transform.localRotation = Quaternion.identity;
             instance.transform.localScale = Vector3.one;
 
-            // 5. Setup URP Lit Materials & PhysicsMaterial Colliders
+            // 5. Setup URP Lit Materials & PhysicsMaterial Colliders on every Blender road corridor
             var matMap = SetupRoadMaterials();
             var physMat = GetOrCreateRoadPhysicsMaterial();
 
@@ -133,7 +136,7 @@ namespace BharatBusSim.Editor
             return worldRoads;
         }
 
-        private static void RemoveAllTreesInScene()
+        public static void RemoveAllTreesInScene()
         {
             var allTransforms = UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsSortMode.None);
             var toDestroy = new List<GameObject>();
@@ -141,12 +144,34 @@ namespace BharatBusSim.Editor
             {
                 if (t == null) continue;
                 string n = t.gameObject.name;
-                if (n.Contains("Coconut_Palm", StringComparison.OrdinalIgnoreCase) ||
-                    n.Contains("Kerala_Rain_Tree", StringComparison.OrdinalIgnoreCase) ||
-                    n.StartsWith("Palm_", StringComparison.OrdinalIgnoreCase) ||
-                    n.StartsWith("Tree_", StringComparison.OrdinalIgnoreCase))
+                if (n.IndexOf("Coconut_Palm", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    n.IndexOf("Kerala_Rain_Tree", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    n.IndexOf("Vegetation_Clusters", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    n.StartsWith("Palm", StringComparison.OrdinalIgnoreCase) ||
+                    n.StartsWith("Tree", StringComparison.OrdinalIgnoreCase) ||
+                    n.StartsWith("Frond_", StringComparison.OrdinalIgnoreCase) ||
+                    n.StartsWith("Canopy_Dome", StringComparison.OrdinalIgnoreCase) ||
+                    n.Equals("Road_Ring_Asphalt", StringComparison.OrdinalIgnoreCase) ||
+                    n.Equals("Roads_Radial", StringComparison.OrdinalIgnoreCase))
                 {
                     toDestroy.Add(t.gameObject);
+                    continue;
+                }
+
+                var mr = t.GetComponent<MeshRenderer>();
+                if (mr != null && mr.sharedMaterials != null)
+                {
+                    foreach (var m in mr.sharedMaterials)
+                    {
+                        if (m == null) continue;
+                        if (m.name.IndexOf("Palm", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            m.name.IndexOf("Leaf", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            m.name.IndexOf("Trunk", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            toDestroy.Add(t.gameObject);
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -156,7 +181,7 @@ namespace BharatBusSim.Editor
             }
             if (toDestroy.Count > 0)
             {
-                Debug.Log($"[ThrissurBlenderRoadBuilder] Removed {toDestroy.Count} tree objects.");
+                Debug.Log($"[ThrissurBlenderRoadBuilder] Removed {toDestroy.Count} tree / legacy road objects.");
             }
         }
 
@@ -180,14 +205,14 @@ namespace BharatBusSim.Editor
                 AssetDatabase.CreateAsset(groundMat, groundMatPath);
             }
             groundMat.shader = litShader;
-            groundMat.color = new Color(0.32f, 0.36f, 0.26f); // Muted natural Kerala earth/grass tone
+            groundMat.color = new Color(0.32f, 0.36f, 0.26f);
             if (groundMat.HasProperty("_Smoothness")) groundMat.SetFloat("_Smoothness", 0.05f);
             EditorUtility.SetDirty(groundMat);
 
             var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
             ground.name = "Thrissur_Ground_Base";
-            ground.transform.position = new Vector3(400f, -0.02f, -800f);
-            ground.transform.localScale = new Vector3(600f, 1f, 600f); // 6km x 6km
+            ground.transform.position = new Vector3(-400f, -0.02f, -500f);
+            ground.transform.localScale = new Vector3(1200f, 1f, 1200f); // 12km x 12km regional base
             ground.GetComponent<Renderer>().sharedMaterial = groundMat;
             var col = ground.GetComponent<Collider>();
             if (col != null)

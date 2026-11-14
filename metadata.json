@@ -1,0 +1,8 @@
+{
+  "name": "Bharat Bus Simulator",
+  "description": "3D Kerala bus driving simulator featuring realistic OpenStreetMap and Blender-built Thrissur road corridors.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

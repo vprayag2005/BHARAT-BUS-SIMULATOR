@@ -14,7 +14,7 @@ namespace BharatBusSim.Editor
     {
         public const string FbxPath = "Assets/_Project/Environment/SwarajRound/Thrissur_Swaraj_Round.fbx";
         public const string MaterialsDir = "Assets/_Project/Environment/SwarajRound/Materials";
-        public static readonly Vector3 SwarajPosition = new Vector3(0f, 0f, 350f);
+        public static readonly Vector3 SwarajPosition = new Vector3(0f, 0f, 14f);
 
         public static GameObject BuildSwarajRound(Transform parent, Material goldMat, Material tileMat)
         {
@@ -49,6 +49,7 @@ namespace BharatBusSim.Editor
             }
 
             ConfigureColliders(roundGo);
+            ThrissurBlenderRoadBuilder.RemoveAllTreesInScene();
 
             Debug.Log($"[SwarajRoundFactory] Swaraj Round and Vadakkumnathan Temple successfully instantiated at {SwarajPosition}.");
             return roundGo;
