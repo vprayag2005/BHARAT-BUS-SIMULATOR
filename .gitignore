@@ -110,6 +110,9 @@ $RECYCLE.BIN/
 .env
 .env.*
 *.secret
+.gradle/
+local.properties
+debug.keystore
 
 # Tooling Cache
 .freebuff/
