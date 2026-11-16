@@ -26,7 +26,9 @@ namespace BharatBusSim.Editor
         public const string FbxPath = "Assets/_Project/Vehicles/Models/Hino/HINO_RM2.fbx";
         public const string WheelsFbxPath = "Assets/_Project/Vehicles/Models/BUS_ECOLINE.fbx";
 
-        public const string LiveryTexPath = "Assets/_Project/Vehicles/Textures/Hino/Rm 2 paint .png";
+        public const string LiveryTexPath = "Assets/_Project/Vehicles/Textures/Hino/Eagle paint test.png";
+        public const string LiveryAoTexPath = "Assets/_Project/Vehicles/Textures/Hino/Rm 2 paint .png";
+        public const string EagleGlassTexPath = "Assets/_Project/Vehicles/Textures/Hino/Eagle glass.png";
         public const string FrontGlassTexPath = "Assets/_Project/Vehicles/Textures/Hino/FRONT GLASS.png";
         public const string LightsTexPath = "Assets/_Project/Vehicles/Textures/Hino/Lights0012_350.jpg";
         public const string SpeedoTexPath = "Assets/_Project/Vehicles/Textures/Hino/Main gear kmh.png";
@@ -275,6 +277,7 @@ namespace BharatBusSim.Editor
             if (litShader == null) litShader = Shader.Find("Standard");
 
             Texture2D liveryTex = AssetDatabase.LoadAssetAtPath<Texture2D>(LiveryTexPath);
+            Texture2D eagleGlassTex = AssetDatabase.LoadAssetAtPath<Texture2D>(EagleGlassTexPath);
             Texture2D frontGlassTex = AssetDatabase.LoadAssetAtPath<Texture2D>(FrontGlassTexPath);
             Texture2D lightsTex = AssetDatabase.LoadAssetAtPath<Texture2D>(LightsTexPath);
             Texture2D speedoTex = AssetDatabase.LoadAssetAtPath<Texture2D>(SpeedoTexPath);
@@ -304,7 +307,8 @@ namespace BharatBusSim.Editor
             var glassMat = new Material(litShader)
             {
                 name = "Mat_Hino_Glass",
-                color = new Color(0.12f, 0.20f, 0.28f, 0.32f)
+                mainTexture = eagleGlassTex,
+                color = new Color(0.18f, 0.24f, 0.32f, 0.55f)
             };
             glassMat.SetFloat("_Smoothness", 0.95f);
             glassMat.SetFloat("_Surface", 1.0f);
@@ -469,15 +473,22 @@ namespace BharatBusSim.Editor
 
             var leatherSeatsMat = new Material(litShader)
             {
-                name = "Mat_Hino_LeatherSeats",
-                color = new Color(0.35f, 0.12f, 0.12f) // Luxury Kerala coach burgundy upholstery
+                name = "Mat_Hino_LeatherSeats_Cream",
+                color = new Color(0.86f, 0.78f, 0.63f) // Luxury cream headrest & side bolster upholstery
             };
             leatherSeatsMat.SetFloat("_Smoothness", 0.45f);
+
+            var seatCenterBrownMat = new Material(litShader)
+            {
+                name = "Mat_Hino_LeatherSeats_Brown",
+                color = new Color(0.24f, 0.15f, 0.14f) // Dark chocolate-brown seat center insert
+            };
+            seatCenterBrownMat.SetFloat("_Smoothness", 0.40f);
 
             var curtainsMat = new Material(litShader)
             {
                 name = "Mat_Hino_Curtains",
-                color = new Color(0.65f, 0.50f, 0.20f) // Golden amber luxury curtains
+                color = new Color(0.85f, 0.13f, 0.15f) // Crimson-red scalloped front windshield curtains
             };
             curtainsMat.SetFloat("_Smoothness", 0.25f);
 
@@ -581,7 +592,19 @@ namespace BharatBusSim.Editor
                 }
                 else if (name.StartsWith("cube") || name.Contains("seat") || name.Contains("leather") || name == "middle" || name == "leg rest")
                 {
-                    mr.sharedMaterial = leatherSeatsMat;
+                    var mats = mr.sharedMaterials;
+                    if (mats != null && mats.Length >= 2)
+                    {
+                        mr.sharedMaterials = new Material[] { leatherSeatsMat, seatCenterBrownMat };
+                    }
+                    else
+                    {
+                        mr.sharedMaterial = leatherSeatsMat;
+                    }
+                }
+                else if (name == "plane.036")
+                {
+                    mr.sharedMaterial = curtainsMat;
                 }
                 else if (name.Contains("switch") || name.Contains("switcj") || name.Contains("screw"))
                 {

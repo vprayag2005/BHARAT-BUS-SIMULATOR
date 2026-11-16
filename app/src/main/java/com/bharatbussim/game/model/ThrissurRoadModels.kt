@@ -1,6 +1,7 @@
 package com.bharatbussim.game.model
 
 import android.content.Context
+import androidx.compose.runtime.Immutable
 import org.json.JSONObject
 import kotlin.math.abs
 import kotlin.math.acos
@@ -8,6 +9,7 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
+@Immutable
 data class Vec3(val x: Float, val y: Float, val z: Float) {
     operator fun plus(o: Vec3) = Vec3(x + o.x, y + o.y, z + o.z)
     operator fun minus(o: Vec3) = Vec3(x - o.x, y - o.y, z - o.z)
@@ -21,6 +23,7 @@ data class Vec3(val x: Float, val y: Float, val z: Float) {
     }
 }
 
+@Immutable
 data class RoadFrame(
     val pos: Vec3,
     val tangent: Vec3,
@@ -33,6 +36,7 @@ data class RoadFrame(
     val centerCovered: Boolean = false
 )
 
+@Immutable
 data class ThrissurOsmRoad(
     val id: String,
     val name: String,
@@ -55,6 +59,7 @@ data class ThrissurOsmRoad(
  * for Pass 1 (Shoulders), Pass 2 (Asphalt Bellmouth), and Pass 3 (Curved White Edge Fillets)
  * with 0.000m gaps.
  */
+@Immutable
 data class RoadJunctionBellmouth(
     val branchRoadId: String,
     val isBranchStart: Boolean,

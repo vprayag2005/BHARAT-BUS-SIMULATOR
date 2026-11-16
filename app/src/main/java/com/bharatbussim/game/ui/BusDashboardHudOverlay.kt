@@ -1,14 +1,12 @@
 package com.bharatbussim.game.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,33 +22,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.Highlight
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -61,20 +44,13 @@ import com.bharatbussim.game.model.TransmissionGear
 import com.bharatbussim.game.ui.theme.HudAmber
 import com.bharatbussim.game.ui.theme.HudCyan
 import com.bharatbussim.game.ui.theme.HudEmerald
-import com.bharatbussim.game.ui.theme.HudPanelSurface
 import com.bharatbussim.game.ui.theme.HudRed
 import com.bharatbussim.game.ui.theme.HudTextMuted
 import com.bharatbussim.game.ui.theme.HudTextPrimary
 import com.bharatbussim.game.viewmodel.SimUiState
 import com.bharatbussim.game.viewmodel.ThrissurSimViewModel
 import java.util.Locale
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.hypot
-import kotlin.math.roundToInt
-import kotlin.math.sin
 
 @Composable
 fun BusDashboardHudOverlay(
@@ -86,384 +62,313 @@ fun BusDashboardHudOverlay(
         BackHandler {
             viewModel.setRouteModalVisible(false)
         }
+    } else if (state.isPaused) {
+        BackHandler {
+            viewModel.setPaused(false)
+        }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
-        // ==========================================
-        // TOP ROW: VEHICLE SYSTEMS & RADAR MINIMAP (Clean 3D Center View — No Status Text Clutter, No Rear Button)
-        // ==========================================
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
-        ) {
-            // Top Left: Route Picker, Cruise Assist, Headlights, Reset & Hazards
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+        // Adaptive vertical scale so everything fits crisply from 340dp phones to large tablets
+        val availH = maxHeight
+        val scale = (availH / 410.dp).coerceIn(0.80f, 1.15f)
+
+        val topBtnSize = (46.dp * scale)
+        val gridBtnW = (54.dp * scale)
+        val gridBtnH = (44.dp * scale)
+        val gridGap = (6.dp * scale)
+        val wheelSize = (156.dp * scale)
+
+        val mapW = (182.dp * scale)
+        val mapH = (100.dp * scale)
+
+        val parkBtnW = (56.dp * scale)
+        val parkBtnH = (48.dp * scale)
+        val shifterW = (56.dp * scale)
+        val shifterH = (96.dp * scale)
+
+        val brakeW = (76.dp * scale)
+        val brakeH = (86.dp * scale)
+        val gasW = (62.dp * scale)
+        val gasH = (122.dp * scale)
+
+        if (state.hudHidden) {
+            // Minimal restore button in top-left when HUD is hidden
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .alpha(0.55f)
             ) {
-                HudActionSquareButton(
-                    icon = Icons.Default.Map,
-                    label = "ROUTES",
-                    active = state.showRouteModal,
-                    activeColor = HudAmber,
-                    testTag = "open_routes_button",
-                    onClick = { viewModel.setRouteModalVisible(true) }
-                )
-
-                HudActionSquareButton(
-                    icon = Icons.Default.Navigation,
-                    label = if (state.autoSteerAssist) "AUTO ON" else "CRUISE",
-                    active = state.autoSteerAssist,
-                    activeColor = HudEmerald,
-                    testTag = "cruise_assist_button",
-                    onClick = { viewModel.toggleAutoPilot() }
-                )
-
-                HudActionSquareButton(
-                    icon = Icons.Default.Highlight,
-                    label = "BEAM",
-                    active = state.headlightsOn,
-                    activeColor = HudAmber,
-                    testTag = "beam_toggle_button",
-                    onClick = { viewModel.toggleHeadlights() }
-                )
-
-                HudActionSquareButton(
-                    icon = Icons.Default.Refresh,
-                    label = "STAND",
+                HudGlassSquareButton(
+                    width = topBtnSize,
+                    height = topBtnSize,
+                    cornerRadius = 11.dp,
                     active = false,
-                    activeColor = HudCyan,
-                    testTag = "reset_bus_button",
-                    onClick = { viewModel.resetBusToActiveCorridorStart() }
-                )
+                    contentDesc = "Show Controls",
+                    testTag = "toggle_hud_button",
+                    onClick = { viewModel.toggleHudHidden() }
+                ) { tint -> drawEyeSlashIcon(tint) }
+            }
+        } else {
+            // ==========================================
+            // LEFT COLUMN: PAUSE + EYE | 3-ROW ICON GRID | STEERING WHEEL
+            // ==========================================
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.Start
+            ) {
+                // Top-Left: Pause + Eye-Slash
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HudGlassSquareButton(
+                        width = topBtnSize,
+                        height = topBtnSize,
+                        cornerRadius = 11.dp,
+                        active = state.isPaused,
+                        contentDesc = "Pause Menu",
+                        testTag = "pause_button",
+                        onClick = { viewModel.togglePause() }
+                    ) { tint -> drawPauseIcon(tint) }
 
-                HudActionSquareButton(
-                    icon = Icons.Default.Warning,
-                    label = "HAZARD",
-                    active = state.hazardsOn,
-                    activeColor = HudRed,
-                    testTag = "hazard_toggle_button",
-                    onClick = { viewModel.toggleHazards() }
+                    HudGlassSquareButton(
+                        width = topBtnSize,
+                        height = topBtnSize,
+                        cornerRadius = 11.dp,
+                        active = false,
+                        contentDesc = "Hide Controls",
+                        testTag = "toggle_hud_button",
+                        onClick = { viewModel.toggleHudHidden() }
+                    ) { tint -> drawEyeSlashIcon(tint) }
+                }
+
+                // Mid-Left 8-Button Cluster (3 + 3 + 2)
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(gridGap),
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    // Row 1: Camera, Wiper, High Beam
+                    Row(horizontalArrangement = Arrangement.spacedBy(gridGap)) {
+                        HudGlassSquareButton(
+                            width = gridBtnW,
+                            height = gridBtnH,
+                            cornerRadius = 10.dp,
+                            active = false,
+                            contentDesc = "Switch Camera",
+                            testTag = "camera_cycle_button",
+                            onClick = { viewModel.cycleCameraMode() }
+                        ) { tint -> drawCameraIcon(tint) }
+
+                        HudGlassSquareButton(
+                            width = gridBtnW,
+                            height = gridBtnH,
+                            cornerRadius = 10.dp,
+                            active = state.wipersOn,
+                            activeTint = ActiveOrangeStart,
+                            contentDesc = "Windshield Wipers",
+                            testTag = "wiper_toggle_button",
+                            onClick = { viewModel.toggleWipers() }
+                        ) { tint -> drawWiperIcon(tint) }
+
+                        HudGlassSquareButton(
+                            width = gridBtnW,
+                            height = gridBtnH,
+                            cornerRadius = 10.dp,
+                            active = state.headlightsOn,
+                            activeTint = ActiveOrangeStart,
+                            contentDesc = "Headlights",
+                            testTag = "beam_toggle_button",
+                            onClick = { viewModel.toggleHeadlights() }
+                        ) { tint -> drawHighBeamIcon(tint) }
+                    }
+
+                    // Row 2: Hazard Warning, Air Horn, Single Door
+                    Row(horizontalArrangement = Arrangement.spacedBy(gridGap)) {
+                        val hazardLit = state.hazardsOn && state.blinkerPhase
+                        HudGlassSquareButton(
+                            width = gridBtnW,
+                            height = gridBtnH,
+                            cornerRadius = 10.dp,
+                            active = state.hazardsOn,
+                            activeTint = if (hazardLit) ActiveRedGlow else ActiveOrangeStart,
+                            contentDesc = "Hazard Lights",
+                            testTag = "hazard_toggle_button",
+                            onClick = { viewModel.toggleHazards() }
+                        ) { tint -> drawHazardTriangleIcon(tint) }
+
+                        HudGlassSquareButton(
+                            width = gridBtnW,
+                            height = gridBtnH,
+                            cornerRadius = 10.dp,
+                            active = state.hornActive,
+                            activeTint = ActiveOrangeStart,
+                            contentDesc = "Air Horn",
+                            testTag = "horn_button",
+                            onClick = { viewModel.triggerAirHorn() }
+                        ) { tint -> drawBugleHornIcon(tint) }
+
+                        HudGlassSquareButton(
+                            width = gridBtnW,
+                            height = gridBtnH,
+                            cornerRadius = 10.dp,
+                            active = state.doorsOpen,
+                            activeTint = ActiveOrangeStart,
+                            contentDesc = "Passenger Door",
+                            testTag = "door_toggle_button",
+                            onClick = { viewModel.toggleDoors() }
+                        ) { tint -> drawSingleDoorIcon(tint) }
+                    }
+
+                    // Row 3: Left Indicator, Right Indicator
+                    Row(horizontalArrangement = Arrangement.spacedBy(gridGap)) {
+                        val leftLit = (state.turnLeftOn || state.hazardsOn) && state.blinkerPhase
+                        HudGlassSquareButton(
+                            width = gridBtnW,
+                            height = gridBtnH,
+                            cornerRadius = 10.dp,
+                            active = leftLit,
+                            activeTint = ActiveOrangeStart,
+                            contentDesc = "Left Indicator",
+                            testTag = "turn_left_button",
+                            onClick = { viewModel.toggleTurnLeft() }
+                        ) { tint -> drawIndicatorArrowIcon(tint, isLeft = true) }
+
+                        val rightLit = (state.turnRightOn || state.hazardsOn) && state.blinkerPhase
+                        HudGlassSquareButton(
+                            width = gridBtnW,
+                            height = gridBtnH,
+                            cornerRadius = 10.dp,
+                            active = rightLit,
+                            activeTint = ActiveOrangeStart,
+                            contentDesc = "Right Indicator",
+                            testTag = "turn_right_button",
+                            onClick = { viewModel.toggleTurnRight() }
+                        ) { tint -> drawIndicatorArrowIcon(tint, isLeft = false) }
+                    }
+                }
+
+                // Bottom-Left: Realistic 3D-Styled Steering Wheel
+                RealisticSteeringWheel(
+                    wheelAngleDeg = state.steeringWheelAngleDeg,
+                    sizeDp = wheelSize,
+                    onSteerDeltaDeg = { viewModel.steerByDeltaDeg(it) },
+                    onSteerRelease = { viewModel.releaseSteeringWheel() },
+                    onHornClick = { viewModel.triggerSteeringHorn() }
                 )
             }
 
-            // Top Right: Camera Cycle Button + Live OSM Radar Minimap (No Rear View Button)
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                HudActionSquareButton(
-                    icon = Icons.Default.Cameraswitch,
-                    label = "CAM ${state.cameraMode.ordinal + 1}/4",
-                    active = true,
-                    activeColor = HudAmber,
-                    testTag = "camera_cycle_button",
-                    onClick = { viewModel.cycleCameraMode() }
-                )
+            // ==========================================
+            // BOTTOM-CENTER: SPEEDOMETER, RPM, GEAR & FUEL PILL
+            // ==========================================
+            BottomSpeedFuelBar(
+                speedKmh = state.speedKmh,
+                rpm = state.engineRpm,
+                gear = state.gear,
+                isParkBrakeActive = state.isParkBrakeActive,
+                displayGearNumber = state.displayGearNumber,
+                fuelLiters = state.fuelLiters,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 2.dp)
+            )
 
-                ThrissurRadarMinimap(
+            // ==========================================
+            // RIGHT COLUMN: KERALA MINIMAP | ((P)) + D/R | BRAKE & GAS PEDALS
+            // ==========================================
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.End
+            ) {
+                // Top-Right: "Kerala" GPS Minimap
+                KeralaGpsMinimap(
                     state = state,
+                    width = mapW,
+                    height = mapH,
                     onZoomIn = { viewModel.adjustMinimapZoom(0.35f) },
                     onZoomOut = { viewModel.adjustMinimapZoom(-0.35f) },
                     onTapMap = { viewModel.setRouteModalVisible(true) }
                 )
+
+                // Mid-Right: Parking Brake ((P)) + D/R Gear Shifter
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(8.dp * scale)
+                ) {
+                    HudGlassSquareButton(
+                        width = parkBtnW,
+                        height = parkBtnH,
+                        cornerRadius = 11.dp,
+                        active = state.isParkBrakeActive,
+                        activeTint = ActiveRedGlow,
+                        contentDesc = "Parking Brake",
+                        testTag = "park_brake_button",
+                        onClick = { viewModel.toggleParkBrake() }
+                    ) { tint -> drawParkBrakeSymbol(tint) }
+
+                    RightGearShifterPill(
+                        selectedGear = state.gear,
+                        width = shifterW,
+                        height = shifterH,
+                        onSelectGear = { viewModel.selectGear(it) }
+                    )
+                }
+
+                // Bottom-Right: Realistic Metallic Brake & Gas Pedals
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp * scale),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    RealisticMetalPedal(
+                        isGasPedal = false,
+                        active = state.brakeInput > 0.05f,
+                        width = brakeW,
+                        height = brakeH,
+                        testTag = "brake_pedal_button",
+                        onPressChanged = { viewModel.setBrake(it) }
+                    )
+
+                    RealisticMetalPedal(
+                        isGasPedal = true,
+                        active = state.throttleInput > 0.05f,
+                        width = gasW,
+                        height = gasH,
+                        testTag = "gas_pedal_button",
+                        onPressChanged = { viewModel.setThrottle(it) }
+                    )
+                }
             }
         }
 
         // ==========================================
-        // BOTTOM ROW: CLEAN POWER STEERING WHEEL, CONSOLE & UNOBSTRUCTED PEDALS
+        // MODAL: PAUSE & QUICK ACTIONS MENU
         // ==========================================
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Bottom
-        ) {
-            // Bottom Left: Clean Commercial Coach Power Steering Wheel (No Dots, No Angle Badge)
-            VirtualCoachSteeringWheel(
-                wheelAngleDeg = state.steeringWheelAngleDeg,
-                onSteerDeltaDeg = { viewModel.steerByDeltaDeg(it) },
-                onSteerRelease = { viewModel.releaseSteeringWheel() },
-                onHornClick = { viewModel.triggerAirHorn() }
+        if (state.isPaused && !state.showRouteModal) {
+            PauseMenuModal(
+                state = state,
+                onResume = { viewModel.setPaused(false) },
+                onOpenRoutes = {
+                    viewModel.setPaused(false)
+                    viewModel.setRouteModalVisible(true)
+                },
+                onToggleCruise = { viewModel.toggleAutoPilot() },
+                onToggleShowcase = { viewModel.toggleFrontShowcaseView() },
+                onResetStand = {
+                    viewModel.resetBusToActiveCorridorStart()
+                    viewModel.setPaused(false)
+                }
             )
-
-            // Bottom Center: Turn Signals + Gear Selector (P, R, N, D) + Park Brake + Digital Speedometer
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // Left Blinker Button
-                    val leftActive = state.turnLeftOn && state.blinkerPhase
-                    Box(
-                        modifier = Modifier
-                            .size(width = 48.dp, height = 48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (leftActive) HudAmber.copy(alpha = 0.32f) else HudPanelSurface)
-                            .border(
-                                1.5.dp,
-                                if (state.turnLeftOn) HudAmber else Color(0x26FFFFFF),
-                                RoundedCornerShape(12.dp)
-                            )
-                            .clickable { viewModel.toggleTurnLeft() }
-                            .testTag("turn_left_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "◀",
-                            color = if (state.turnLeftOn) HudAmber else HudTextPrimary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
-
-                    // Gear Selector Panel (P, R, N, D)
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(HudPanelSurface)
-                            .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(14.dp))
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                            .testTag("gear_selector_panel"),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        TransmissionGear.entries.forEach { g ->
-                            val selected = state.gear == g
-                            Box(
-                                modifier = Modifier
-                                    .size(width = 44.dp, height = 42.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(
-                                        if (selected) {
-                                            Brush.verticalGradient(listOf(HudAmber, Color(0xFFD97706)))
-                                        } else {
-                                            Brush.verticalGradient(
-                                                listOf(Color(0xFF1E2633), Color(0xFF121822))
-                                            )
-                                        }
-                                    )
-                                    .border(
-                                        1.dp,
-                                        if (selected) Color(0xFFFDE68A) else Color(0x22FFFFFF),
-                                        RoundedCornerShape(10.dp)
-                                    )
-                                    .clickable { viewModel.selectGear(g) }
-                                    .testTag("gear_button_${g.code.lowercase(Locale.ROOT)}"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = g.code,
-                                    color = if (selected) Color(0xFF0F172A) else HudTextMuted,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 15.sp
-                                )
-                            }
-                        }
-                    }
-
-                    // Dedicated Pneumatic Park Brake Button (Inline in Center Console)
-                    Box(
-                        modifier = Modifier
-                            .size(width = 56.dp, height = 48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                if (state.isParkBrakeActive) HudRed.copy(alpha = 0.28f) else HudPanelSurface
-                            )
-                            .border(
-                                1.5.dp,
-                                if (state.isParkBrakeActive) HudRed else Color(0x45EF4444),
-                                RoundedCornerShape(12.dp)
-                            )
-                            .clickable { viewModel.toggleParkBrake() }
-                            .testTag("park_brake_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .border(1.8.dp, HudRed, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "P",
-                                    color = HudRed,
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Black
-                                )
-                            }
-                            Text(
-                                text = if (state.isParkBrakeActive) "LOCKED" else "PARK",
-                                color = if (state.isParkBrakeActive) HudRed else HudTextMuted,
-                                fontSize = 7.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    // Right Blinker Button
-                    val rightActive = state.turnRightOn && state.blinkerPhase
-                    Box(
-                        modifier = Modifier
-                            .size(width = 48.dp, height = 48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (rightActive) HudAmber.copy(alpha = 0.32f) else HudPanelSurface)
-                            .border(
-                                1.5.dp,
-                                if (state.turnRightOn) HudAmber else Color(0x26FFFFFF),
-                                RoundedCornerShape(12.dp)
-                            )
-                            .clickable { viewModel.toggleTurnRight() }
-                            .testTag("turn_right_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "▶",
-                            color = if (state.turnRightOn) HudAmber else HudTextPrimary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
-                }
-
-                // Speedometer & Telemetry Cluster
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(HudPanelSurface)
-                        .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(20.dp))
-                        .padding(horizontal = 18.dp, vertical = 8.dp)
-                        .testTag("speedometer_cluster"),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Diesel Fuel (Hino RM 2 200L Tank)
-                    Column(horizontalAlignment = Alignment.Start) {
-                        Text(
-                            text = "HINO RM 2",
-                            color = HudAmber,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        Text(
-                            text = "84%",
-                            color = HudTextPrimary,
-                            fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "168 L / 200L",
-                            color = HudEmerald,
-                            fontSize = 8.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-
-                    // Digital Speed Display
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                text = String.format(Locale.US, "%03d", state.speedKmh.roundToInt()),
-                                color = HudTextPrimary,
-                                fontSize = 30.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Black,
-                                modifier = Modifier.testTag("speed_value_text")
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "KM/H",
-                                color = HudAmber,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .width(96.dp)
-                                .height(5.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x22FFFFFF))
-                        ) {
-                            val fillFrac = (state.speedKmh / 75f).coerceIn(0.04f, 1f)
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(fillFrac)
-                                    .fillMaxHeight()
-                                    .clip(CircleShape)
-                                    .background(HudAmber)
-                            )
-                        }
-                    }
-
-                    // Air Brake Pressure (Hino RM 2 S-Cam Full Air Brakes)
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "AIR BRAKE",
-                            color = HudTextMuted,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "8.8 BAR",
-                            color = HudTextPrimary,
-                            fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = if (state.isParkBrakeActive) "PARK LOCKED" else "OPTIMAL",
-                            color = if (state.isParkBrakeActive) HudRed else HudEmerald,
-                            fontSize = 8.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
-            }
-
-            // Bottom Right: Unobstructed Brake & Gas Pedals
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.Bottom
-            ) {
-                PedalControl(
-                    label = "BRAKE",
-                    subLabel = "RETARDER",
-                    active = state.brakeInput > 0.05f,
-                    accentColor = HudRed,
-                    heightDp = 132,
-                    widthDp = 68,
-                    testTag = "brake_pedal_button",
-                    onPressChanged = { viewModel.setBrake(it) }
-                )
-
-                PedalControl(
-                    label = "GAS",
-                    subLabel = "THROTTLE",
-                    active = state.throttleInput > 0.05f,
-                    accentColor = HudEmerald,
-                    heightDp = 148,
-                    widthDp = 68,
-                    testTag = "gas_pedal_button",
-                    onPressChanged = { viewModel.setThrottle(it) }
-                )
-            }
         }
 
         // ==========================================
@@ -481,356 +386,126 @@ fun BusDashboardHudOverlay(
 }
 
 @Composable
-private fun HudActionSquareButton(
-    icon: ImageVector,
+private fun PauseMenuModal(
+    state: SimUiState,
+    onResume: () -> Unit,
+    onOpenRoutes: () -> Unit,
+    onToggleCruise: () -> Unit,
+    onToggleShowcase: () -> Unit,
+    onResetStand: () -> Unit
+) {
+    val isFrontShowcase = abs(state.cameraOrbitYawDeg) > 95f
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xB806090F))
+            .clickable { onResume() }
+            .testTag("pause_menu_modal"),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .width(340.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Brush.verticalGradient(listOf(Color(0xF0252E3C), Color(0xF5151B24))))
+                .border(1.2.dp, GlassBorderColor, RoundedCornerShape(18.dp))
+                .clickable(enabled = false) {}
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "PAUSED",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.5.sp
+            )
+            Text(
+                text = state.currentRoadStreetName,
+                color = HudTextMuted,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            PauseMenuButton(
+                label = "RESUME DRIVING",
+                accent = ActiveOrangeStart,
+                filled = true,
+                testTag = "pause_resume_button",
+                onClick = onResume
+            )
+            PauseMenuButton(
+                label = "THRISSUR ROUTES & LANDMARKS",
+                accent = HudCyan,
+                filled = false,
+                testTag = "open_routes_button",
+                onClick = onOpenRoutes
+            )
+            PauseMenuButton(
+                label = if (state.autoSteerAssist) "CRUISE ASSIST: ON" else "CRUISE ASSIST: OFF",
+                accent = if (state.autoSteerAssist) HudEmerald else Color.White,
+                filled = false,
+                testTag = "cruise_assist_button",
+                onClick = onToggleCruise
+            )
+            PauseMenuButton(
+                label = if (isFrontShowcase) "CAMERA: 3/4 FRONT VIEW" else "CAMERA: FOLLOW VIEW",
+                accent = Color.White,
+                filled = false,
+                testTag = "front_showcase_button",
+                onClick = onToggleShowcase
+            )
+            PauseMenuButton(
+                label = "RESET TO STAND",
+                accent = HudRed,
+                filled = false,
+                testTag = "reset_bus_button",
+                onClick = onResetStand
+            )
+        }
+    }
+}
+
+@Composable
+private fun PauseMenuButton(
     label: String,
-    active: Boolean,
-    activeColor: Color,
+    accent: Color,
+    filled: Boolean,
     testTag: String,
     onClick: () -> Unit
 ) {
-    Column(
+    Box(
         modifier = Modifier
-            .size(width = 56.dp, height = 52.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (active) activeColor.copy(alpha = 0.22f) else HudPanelSurface)
+            .fillMaxWidth()
+            .height(44.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                if (filled) {
+                    Brush.verticalGradient(listOf(ActiveOrangeStart, ActiveOrangeEnd))
+                } else {
+                    Brush.verticalGradient(listOf(Color(0xFF242D3B), Color(0xFF1A202B)))
+                }
+            )
             .border(
                 1.dp,
-                if (active) activeColor else Color(0x26FFFFFF),
-                RoundedCornerShape(12.dp)
+                if (filled) Color(0xFFFDE68A) else accent.copy(alpha = 0.45f),
+                RoundedCornerShape(10.dp)
             )
             .clickable(onClick = onClick)
             .testTag(testTag),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = if (active) activeColor else HudTextPrimary,
-            modifier = Modifier.size(18.dp)
-        )
-        Text(
-            text = label,
-            color = if (active) activeColor else HudTextMuted,
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1
-        )
-    }
-}
-
-@Composable
-private fun ThrissurRadarMinimap(
-    state: SimUiState,
-    onZoomIn: () -> Unit,
-    onZoomOut: () -> Unit,
-    onTapMap: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(width = 196.dp, height = 108.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF0C131D))
-            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))
-            .clickable { onTapMap() }
-            .testTag("radar_minimap_box")
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val cx = size.width * 0.5f
-            val cy = size.height * 0.5f
-            val mapScale = 0.16f * state.minimapZoom
-
-            fun toRadar(wx: Float, wz: Float): Offset {
-                val dx = (wx - state.busPos.x) * mapScale
-                val dz = (wz - state.busPos.z) * mapScale
-                return Offset(cx + dx, cy - dz)
-            }
-
-            for ((rIdx, road) in state.roads.withIndex()) {
-                val pts = road.points
-                if (pts.size < 2) continue
-                val isSelected = rIdx == state.activeRoadIndex
-                val path = Path()
-                val p0 = toRadar(pts[0].x, pts[0].z)
-                path.moveTo(p0.x, p0.y)
-                for (i in 1 until pts.size) {
-                    val p = toRadar(pts[i].x, pts[i].z)
-                    path.lineTo(p.x, p.y)
-                }
-                drawPath(
-                    path = path,
-                    color = if (isSelected) HudCyan else Color(0xFF334155),
-                    style = Stroke(width = if (isSelected) 4.5f else 2.2f, cap = StrokeCap.Round)
-                )
-            }
-
-            drawCircle(
-                color = HudCyan.copy(alpha = 0.28f),
-                radius = 12f,
-                center = Offset(cx, cy)
-            )
-            val headX = sin(state.busHeadingRad) * 9f
-            val headY = -cos(state.busHeadingRad) * 9f
-            drawLine(
-                color = Color.White,
-                start = Offset(cx, cy),
-                end = Offset(cx + headX, cy + headY),
-                strokeWidth = 3f,
-                cap = StrokeCap.Round
-            )
-            drawCircle(
-                color = HudAmber,
-                radius = 4.5f,
-                center = Offset(cx, cy)
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .padding(horizontal = 6.dp, vertical = 4.dp)
-                .align(Alignment.BottomEnd),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(22.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(HudPanelSurface)
-                    .clickable { onZoomIn() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("+", color = HudTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-            Box(
-                modifier = Modifier
-                    .size(22.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(HudPanelSurface)
-                    .clickable { onZoomOut() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("-", color = HudTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-/**
- * Clean Commercial Coach Hydraulic Power Steering Wheel:
- * No dots on the rim and no angle text overlay.
- * Supports smooth rotary turning and horizontal drag with automatic hydraulic return.
- */
-@Composable
-private fun VirtualCoachSteeringWheel(
-    wheelAngleDeg: Float,
-    onSteerDeltaDeg: (Float) -> Unit,
-    onSteerRelease: () -> Unit,
-    onHornClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(152.dp)
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    down.consume()
-                    val cx = size.width * 0.5f
-                    val cy = size.height * 0.5f
-                    var prevPos = down.position
-
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (!change.pressed) {
-                            change.consume()
-                            break
-                        }
-                        val currPos = change.position
-                        val drag = change.positionChange()
-                        if (drag != Offset.Zero) {
-                            change.consume()
-                            val distFromHub = hypot(currPos.x - cx, currPos.y - cy)
-
-                            val a0 = atan2(prevPos.y - cy, prevPos.x - cx)
-                            val a1 = atan2(currPos.y - cy, currPos.x - cx)
-                            var dRad = a1 - a0
-                            while (dRad > PI.toFloat()) dRad -= (2.0 * PI).toFloat()
-                            while (dRad < -PI.toFloat()) dRad += (2.0 * PI).toFloat()
-                            val rotaryDeg = Math.toDegrees(dRad.toDouble()).toFloat() * 1.45f
-
-                            val horizDeg = (drag.x / (size.width * 0.36f)) * 150f
-
-                            val deltaDeg = if (distFromHub > size.width * 0.22f && currPos.y > cy + size.height * 0.14f) {
-                                rotaryDeg
-                            } else if (abs(horizDeg) > abs(rotaryDeg)) {
-                                horizDeg
-                            } else {
-                                rotaryDeg
-                            }
-                            onSteerDeltaDeg(deltaDeg)
-                            prevPos = currPos
-                        }
-                    }
-                    onSteerRelease()
-                }
-            }
-            .testTag("virtual_steering_wheel"),
         contentAlignment = Alignment.Center
     ) {
-        // Rotating Rim & 3-Spoke Bars (Clean — No Dots on Rim)
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .rotate(wheelAngleDeg)
-        ) {
-            val r = size.minDimension * 0.43f
-            val center = Offset(size.width * 0.5f, size.height * 0.5f)
-
-            drawCircle(
-                color = Color(0xFF141A24),
-                radius = r,
-                center = center,
-                style = Stroke(width = 18.dp.toPx())
-            )
-            drawCircle(
-                color = Color(0x38FFFFFF),
-                radius = r,
-                center = center,
-                style = Stroke(width = 2.dp.toPx())
-            )
-
-            drawLine(
-                color = Color(0xFF253042),
-                start = Offset(center.x - r, center.y),
-                end = Offset(center.x + r, center.y),
-                strokeWidth = 13.dp.toPx(),
-                cap = StrokeCap.Round
-            )
-            drawLine(
-                color = Color(0xFF253042),
-                start = center,
-                end = Offset(center.x, center.y + r),
-                strokeWidth = 13.dp.toPx(),
-                cap = StrokeCap.Round
-            )
-        }
-
-        // Center Pneumatic Air-Horn Hub
-        Column(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(HudPanelSurface)
-                .border(1.5.dp, HudAmber.copy(alpha = 0.65f), CircleShape)
-                .clickable { onHornClick() }
-                .testTag("horn_center_button"),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.VolumeUp,
-                contentDescription = "Air Horn",
-                tint = HudAmber,
-                modifier = Modifier.size(18.dp)
-            )
-            Text(
-                text = "HORN",
-                color = HudTextPrimary,
-                fontSize = 8.sp,
-                fontWeight = FontWeight.ExtraBold
-            )
-        }
-    }
-}
-
-@Composable
-private fun PedalControl(
-    label: String,
-    subLabel: String,
-    active: Boolean,
-    accentColor: Color,
-    heightDp: Int,
-    widthDp: Int,
-    testTag: String,
-    onPressChanged: (Boolean) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .size(width = widthDp.dp, height = heightDp.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(
-                if (active) accentColor.copy(alpha = 0.30f) else HudPanelSurface
-            )
-            .border(
-                1.5.dp,
-                if (active) accentColor else accentColor.copy(alpha = 0.42f),
-                RoundedCornerShape(18.dp)
-            )
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    down.consume()
-                    onPressChanged(true)
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val anyPressed = event.changes.any { it.pressed }
-                        event.changes.forEach { it.consume() }
-                        if (!anyPressed) break
-                    }
-                    onPressChanged(false)
-                }
-            }
-            .padding(vertical = 10.dp, horizontal = 8.dp)
-            .testTag(testTag),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        Box(
-            modifier = Modifier
-                .size(24.dp)
-                .clip(CircleShape)
-                .background(accentColor.copy(alpha = 0.18f))
-                .border(1.dp, accentColor, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = if (label == "GAS") "▲" else "■",
-                color = accentColor,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Black
-            )
-        }
-
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            repeat(4) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(5.dp)
-                        .clip(CircleShape)
-                        .background(if (active) accentColor.copy(alpha = 0.55f) else Color(0xFF2A3444))
-                )
-            }
-        }
-
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = label,
-                color = accentColor,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Black
-            )
-            Text(
-                text = subLabel,
-                color = HudTextMuted,
-                fontSize = 7.sp,
-                fontFamily = FontFamily.Monospace
-            )
-        }
+        Text(
+            text = label,
+            color = if (filled) Color(0xFF11161F) else accent,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 

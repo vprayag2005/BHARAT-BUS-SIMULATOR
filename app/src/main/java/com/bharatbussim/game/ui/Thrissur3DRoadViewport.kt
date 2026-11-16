@@ -19,8 +19,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import com.bharatbussim.game.model.CameraViewMode
 import com.bharatbussim.game.model.RoadFrame
 import com.bharatbussim.game.model.RoadJunctionBellmouth
@@ -28,13 +31,16 @@ import com.bharatbussim.game.model.ThrissurOsmRoad
 import com.bharatbussim.game.model.ThrissurRoadRepository
 import com.bharatbussim.game.model.Vec3
 import com.bharatbussim.game.viewmodel.SimUiState
+import com.bharatbussim.game.viewmodel.ThrissurSimViewModel
 import kotlin.math.PI
+import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.math.tan
 
 // Authentic Kerala / IRC Highway & Sakthan Stand Material Palette (Strictly Zero Trees)
@@ -83,7 +89,7 @@ internal class CameraRig(
     val screenW: Float,
     val screenH: Float
 ) {
-    val nearZ = 0.45f
+    val nearZ = 0.25f
     private val rawVerts = Array(4) { CamSpaceVert(0f, 0f, 0f) }
     private val clippedVerts = ArrayList<CamSpaceVert>(8)
     private val polyRaw = ArrayList<CamSpaceVert>(256)
@@ -383,15 +389,126 @@ private data class ContiguousRoadSpan(
     val avgDistSq: Float
 )
 
-internal data class QuadFace3D(
+internal class QuadFace3D(
     val v0: Vec3,
     val v1: Vec3,
     val v2: Vec3,
     val v3: Vec3,
     val color: Color,
     val strokeColor: Color? = Color(0x28000000),
-    val biasDist: Float = 0f
+    val biasDist: Float = 0f,
+    var sortKey: Float = 0f,
+    val nx: Float = 0f,
+    val ny: Float = 0f,
+    val nz: Float = 0f
 )
+
+internal val FaceDepthComparator = Comparator<QuadFace3D> { a, b ->
+    b.sortKey.compareTo(a.sortKey)
+}
+
+internal class HinoRealMeshPoly(
+    val partId: Int,
+    val vertCount: Int,
+    val cullMode: Int,
+    val baseColor: Color,
+    val biasDist: Float,
+    val nx: Float,
+    val ny: Float,
+    val nz: Float,
+    val cx: Float,
+    val cy: Float,
+    val cz: Float,
+    val x0: Float,
+    val y0: Float,
+    val z0: Float,
+    val x1: Float,
+    val y1: Float,
+    val z1: Float,
+    val x2: Float,
+    val y2: Float,
+    val z2: Float,
+    val x3: Float,
+    val y3: Float,
+    val z3: Float
+)
+
+private fun loadHinoRealMeshFromAssets(context: android.content.Context): List<HinoRealMeshPoly> {
+    return try {
+        val bytes = context.assets.open("hino_rm2_real_mesh.bin").use { it.readBytes() }
+        val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        val m0 = buf.get().toInt().toChar()
+        val m1 = buf.get().toInt().toChar()
+        val m2 = buf.get().toInt().toChar()
+        val m3 = buf.get().toInt().toChar()
+        if (m0 != 'H' || m1 != 'R' || m2 != 'M' || (m3 != '3' && m3 != '2')) return emptyList()
+        val isV3 = (m3 == '3')
+        val count = buf.int
+        val out = ArrayList<HinoRealMeshPoly>(count)
+        for (i in 0 until count) {
+            val partId = buf.get().toInt() and 0xFF
+            val vcnt = (buf.get().toInt() and 0xFF).coerceIn(3, 4)
+            val cullMode = if (isV3) (buf.get().toInt() and 0xFF) else 0
+            val r = buf.get().toInt() and 0xFF
+            val g = buf.get().toInt() and 0xFF
+            val b = buf.get().toInt() and 0xFF
+            val a = buf.get().toInt() and 0xFF
+            val bias = buf.float
+            val nx = if (isV3) buf.float else 0f
+            val ny = if (isV3) buf.float else 1f
+            val nz = if (isV3) buf.float else 0f
+            val x0 = buf.float
+            val y0 = buf.float
+            val z0 = buf.float
+            val x1 = buf.float
+            val y1 = buf.float
+            val z1 = buf.float
+            val x2 = buf.float
+            val y2 = buf.float
+            val z2 = buf.float
+            val x3: Float
+            val y3: Float
+            val z3: Float
+            val cx: Float
+            val cy: Float
+            val cz: Float
+            if (vcnt == 4) {
+                x3 = buf.float
+                y3 = buf.float
+                z3 = buf.float
+                cx = (x0 + x1 + x2 + x3) * 0.25f
+                cy = (y0 + y1 + y2 + y3) * 0.25f
+                cz = (z0 + z1 + z2 + z3) * 0.25f
+            } else {
+                x3 = x2
+                y3 = y2
+                z3 = z2
+                cx = (x0 + x1 + x2) * (1f / 3f)
+                cy = (y0 + y1 + y2) * (1f / 3f)
+                cz = (z0 + z1 + z2) * (1f / 3f)
+            }
+            val col = Color(r, g, b, a)
+            out.add(
+                HinoRealMeshPoly(
+                    partId = partId,
+                    vertCount = vcnt,
+                    cullMode = cullMode,
+                    baseColor = col,
+                    biasDist = bias,
+                    nx = nx, ny = ny, nz = nz,
+                    cx = cx, cy = cy, cz = cz,
+                    x0 = x0, y0 = y0, z0 = z0,
+                    x1 = x1, y1 = y1, z1 = z1,
+                    x2 = x2, y2 = y2, z2 = z2,
+                    x3 = x3, y3 = y3, z3 = z3
+                )
+            )
+        }
+        out
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
 
 @Composable
 fun Thrissur3DRoadViewport(
@@ -399,6 +516,9 @@ fun Thrissur3DRoadViewport(
     onOrbitDrag: (Float, Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val hinoRealMesh = remember(context) { loadHinoRealMeshFromAssets(context) }
+    val renderFacesBuffer = remember { ArrayList<QuadFace3D>(10500) }
     val titlePaint = remember {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER
@@ -426,50 +546,43 @@ fun Thrissur3DRoadViewport(
         val w = size.width
         val h = size.height
 
-        // 1. Compute Camera Pose (No Rear View)
-        val baseYaw = state.busHeadingRad +
-            Math.toRadians(state.cameraOrbitYawDeg.toDouble()).toFloat()
+        // 1. Third-Person Follow Camera with Lerp Tracking, Road-Mesh Anti-Clipping & Cinematic FOV
+        val busSin = sin(state.busHeadingRad)
+        val busCos = cos(state.busHeadingRad)
 
-        val (camEye, pitchDeg) = when (state.cameraMode) {
-            CameraViewMode.Chase -> {
-                val backDist = 13.8f
-                val eyeX = state.busPos.x - sin(baseYaw) * backDist
-                val eyeZ = state.busPos.z - cos(baseYaw) * backDist
-                Pair(Vec3(eyeX, 4.15f, eyeZ), 11.5f + state.cameraOrbitPitchDeg)
-            }
-            CameraViewMode.Cockpit -> {
-                val fwdDist = 4.65f
-                val rightOff = 0.72f
-                val sYaw = sin(state.busHeadingRad)
-                val cYaw = cos(state.busHeadingRad)
-                val eyeX = state.busPos.x + sYaw * fwdDist + cYaw * rightOff
-                val eyeZ = state.busPos.z + cYaw * fwdDist - sYaw * rightOff
-                Pair(Vec3(eyeX, 2.32f, eyeZ), 6.0f + state.cameraOrbitPitchDeg)
-            }
-            CameraViewMode.Hood -> {
-                val fwdDist = 6.1f
-                val eyeX = state.busPos.x + sin(state.busHeadingRad) * fwdDist
-                val eyeZ = state.busPos.z + cos(state.busHeadingRad) * fwdDist
-                Pair(Vec3(eyeX, 1.85f, eyeZ), 5.0f + state.cameraOrbitPitchDeg)
-            }
-            CameraViewMode.TopDown -> {
-                val backDist = 26f
-                val eyeX = state.busPos.x - sin(baseYaw) * backDist
-                val eyeZ = state.busPos.z - cos(baseYaw) * backDist
-                Pair(Vec3(eyeX, 25.0f, eyeZ), 36f + state.cameraOrbitPitchDeg)
-            }
-        }
+        val lookTarget = state.camFocusPos
+        val camEye = ThrissurSimViewModel.preventRoadMeshCameraClip(
+            focusPos = lookTarget,
+            candidateEye = state.camEyePos,
+            busPos = state.busPos,
+            busHeadingRad = state.busHeadingRad,
+            cameraMode = state.cameraMode
+        )
 
-        val pitchRad = Math.toRadians(pitchDeg.coerceIn(1f, 65f).toDouble()).toFloat()
-        val cosP = cos(pitchRad)
-        val sinP = sin(pitchRad)
-        val sinY = sin(baseYaw)
-        val cosY = cos(baseYaw)
+        val rawDirX = lookTarget.x - camEye.x
+        val rawDirY = lookTarget.y - camEye.y
+        val rawDirZ = lookTarget.z - camEye.z
+        val dirLen = sqrt(rawDirX * rawDirX + rawDirY * rawDirY + rawDirZ * rawDirZ).coerceAtLeast(0.001f)
+        val fwd = Vec3(rawDirX / dirLen, rawDirY / dirLen, rawDirZ / dirLen)
 
-        val fwd = Vec3(sinY * cosP, -sinP, cosY * cosP)
-        val right = Vec3(cosY, 0f, -sinY)
-        val up = Vec3(sinY * sinP, cosP, cosY * sinP)
-        val fovScale = (h * 0.5f) / tan(Math.toRadians(28.0)).toFloat()
+        // Orthonormal right = normalize(worldUp x fwd) where worldUp = (0, 1, 0)
+        val rx = fwd.z
+        val rz = -fwd.x
+        val rLen = hypot(rx, rz).coerceAtLeast(0.001f)
+        val right = Vec3(rx / rLen, 0f, rz / rLen)
+
+        // Orthonormal up = fwd x right
+        val ux = fwd.y * right.z - fwd.z * right.y
+        val uy = fwd.z * right.x - fwd.x * right.z
+        val uz = fwd.x * right.y - fwd.y * right.x
+        val uLen = sqrt(ux * ux + uy * uy + uz * uz).coerceAtLeast(0.001f)
+        val up = Vec3(ux / uLen, uy / uLen, uz / uLen)
+
+        val pitchRad = asin((-fwd.y).coerceIn(-0.95f, 0.95f))
+
+        // Aspect-aware consistent cinematic driving FOV
+        val cinematicHalfFovRad = Math.toRadians((state.cameraFovDeg.coerceIn(50f, 70f) * 0.5f).toDouble())
+        val fovScale = (h * 0.5f) / tan(cinematicHalfFovRad).toFloat()
 
         // Exact mathematical vanishing horizon Y of the y=0 ground plane
         val horizonY = (h * 0.5f - tan(pitchRad) * fovScale).coerceIn(0f, h * 0.85f)
@@ -515,18 +628,20 @@ fun Thrissur3DRoadViewport(
             )
         }
 
-        // 3. Collect Contiguous Visible Road Spans (up to 16 frames per span for seamless crack-free ribbon polygons)
-        val maxDrawDistSq = 440f * 440f
-        val spans = ArrayList<ContiguousRoadSpan>(128)
+        // 3. Collect Contiguous Visible Road Spans (frustum-culled to skip spans behind the camera)
+        val maxDrawDistSq = 280f * 280f
+        val spans = ArrayList<ContiguousRoadSpan>(64)
+        val fwdX = fwd.x
+        val fwdZ = fwd.z
 
         for (road in state.roads) {
             val frames = road.frames
             if (frames.size < 2) continue
-            val chunkSize = 14
+            val chunkSize = 16
             var i = 0
             while (i < frames.size - 1) {
                 var sIdx = i
-                var eIdx = min(i + chunkSize, frames.size - 1)
+                val eIdx = min(i + chunkSize, frames.size - 1)
 
                 // Trim Sakthan Stand bay-interior frames south of Z=-165.0m so the departure road starts cleanly at the North Concourse edge (Z=-165.0m) and runs continuously through the Right Exit Gate (Z=-140.0m)
                 if (road.id == "ROAD_SAKTHAN_TO_SWARAJ") {
@@ -544,13 +659,20 @@ fun Thrissur3DRoadViewport(
                 val dz = midF.pos.z - camEye.z
                 val distSq = dx * dx + dz * dz
                 if (distSq <= maxDrawDistSq) {
-                    spans.add(ContiguousRoadSpan(road, sIdx, eIdx, distSq))
+                    val f0 = frames[sIdx]
+                    val f1 = frames[eIdx]
+                    val camZMid = dx * fwdX + dz * fwdZ
+                    val camZ0 = (f0.pos.x - camEye.x) * fwdX + (f0.pos.z - camEye.z) * fwdZ
+                    val camZ1 = (f1.pos.x - camEye.x) * fwdX + (f1.pos.z - camEye.z) * fwdZ
+                    if (camZMid > -24f || camZ0 > -24f || camZ1 > -24f) {
+                        spans.add(ContiguousRoadSpan(road, sIdx, eIdx, distSq))
+                    }
                 }
                 i += chunkSize
             }
         }
 
-        spans.sortByDescending { it.avgDistSq }
+        spans.sortWith { a, b -> b.avgDistSq.compareTo(a.avgDistSq) }
         val sharedPath = Path()
 
         // PASS 1: 20-Bay Sakthan Terminal Concrete Yard + 5 Landmark Ground Plazas/Beaches + Continuous Laterite Shoulders & Flared Junction Shoulders
@@ -590,11 +712,19 @@ fun Thrissur3DRoadViewport(
             subPaint = subPaint
         )
 
-        // PASS 5: Render Player's CGTrader Hino RM 2 (12m Rear-Engine AC Luxury Coach) in 3D
+        // PASS 5: Render Player's Real Imported Hino RM 2 3D Mesh (HINO_RM2.obj + 6 Wheels + Eagle Livery)
         // Source: https://www.cgtrader.com/free-3d-models/vehicle/bus/hino-rm-2-bus
         // Creator: asrafullislamsiam | License: CGTrader Royalty Free License (No AI)
         if (state.cameraMode == CameraViewMode.Chase || state.cameraMode == CameraViewMode.TopDown) {
-            drawHinoRm2Bus3D(rig, sharedPath, state, titlePaint, subPaint)
+            drawHinoRm2Bus3D(
+                rig = rig,
+                path = sharedPath,
+                state = state,
+                hinoMesh = hinoRealMesh,
+                facesBuffer = renderFacesBuffer,
+                titlePaint = titlePaint,
+                subPaint = subPaint
+            )
         } else if (state.cameraMode == CameraViewMode.Cockpit) {
             drawHinoRm2Cockpit3D(state)
         }
@@ -886,25 +1016,26 @@ private fun DrawScope.drawContinuousRoadMarkings(
     path: Path,
     span: ContiguousRoadSpan
 ) {
+    if (span.avgDistSq > 165f * 165f) return
     val road = span.road
     val frames = road.frames
     val yMark = 0.062f
     val sIdx = span.startIdx
     val eIdx = span.endIdx
     if (eIdx <= sIdx) return
+    val step = if (span.avgDistSq > 75f * 75f) 2 else 1
 
     fun drawSegment3D(w0: Vec3, w1: Vec3, widthM: Float, color: Color) {
         val seg = rig.projectSegmentClipped(w0, w1) ?: return
-        val c0 = rig.toCamSpace(w0)
-        val c1 = rig.toCamSpace(w1)
-        val avgCz = max(0.8f, (c0.cz + c1.cz) * 0.5f)
-        val strokePx = (widthM * rig.fovScale / avgCz).coerceIn(1.8f, 14f)
+        val dx = (w0.x + w1.x) * 0.5f - rig.eye.x
+        val dz = (w0.z + w1.z) * 0.5f - rig.eye.z
+        val avgCz = max(0.8f, dx * rig.forward.x + dz * rig.forward.z)
+        val strokePx = (widthM * rig.fovScale / avgCz).coerceIn(1.6f, 12f)
         drawLine(
             color = color,
             start = seg.first,
             end = seg.second,
-            strokeWidth = strokePx,
-            cap = StrokeCap.Round
+            strokeWidth = strokePx
         )
     }
 
@@ -916,15 +1047,23 @@ private fun DrawScope.drawContinuousRoadMarkings(
         clipPartialTransition: Boolean = false,
         coveredFn: (RoadFrame) -> Boolean
     ) {
-        for (i in sIdx until eIdx) {
+        var i = sIdx
+        while (i < eIdx) {
+            val nextIdx = min(i + step, eIdx)
             val f0 = frames[i]
-            val f1 = frames[i + 1]
+            val f1 = frames[nextIdx]
             val cov0 = coveredFn(f0)
             val cov1 = coveredFn(f1)
-            if (cov0 && cov1) continue
+            if (cov0 && cov1) {
+                i = nextIdx
+                continue
+            }
             if (dashed) {
                 val period = 8.5f
-                if ((f0.cumulativeDist % period) > 3.5f) continue
+                if ((f0.cumulativeDist % period) > 3.5f) {
+                    i = nextIdx
+                    continue
+                }
             }
             val off0 = lateralOffsetFn(f0)
             val off1 = lateralOffsetFn(f1)
@@ -942,6 +1081,7 @@ private fun DrawScope.drawContinuousRoadMarkings(
                     drawSegment3D(mid, w1, widthM, color)
                 }
             }
+            i = nextIdx
         }
     }
 
@@ -1110,21 +1250,8 @@ private fun DrawScope.drawSakthan20BayTerminalYard(
     }
 }
 
-/**
- * Renders the 20-Bay Sakthan Thampuran Bus Stand 3D buildings, passenger boarding islands,
- * terracotta pillars, high corrugated canopies, 12+ parked Kerala buses across the 20 bays,
- * and 3D perspective banners (Main Terminal Banner, Entry Gate Banner, Exit Gate Banner).
- */
-private fun DrawScope.drawSakthan20BayTerminalStructuresAndBanners(
-    rig: CameraRig,
-    path: Path,
-    camEye: Vec3,
-    titlePaint: Paint,
-    subPaint: Paint
-) {
-    if (hypot(camEye.x - 16f, camEye.z - (-178f)) > 320f) return
-
-    val faces = ArrayList<QuadFace3D>(320)
+private val cachedSakthanTerminalFaces: List<QuadFace3D> by lazy {
+    val faces = ArrayList<QuadFace3D>(640)
 
     fun addBox3D(
         minX: Float,
@@ -1139,6 +1266,7 @@ private fun DrawScope.drawSakthan20BayTerminalStructuresAndBanners(
         stroke: Color? = Color(0x22000000),
         bias: Float = 0f
     ) {
+        // Top face (+Y normal): only visible when camera is above maxY
         faces.add(
             QuadFace3D(
                 Vec3(minX, maxY, minZ),
@@ -1147,9 +1275,28 @@ private fun DrawScope.drawSakthan20BayTerminalStructuresAndBanners(
                 Vec3(minX, maxY, maxZ),
                 topCol,
                 stroke,
-                bias
+                bias,
+                0f,
+                0f, 1f, 0f
             )
         )
+        // Underside ceiling face (-Y normal) for elevated canopies/gantries: only visible when camera is below minY
+        if (minY >= 3.5f) {
+            faces.add(
+                QuadFace3D(
+                    Vec3(minX, minY, minZ),
+                    Vec3(maxX, minY, minZ),
+                    Vec3(maxX, minY, maxZ),
+                    Vec3(minX, minY, maxZ),
+                    MatRoofUnderTruss,
+                    stroke,
+                    bias + 0.5f,
+                    0f,
+                    0f, -1f, 0f
+                )
+            )
+        }
+        // South face (-Z normal): only visible when camera Z < minZ
         faces.add(
             QuadFace3D(
                 Vec3(minX, minY, minZ),
@@ -1158,9 +1305,12 @@ private fun DrawScope.drawSakthan20BayTerminalStructuresAndBanners(
                 Vec3(minX, maxY, minZ),
                 frontBackCol,
                 stroke,
-                bias
+                bias,
+                0f,
+                0f, 0f, -1f
             )
         )
+        // North face (+Z normal): only visible when camera Z > maxZ
         faces.add(
             QuadFace3D(
                 Vec3(minX, minY, maxZ),
@@ -1169,9 +1319,12 @@ private fun DrawScope.drawSakthan20BayTerminalStructuresAndBanners(
                 Vec3(minX, maxY, maxZ),
                 frontBackCol,
                 stroke,
-                bias
+                bias,
+                0f,
+                0f, 0f, 1f
             )
         )
+        // West face (-X normal): only visible when camera X < minX
         faces.add(
             QuadFace3D(
                 Vec3(minX, minY, minZ),
@@ -1180,9 +1333,12 @@ private fun DrawScope.drawSakthan20BayTerminalStructuresAndBanners(
                 Vec3(minX, minY, maxZ),
                 sideCol,
                 stroke,
-                bias
+                bias,
+                0f,
+                -1f, 0f, 0f
             )
         )
+        // East face (+X normal): only visible when camera X > maxX
         faces.add(
             QuadFace3D(
                 Vec3(maxX, minY, minZ),
@@ -1191,7 +1347,9 @@ private fun DrawScope.drawSakthan20BayTerminalStructuresAndBanners(
                 Vec3(maxX, minY, maxZ),
                 sideCol,
                 stroke,
-                bias
+                bias,
+                0f,
+                1f, 0f, 0f
             )
         )
     }
@@ -1221,30 +1379,41 @@ private fun DrawScope.drawSakthan20BayTerminalStructuresAndBanners(
         }
     }
 
-    // 2. High-Clearance Galvanized Terminal Canopy spanning all 10 North Departure Bays (Bays 01–10)
-    addBox3D(
-        -23.0f, 6.20f, -185.5f,
-        51.5f, 6.85f, -160.5f,
-        topCol = MatRoofGalvanized,
-        sideCol = MatSakthanFasciaOrange,
-        frontBackCol = MatSakthanFasciaOrange
-    )
+    // 2. High-Clearance Galvanized Terminal Canopy segmented per Bay (10 Bay spans across X = -23.0m..51.5m)
+    val canopySpanW = (51.5f - (-23.0f)) / 10f
+    for (sIdx in 0 until 10) {
+        val cx0 = -23.0f + sIdx * canopySpanW
+        val cx1 = cx0 + canopySpanW
+        addBox3D(
+            cx0, 6.20f, -185.5f,
+            cx1, 6.85f, -160.5f,
+            topCol = MatRoofGalvanized,
+            sideCol = MatSakthanFasciaOrange,
+            frontBackCol = MatSakthanFasciaOrange,
+            bias = 2.2f
+        )
+    }
 
-    // 3. South Intercity Concourse Canopy & Boarding Platforms (Bays 11–20)
-    addBox3D(
-        -23.0f, 0.06f, -218.5f,
-        51.5f, 0.34f, -214.5f,
-        topCol = MatPlatformTileLight,
-        sideCol = MatCurbYellow,
-        frontBackCol = MatCurbBlack
-    )
-    addBox3D(
-        -23.0f, 6.20f, -217.5f,
-        51.5f, 6.85f, -197.0f,
-        topCol = MatRoofGalvanized,
-        sideCol = MatSakthanFasciaOrange,
-        frontBackCol = MatSakthanFasciaOrange
-    )
+    // 3. South Intercity Concourse Canopy & Boarding Platforms (Bays 11–20, segmented per Bay)
+    for (sIdx in 0 until 10) {
+        val cx0 = -23.0f + sIdx * canopySpanW
+        val cx1 = cx0 + canopySpanW
+        addBox3D(
+            cx0, 0.06f, -218.5f,
+            cx1, 0.34f, -214.5f,
+            topCol = MatPlatformTileLight,
+            sideCol = MatCurbYellow,
+            frontBackCol = MatCurbBlack
+        )
+        addBox3D(
+            cx0, 6.20f, -217.5f,
+            cx1, 6.85f, -197.0f,
+            topCol = MatRoofGalvanized,
+            sideCol = MatSakthanFasciaOrange,
+            frontBackCol = MatSakthanFasciaOrange,
+            bias = 2.2f
+        )
+    }
 
     // 4. Main Terminal Administration Concourse & Sakthan Clock Tower (West Perimeter X = -23.5m to -19.5m)
     addBox3D(
@@ -1328,33 +1497,67 @@ private fun DrawScope.drawSakthan20BayTerminalStructuresAndBanners(
     }
 
     // 6. Road-Aligned Terminal Perimeter Compound Wall (at Z = -140.0m)
-    //    Completely clear of Left Side ENTRY (X = -0.5m..14.5m) and Right Side EXIT (X = 16.0m..34.0m)
     val exitZ = -140.0f
-    // West Perimeter Wall (X = -22.0m..-3.8m, well outside Entry road edge)
     addBox3D(-22.0f, 0.06f, exitZ - 0.45f, -3.8f, 1.45f, exitZ + 0.35f, MatCreamPlaster, MatTerracottaDark, MatTerracottaPillar)
-    // East Perimeter Wall (X = 37.8m..48.0m, well outside Exit road edge) + East Side Compound Wall
     addBox3D(37.8f, 0.06f, exitZ - 0.45f, 48.0f, 1.45f, exitZ + 0.35f, MatCreamPlaster, MatTerracottaDark, MatTerracottaPillar)
     addBox3D(47.3f, 0.06f, -218.0f, 48.0f, 1.45f, exitZ, MatCreamPlaster, MatTerracottaPillar, MatTerracottaDark)
 
-    // 7. Full-Span Overhead Gantry Columns (planted far outside both roads at X = -3.8m and X = 37.8m, zero pillars on road!)
+    // 7. Full-Span Overhead Gantry Columns
     addBox3D(-3.8f, 0.06f, exitZ - 0.38f, -3.0f, 6.8f, exitZ + 0.38f, MatTerracottaDark, MatTerracottaPillar)
     addBox3D(37.0f, 0.06f, exitZ - 0.38f, 37.8f, 6.8f, exitZ + 0.38f, MatTerracottaDark, MatTerracottaPillar)
     addBox3D(-3.8f, 5.45f, exitZ - 0.30f, 37.8f, 6.65f, exitZ + 0.30f, MatRoofUnderTruss, Color(0xFF1E293B))
 
-    // Sort all 3D terminal faces far-to-near relative to camera
-    faces.sortByDescending { face ->
-        val cx = (face.v0.x + face.v1.x + face.v2.x + face.v3.x) * 0.25f - camEye.x
-        val cy = (face.v0.y + face.v1.y + face.v2.y + face.v3.y) * 0.25f - camEye.y
-        val cz = (face.v0.z + face.v1.z + face.v2.z + face.v3.z) * 0.25f - camEye.z
-        hypot(hypot(cx, cy), cz) + face.biasDist
+    faces
+}
+
+private val sakthanSortBuffer = ArrayList<QuadFace3D>(640)
+
+/**
+ * Renders the 20-Bay Sakthan Thampuran Bus Stand 3D buildings, passenger boarding islands,
+ * terracotta pillars, high corrugated canopies, 12+ parked Kerala buses across the 20 bays,
+ * and 3D perspective banners (Main Terminal Banner, Entry Gate Banner, Exit Gate Banner).
+ */
+private fun DrawScope.drawSakthan20BayTerminalStructuresAndBanners(
+    rig: CameraRig,
+    path: Path,
+    camEye: Vec3,
+    titlePaint: Paint,
+    subPaint: Paint
+) {
+    val dxT = camEye.x - 16f
+    val dzT = camEye.z - (-178f)
+    if (dxT * dxT + dzT * dzT > 260f * 260f) return
+
+    sakthanSortBuffer.clear()
+    val staticFaces = cachedSakthanTerminalFaces
+    val eyeX = camEye.x
+    val eyeY = camEye.y
+    val eyeZ = camEye.z
+    val fwdX = rig.forward.x
+    val fwdY = rig.forward.y
+    val fwdZ = rig.forward.z
+    for (i in 0 until staticFaces.size) {
+        val face = staticFaces[i]
+        val cx = (face.v0.x + face.v1.x + face.v2.x + face.v3.x) * 0.25f - eyeX
+        val cy = (face.v0.y + face.v1.y + face.v2.y + face.v3.y) * 0.25f - eyeY
+        val cz = (face.v0.z + face.v1.z + face.v2.z + face.v3.z) * 0.25f - eyeZ
+        if (cx * fwdX + cy * fwdY + cz * fwdZ < -14f) continue
+        // Outward-normal backface culling so back walls and hidden roof tops never draw over front walls
+        if ((face.nx != 0f || face.ny != 0f || face.nz != 0f) &&
+            (cx * face.nx + cy * face.ny + cz * face.nz >= 0f)
+        ) {
+            continue
+        }
+        face.sortKey = kotlin.math.sqrt(cx * cx + cy * cy + cz * cz) + face.biasDist
+        sakthanSortBuffer.add(face)
     }
 
-    for (face in faces) {
+    sakthanSortBuffer.sortWith(FaceDepthComparator)
+
+    for (i in 0 until sakthanSortBuffer.size) {
+        val face = sakthanSortBuffer[i]
         if (rig.buildClippedQuadPath(path, face.v0, face.v1, face.v2, face.v3)) {
             drawPath(path, face.color)
-            if (face.strokeColor != null) {
-                drawPath(path, face.strokeColor, style = Stroke(width = 1f))
-            }
         }
     }
 
@@ -1477,26 +1680,29 @@ internal fun DrawScope.draw3DGantryBanner(
 }
 
 /**
- * Renders the CGTrader Hino RM 2 Bus (12m Rear-Engine Intercity AC Luxury Coach) in 3D.
+ * Renders the CGTrader Hino RM 2 Bus ("EAGLE" / "BUS LOVER" 12m Rear-Engine Intercity AC Coach) in 3D.
  *
  * Asset Provenance & License Compliance:
  * - Source URL : https://www.cgtrader.com/free-3d-models/vehicle/bus/hino-rm-2-bus
  * - Creator    : asrafullislamsiam (CGTrader)
  * - License    : CGTrader Royalty Free License (No AI)
- * - Details    : Pearl White aerodynamic coachwork ("main body", "Rm 2 paint .png") with
- *                sweeping Royal Blue, Crimson Red & Metallic Gold livery ribbons, 3 underfloor
- *                luggage lockers per side ("box locker"), front-left passenger door ("box door"),
- *                brushed aluminum beltline trim ("aluminium"), reconstructed panoramic front glass
- *                ("front glass" / "FRONT GLASS.png") with dual wipers, Hino chrome grille ("grill")
- *                & emblem ("hino"), projector headlamps ("headlight"), rooftop Denso AC unit ("ac"),
- *                rear 6-cylinder turbo-diesel engine louvre grille, chrome exhaust ("exausht"),
- *                3-tier vertical LED taillights ("back light", ".002" reverse, ".003" indicator),
- *                and 6 commercial wheels with steering front wheels.
+ * - Details    : Pearl White aerodynamic coachwork ("main body", "Eagle paint test.png", "Rm 2 paint .png")
+ *                with beveled upper roof crown & low-profile silver Denso rooftop AC pod ("ac"),
+ *                diagonal Magenta/Orchid-Purple front ribbon & 4 concentric sweeping rear arcs,
+ *                "EAGLE" & "RM-2 Exclusive" side branding, 4 black recessed luggage locker latches,
+ *                sculpted matte charcoal-black lower front/rear bumpers with twin circular projector
+ *                headlamps per side, chrome Hino "H" oval emblem with dual air-intake slots,
+ *                "BUS LOVER" / "WinS" / "RM" front decals, panoramic front glass ("front glass")
+ *                with 4 crimson-red scalloped/pleated curtains, curved black dashboard cowl with
+ *                center tissue box ("tissue"), two-tone cream & dark-brown luxury passenger seats ("seat"),
+ *                and high-mount black twin-arm aerodynamic wing mirrors.
  */
 private fun DrawScope.drawHinoRm2Bus3D(
     rig: CameraRig,
     path: Path,
     state: SimUiState,
+    hinoMesh: List<HinoRealMeshPoly>,
+    facesBuffer: ArrayList<QuadFace3D>,
     titlePaint: Paint,
     subPaint: Paint
 ) {
@@ -1511,14 +1717,16 @@ private fun DrawScope.drawHinoRm2Bus3D(
         return Vec3(wx, pos.y + localY, wz)
     }
 
-    val halfW = 1.28f
-    val halfL = 6.0f
-    val floorY = 0.40f
-    val skirtY = 0.80f
-    val lockerTopY = 1.38f
-    val beltY = 1.76f
-    val cantY = 2.92f
-    val roofY = 3.30f
+    // Camera position in bus-local coordinates for backface culling & front/rear/side decal visibility
+    val eyeDx = rig.eye.x - pos.x
+    val eyeDy = rig.eye.y - pos.y
+    val eyeDz = rig.eye.z - pos.z
+    val camLocalX = eyeDx * c - eyeDz * s
+    val camLocalY = eyeDy
+    val camLocalZ = eyeDx * s + eyeDz * c
+
+    val halfW = 1.24f
+    val halfL = 5.80f
 
     // 1. Projector Headlamp Ground Light Cones ("headlight" / "Lights0012_350.jpg")
     if (state.headlightsOn) {
@@ -1538,569 +1746,248 @@ private fun DrawScope.drawHinoRm2Bus3D(
         }
     }
 
-    // 2. Soft Ambient Contact Shadow under Chassis ("base" / "suspetion")
-    val sh0 = busWorld(-halfW * 1.12f, 0.064f, -halfL * 1.05f)
-    val sh1 = busWorld(halfW * 1.12f, 0.064f, -halfL * 1.05f)
-    val sh2 = busWorld(halfW * 1.12f, 0.064f, halfL * 1.05f)
-    val sh3 = busWorld(-halfW * 1.12f, 0.064f, halfL * 1.05f)
+    // 2. Soft Ambient Contact Shadow under Chassis ("base" / "wide_suspetion")
+    val sh0 = busWorld(-1.36f, 0.064f, -6.38f)
+    val sh1 = busWorld(1.36f, 0.064f, -6.38f)
+    val sh2 = busWorld(1.36f, 0.064f, 5.92f)
+    val sh3 = busWorld(-1.36f, 0.064f, 5.92f)
     if (rig.buildClippedQuadPath(path, sh0, sh1, sh2, sh3)) {
         drawPath(path, Color(0x9E070A0F))
     }
 
-    // Hino RM 2 Authentic PBR Color Palette ("Rm 2 paint .png", "FRONT GLASS.png", "grey.png")
-    val hinoPearlWhite = Color(0xFFF8FAFC)
-    val hinoSidePearl = Color(0xFFF1F5F9)
-    val hinoSkirtNavy = Color(0xFF0F2147)
-    val hinoRoyalBlue = Color(0xFF1D4ED8)
-    val hinoCrimsonRed = Color(0xFFDC2626)
-    val hinoMetallicGold = Color(0xFFEAB308)
-    val hinoAluminium = Color(0xFFCBD5E1)
-    val hinoChrome = Color(0xFFE2E8F0)
-    val hinoWindowGlass = Color(0xFF0B1526)
-    val hinoFrontGlass = Color(0xFF122338)
-    val hinoSunVisorTint = Color(0xFF061229)
-    val hinoBurgundySeats = Color(0xFF6B1D28)
-    val hinoEngineGrille = Color(0xFF111827)
-    val hinoPlateYellow = Color(0xFFFACC15)
-    val tireRubber = Color(0xFF111317)
-    val rimSilver = Color(0xFFD8E0EA)
-
-    val faces = ArrayList<QuadFace3D>(140)
-
-    // 3. Six Commercial Wheels (FL, FR, ML, MR, RL, RR) with Steering Front Axle
-    val axleZs = floatArrayOf(3.45f, -2.65f, -4.05f)
+    // 3. Transform & Render the Actual Imported 3D Mesh of the Hino RM 2 Bus
+    //    (Compiled from HINO_RM2.obj + Mesh_Hino_Wheel_0..5.asset + Eagle paint test.png + Rm 2 paint .png + Eagle glass.png)
     val frontSteerRad = state.steerInput * 0.45f
-    for ((aIdx, az) in axleZs.withIndex()) {
-        val isFront = aIdx == 0
-        val ws = if (isFront) sin(frontSteerRad) else 0f
-        val wc = if (isFront) cos(frontSteerRad) else 1f
-        for (side in intArrayOf(-1, 1)) {
-            val wx = side * (halfW + 0.03f)
-            val r = 0.50f
-            val dz0 = -r * wc
-            val dx0 = -r * ws
-            val dz1 = r * wc
-            val dx1 = r * ws
-            faces.add(
-                QuadFace3D(
-                    busWorld(wx + dx0, 0.06f, az + dz0),
-                    busWorld(wx + dx0, 0.98f, az + dz0),
-                    busWorld(wx + dx1, 0.98f, az + dz1),
-                    busWorld(wx + dx1, 0.06f, az + dz1),
-                    tireRubber
-                )
-            )
-            val hubX = side * (halfW + 0.046f)
-            val hr = 0.27f
-            faces.add(
-                QuadFace3D(
-                    busWorld(hubX - hr * ws, 0.28f, az - hr * wc),
-                    busWorld(hubX - hr * ws, 0.76f, az - hr * wc),
-                    busWorld(hubX + hr * ws, 0.76f, az + hr * wc),
-                    busWorld(hubX + hr * ws, 0.28f, az + hr * wc),
-                    rimSilver,
-                    biasDist = -0.05f
-                )
-            )
-        }
-    }
+    val ws = sin(frontSteerRad)
+    val wc = cos(frontSteerRad)
 
-    // 4. Side Body Panels ("main body"), Luggage Lockers ("box locker"), Livery Ribbons & Tinted Windows
+    val brakeActive = state.brakeInput > 0.05f || state.isParkBrakeActive
+    val revActive = state.gear == com.bharatbussim.game.model.TransmissionGear.Reverse
     val leftBlinkOn = state.blinkerPhase && (state.turnLeftOn || state.hazardsOn)
     val rightBlinkOn = state.blinkerPhase && (state.turnRightOn || state.hazardsOn)
 
-    for (side in intArrayOf(-1, 1)) {
-        val sx = side * halfW
-        val detailX = side * (halfW + 0.012f)
-        val trimX = side * (halfW + 0.022f)
+    val hlActiveCol = Color(0xFFFFFFFF)
+    val brakeActiveCol = Color(0xFFFF1E1E)
+    val revActiveCol = Color(0xFFFFFFFF)
+    val blinkActiveCol = Color(0xFFFBBF24)
 
-        // Deep Navy lower chassis valence
-        faces.add(
-            QuadFace3D(
-                busWorld(sx, floorY, -halfL),
-                busWorld(sx, skirtY, -halfL),
-                busWorld(sx, skirtY, halfL),
-                busWorld(sx, floorY, halfL),
-                hinoSkirtNavy
-            )
-        )
-        // Pearl White main side body ("main body")
-        faces.add(
-            QuadFace3D(
-                busWorld(sx, skirtY, -halfL),
-                busWorld(sx, roofY, -halfL),
-                busWorld(sx, roofY, halfL),
-                busWorld(sx, skirtY, halfL),
-                hinoSidePearl
-            )
-        )
-        // 3 Underfloor Luggage Lockers per side ("box locker.001..006") + Chrome Handles ("handle")
-        for (lIdx in 0 until 3) {
-            val lz0 = -1.65f + lIdx * 1.62f
-            val lz1 = lz0 + 1.48f
-            faces.add(
-                QuadFace3D(
-                    busWorld(detailX, skirtY + 0.04f, lz0),
-                    busWorld(detailX, lockerTopY, lz0),
-                    busWorld(detailX, lockerTopY, lz1),
-                    busWorld(detailX, skirtY + 0.04f, lz1),
-                    hinoPearlWhite,
-                    strokeColor = Color(0x550F172A),
-                    biasDist = -0.03f
-                )
-            )
-            val hMid = (lz0 + lz1) * 0.5f
-            faces.add(
-                QuadFace3D(
-                    busWorld(trimX, skirtY + 0.12f, hMid - 0.14f),
-                    busWorld(trimX, skirtY + 0.18f, hMid - 0.14f),
-                    busWorld(trimX, skirtY + 0.18f, hMid + 0.14f),
-                    busWorld(trimX, skirtY + 0.12f, hMid + 0.14f),
-                    hinoChrome,
-                    strokeColor = null,
-                    biasDist = -0.05f
-                )
-            )
+    fun transformWheelOrStatic(partId: Int, lx: Float, ly: Float, lz: Float): Vec3 {
+        if (partId == 6) {
+            // PART_WHEEL_FL hub at (-1.10f, 0.52f, 3.00f)
+            val dx = lx - (-1.10f)
+            val dz = lz - 3.00f
+            val rx = -1.10f + dx * wc + dz * ws
+            val rz = 3.00f - dx * ws + dz * wc
+            return busWorld(rx, ly, rz)
+        } else if (partId == 7) {
+            // PART_WHEEL_FR hub at (1.10f, 0.52f, 3.00f)
+            val dx = lx - 1.10f
+            val dz = lz - 3.00f
+            val rx = 1.10f + dx * wc + dz * ws
+            val rz = 3.00f - dx * ws + dz * wc
+            return busWorld(rx, ly, rz)
+        }
+        return busWorld(lx, ly, lz)
+    }
+
+    facesBuffer.clear()
+    val eyeX = rig.eye.x
+    val eyeY = rig.eye.y
+    val eyeZ = rig.eye.z
+    val hideInteriorFromRear = camLocalZ < -0.5f && kotlin.math.abs(camLocalX) < 1.38f
+
+    for (i in 0 until hinoMesh.size) {
+        val poly = hinoMesh[i]
+        val cm = poly.cullMode
+        if (cm == 2 && hideInteriorFromRear) {
+            continue
+        } else if (cm == 1) {
+            val dot = (poly.cx - camLocalX) * poly.nx + (poly.cy - camLocalY) * poly.ny + (poly.cz - camLocalZ) * poly.nz
+            if (dot >= 0.08f) continue
+        }
+        val pid = poly.partId
+        val v0 = transformWheelOrStatic(pid, poly.x0, poly.y0, poly.z0)
+        val v1 = transformWheelOrStatic(pid, poly.x1, poly.y1, poly.z1)
+        val v2 = transformWheelOrStatic(pid, poly.x2, poly.y2, poly.z2)
+        val v3 = if (poly.vertCount == 4) {
+            transformWheelOrStatic(pid, poly.x3, poly.y3, poly.z3)
+        } else {
+            v2
         }
 
-        // Front-Left Passenger Plug Door ("box door")
-        if (side == -1) {
-            faces.add(
-                QuadFace3D(
-                    busWorld(detailX, floorY + 0.05f, 3.95f),
-                    busWorld(detailX, cantY - 0.12f, 3.95f),
-                    busWorld(detailX, cantY - 0.12f, 5.25f),
-                    busWorld(detailX, floorY + 0.05f, 5.25f),
-                    hinoPearlWhite,
-                    strokeColor = Color(0x660F172A),
-                    biasDist = -0.04f
-                )
-            )
+        val dynCol = when (pid) {
+            1 -> if (state.headlightsOn) hlActiveCol else poly.baseColor
+            2 -> if (brakeActive) brakeActiveCol else poly.baseColor
+            3 -> if (revActive) revActiveCol else poly.baseColor
+            4 -> if (leftBlinkOn) blinkActiveCol else poly.baseColor
+            5 -> if (rightBlinkOn) blinkActiveCol else poly.baseColor
+            else -> poly.baseColor
         }
 
-        // Sweeping Hino RM 2 Livery Stripes (Royal Blue, Crimson Red, and Metallic Gold ribbons)
-        faces.add(
-            QuadFace3D(
-                busWorld(detailX, lockerTopY + 0.02f, -halfL),
-                busWorld(detailX, lockerTopY + 0.22f, -halfL),
-                busWorld(detailX, beltY - 0.06f, halfL),
-                busWorld(detailX, beltY - 0.24f, halfL),
-                hinoRoyalBlue,
-                strokeColor = null,
-                biasDist = -0.04f
-            )
-        )
-        faces.add(
-            QuadFace3D(
-                busWorld(detailX, lockerTopY - 0.12f, -halfL),
-                busWorld(detailX, lockerTopY + 0.01f, -halfL),
-                busWorld(detailX, beltY - 0.25f, halfL),
-                busWorld(detailX, beltY - 0.36f, halfL),
-                hinoCrimsonRed,
-                strokeColor = null,
-                biasDist = -0.04f
-            )
-        )
-        faces.add(
-            QuadFace3D(
-                busWorld(trimX, beltY - 0.06f, -halfL),
-                busWorld(trimX, beltY, -halfL),
-                busWorld(trimX, beltY, halfL),
-                busWorld(trimX, beltY - 0.06f, halfL),
-                hinoMetallicGold,
-                strokeColor = null,
-                biasDist = -0.05f
-            )
-        )
-        // Brushed Aluminum Beltline Molding ("aluminium")
-        faces.add(
-            QuadFace3D(
-                busWorld(trimX, beltY, -halfL),
-                busWorld(trimX, beltY + 0.06f, -halfL),
-                busWorld(trimX, beltY + 0.06f, halfL),
-                busWorld(trimX, beltY, halfL),
-                hinoAluminium,
-                strokeColor = null,
-                biasDist = -0.05f
-            )
-        )
+        val cx = (v0.x + v1.x + v2.x + v3.x) * 0.25f - eyeX
+        val cy = (v0.y + v1.y + v2.y + v3.y) * 0.25f - eyeY
+        val cz = (v0.z + v1.z + v2.z + v3.z) * 0.25f - eyeZ
+        val sortKey = kotlin.math.sqrt(cx * cx + cy * cy + cz * cz) + poly.biasDist
 
-        // Continuous Frameless Dark-Tinted Side Windows ("side glass") with Interior Burgundy Seats ("seat")
-        for (wIdx in 0 until 6) {
-            val z0 = -halfL + 0.36f + wIdx * 1.86f
-            val z1 = z0 + 1.68f
-            faces.add(
-                QuadFace3D(
-                    busWorld(detailX, beltY + 0.08f, z0),
-                    busWorld(detailX, cantY, z0),
-                    busWorld(detailX, cantY, z1),
-                    busWorld(detailX, beltY + 0.08f, z1),
-                    hinoWindowGlass,
-                    biasDist = -0.06f
-                )
-            )
-            // Luxury Burgundy Coach Seat Headrest Silhouette visible inside window
-            faces.add(
-                QuadFace3D(
-                    busWorld(detailX, beltY + 0.14f, z0 + 0.35f),
-                    busWorld(detailX, beltY + 0.42f, z0 + 0.35f),
-                    busWorld(detailX, beltY + 0.42f, z0 + 0.95f),
-                    busWorld(detailX, beltY + 0.14f, z0 + 0.95f),
-                    hinoBurgundySeats,
-                    strokeColor = null,
-                    biasDist = -0.07f
-                )
-            )
-        }
-
-        // Amber Side Marker Light ("side light.001" / ".002")
-        val sideBlink = if (side == -1) leftBlinkOn else rightBlinkOn
-        faces.add(
+        facesBuffer.add(
             QuadFace3D(
-                busWorld(trimX, skirtY + 0.18f, 1.85f),
-                busWorld(trimX, skirtY + 0.28f, 1.85f),
-                busWorld(trimX, skirtY + 0.28f, 2.15f),
-                busWorld(trimX, skirtY + 0.18f, 2.15f),
-                if (sideBlink) Color(0xFFFBBF24) else Color(0xFFD97706),
+                v0 = v0,
+                v1 = v1,
+                v2 = v2,
+                v3 = v3,
+                color = dynCol,
                 strokeColor = null,
-                biasDist = -0.06f
-            )
-        )
-
-        // High-Mount Aerodynamic "Elephant-Ear" Wing Mirrors projecting ahead of A-pillars
-        val mirX0 = side * (halfW + 0.04f)
-        val mirX1 = side * (halfW + 0.26f)
-        val mL = min(mirX0, mirX1)
-        val mR = max(mirX0, mirX1)
-        faces.add(
-            QuadFace3D(
-                busWorld(mL, cantY - 0.55f, halfL + 0.18f),
-                busWorld(mR, cantY - 0.55f, halfL + 0.18f),
-                busWorld(mR, cantY - 0.08f, halfL + 0.18f),
-                busWorld(mL, cantY - 0.08f, halfL + 0.18f),
-                hinoPearlWhite,
-                biasDist = -0.09f
+                biasDist = poly.biasDist,
+                sortKey = sortKey
             )
         )
     }
 
-    // 5. Roof Panel & Sculpted Rooftop Denso AC Unit ("ac")
-    faces.add(
-        QuadFace3D(
-            busWorld(-halfW, roofY, -halfL),
-            busWorld(halfW, roofY, -halfL),
-            busWorld(halfW, roofY, halfL),
-            busWorld(-halfW, roofY, halfL),
-            hinoPearlWhite
-        )
-    )
-    val acW = 0.88f
-    val acY = roofY + 0.26f
-    faces.add(
-        QuadFace3D(
-            busWorld(-acW, roofY, -2.2f),
-            busWorld(acW, roofY, -2.2f),
-            busWorld(acW, acY, -2.2f),
-            busWorld(-acW, acY, -2.2f),
-            hinoRoyalBlue,
-            biasDist = -0.09f
-        )
-    )
-    faces.add(
-        QuadFace3D(
-            busWorld(-acW, acY, -2.2f),
-            busWorld(acW, acY, -2.2f),
-            busWorld(acW, acY, 2.2f),
-            busWorld(-acW, acY, 2.2f),
-            hinoPearlWhite,
-            biasDist = -0.10f
-        )
-    )
+    facesBuffer.sortWith(FaceDepthComparator)
 
-    // 6. Front Fascia: Reconstructed Panoramic Front Glass ("front glass"), Hino Chrome Grille ("grill"),
-    //    Hino V-Emblem ("hino"), Projector Headlamps ("headlight"), & Dual Wipers
-    faces.add(
-        QuadFace3D(
-            busWorld(-halfW, floorY, halfL),
-            busWorld(halfW, floorY, halfL),
-            busWorld(halfW, beltY, halfL),
-            busWorld(-halfW, beltY, halfL),
-            hinoPearlWhite
-        )
-    )
-    faces.add(
-        QuadFace3D(
-            busWorld(-halfW, beltY, halfL),
-            busWorld(halfW, beltY, halfL),
-            busWorld(halfW, roofY, halfL),
-            busWorld(-halfW, roofY, halfL),
-            hinoPearlWhite
-        )
-    )
-    // Reconstructed Panoramic Front Glass ("front glass") + Top Blue Sun-Visor Tint Band ("FRONT GLASS.png")
-    faces.add(
-        QuadFace3D(
-            busWorld(-halfW + 0.10f, beltY + 0.06f, halfL + 0.015f),
-            busWorld(halfW - 0.10f, beltY + 0.06f, halfL + 0.015f),
-            busWorld(halfW - 0.10f, roofY - 0.34f, halfL + 0.015f),
-            busWorld(-halfW + 0.10f, roofY - 0.34f, halfL + 0.015f),
-            hinoFrontGlass,
-            biasDist = -0.06f
-        )
-    )
-    faces.add(
-        QuadFace3D(
-            busWorld(-halfW + 0.10f, roofY - 0.34f, halfL + 0.018f),
-            busWorld(halfW - 0.10f, roofY - 0.34f, halfL + 0.018f),
-            busWorld(halfW - 0.10f, roofY - 0.10f, halfL + 0.018f),
-            busWorld(-halfW + 0.10f, roofY - 0.10f, halfL + 0.018f),
-            hinoSunVisorTint,
-            biasDist = -0.07f
-        )
-    )
-    // Hino Trapezoidal Chrome Front Grille ("grill") & Central V-Emblem ("hino")
-    faces.add(
-        QuadFace3D(
-            busWorld(-0.72f, skirtY + 0.08f, halfL + 0.02f),
-            busWorld(0.72f, skirtY + 0.08f, halfL + 0.02f),
-            busWorld(0.82f, beltY - 0.22f, halfL + 0.02f),
-            busWorld(-0.82f, beltY - 0.22f, halfL + 0.02f),
-            hinoChrome,
-            biasDist = -0.07f
-        )
-    )
-    faces.add(
-        QuadFace3D(
-            busWorld(-0.22f, beltY - 0.18f, halfL + 0.026f),
-            busWorld(0.22f, beltY - 0.18f, halfL + 0.026f),
-            busWorld(0.26f, beltY - 0.04f, halfL + 0.026f),
-            busWorld(-0.26f, beltY - 0.04f, halfL + 0.026f),
-            hinoMetallicGold,
-            biasDist = -0.08f
-        )
-    )
-    // Multi-Element Projector Headlamps ("headlight" / "Lights0012_350.jpg")
-    for (side in intArrayOf(-1, 1)) {
-        val hx0 = side * (halfW - 0.08f)
-        val hx1 = side * (halfW - 0.48f)
-        val hL = min(hx0, hx1)
-        val hR = max(hx0, hx1)
-        faces.add(
-            QuadFace3D(
-                busWorld(hL, skirtY + 0.10f, halfL + 0.022f),
-                busWorld(hR, skirtY + 0.10f, halfL + 0.022f),
-                busWorld(hR, skirtY + 0.42f, halfL + 0.022f),
-                busWorld(hL, skirtY + 0.42f, halfL + 0.022f),
-                if (state.headlightsOn) Color(0xFFE0F2FE) else Color(0xFF94A3B8),
-                biasDist = -0.08f
-            )
-        )
-    }
-    // Front Commercial Registration Plate ("plate")
-    faces.add(
-        QuadFace3D(
-            busWorld(-0.32f, floorY + 0.14f, halfL + 0.025f),
-            busWorld(0.32f, floorY + 0.14f, halfL + 0.025f),
-            busWorld(0.32f, floorY + 0.28f, halfL + 0.025f),
-            busWorld(-0.32f, floorY + 0.28f, halfL + 0.025f),
-            hinoPlateYellow,
-            biasDist = -0.08f
-        )
-    )
-
-    // 7. Rear Engine Bay Fascia (Hino RM 2 Rear 6-Cylinder Turbo-Diesel Engine, Chrome Exhaust & 3-Tier Taillights)
-    faces.add(
-        QuadFace3D(
-            busWorld(-halfW, floorY, -halfL),
-            busWorld(halfW, floorY, -halfL),
-            busWorld(halfW, skirtY, -halfL),
-            busWorld(-halfW, skirtY, -halfL),
-            hinoSkirtNavy
-        )
-    )
-    faces.add(
-        QuadFace3D(
-            busWorld(-halfW, skirtY, -halfL),
-            busWorld(halfW, skirtY, -halfL),
-            busWorld(halfW, roofY, -halfL),
-            busWorld(-halfW, roofY, -halfL),
-            hinoPearlWhite
-        )
-    )
-    // Rear Sweeping Royal Blue & Crimson Red Hino RM 2 Livery Accent Bands
-    faces.add(
-        QuadFace3D(
-            busWorld(-halfW, beltY - 0.26f, -halfL - 0.012f),
-            busWorld(halfW, beltY - 0.26f, -halfL - 0.012f),
-            busWorld(halfW, beltY - 0.08f, -halfL - 0.012f),
-            busWorld(-halfW, beltY - 0.08f, -halfL - 0.012f),
-            hinoRoyalBlue,
-            strokeColor = null,
-            biasDist = -0.05f
-        )
-    )
-    faces.add(
-        QuadFace3D(
-            busWorld(-halfW, beltY - 0.36f, -halfL - 0.012f),
-            busWorld(halfW, beltY - 0.36f, -halfL - 0.012f),
-            busWorld(halfW, beltY - 0.26f, -halfL - 0.012f),
-            busWorld(-halfW, beltY - 0.26f, -halfL - 0.012f),
-            hinoCrimsonRed,
-            strokeColor = null,
-            biasDist = -0.05f
-        )
-    )
-    faces.add(
-        QuadFace3D(
-            busWorld(-halfW, beltY - 0.08f, -halfL - 0.014f),
-            busWorld(halfW, beltY - 0.08f, -halfL - 0.014f),
-            busWorld(halfW, beltY, -halfL - 0.014f),
-            busWorld(-halfW, beltY, -halfL - 0.014f),
-            hinoMetallicGold,
-            strokeColor = null,
-            biasDist = -0.06f
-        )
-    )
-    // Rear-Engine Hatch Recessed Dark Intercooler Louvre Grille (Hino RM 2 Rear Engine)
-    faces.add(
-        QuadFace3D(
-            busWorld(-0.74f, skirtY + 0.08f, -halfL - 0.018f),
-            busWorld(0.74f, skirtY + 0.08f, -halfL - 0.018f),
-            busWorld(0.74f, beltY - 0.40f, -halfL - 0.018f),
-            busWorld(-0.74f, beltY - 0.40f, -halfL - 0.018f),
-            hinoEngineGrille,
-            biasDist = -0.07f
-        )
-    )
-    // Chrome Exhaust Tailpipe ("exausht") & Rear Bumper Trim
-    faces.add(
-        QuadFace3D(
-            busWorld(-0.98f, floorY + 0.04f, -halfL - 0.03f),
-            busWorld(-0.78f, floorY + 0.04f, -halfL - 0.03f),
-            busWorld(-0.78f, floorY + 0.20f, -halfL - 0.03f),
-            busWorld(-0.98f, floorY + 0.20f, -halfL - 0.03f),
-            hinoChrome,
-            biasDist = -0.08f
-        )
-    )
-    // Rear Registration Plate ("plate.001")
-    faces.add(
-        QuadFace3D(
-            busWorld(-0.30f, floorY + 0.22f, -halfL - 0.025f),
-            busWorld(0.30f, floorY + 0.22f, -halfL - 0.025f),
-            busWorld(0.30f, floorY + 0.36f, -halfL - 0.025f),
-            busWorld(-0.30f, floorY + 0.36f, -halfL - 0.025f),
-            hinoPlateYellow,
-            biasDist = -0.08f
-        )
-    )
-    // Rear Upper Tinted Glass ("rear glass")
-    faces.add(
-        QuadFace3D(
-            busWorld(-halfW + 0.16f, beltY + 0.14f, -halfL - 0.016f),
-            busWorld(halfW - 0.16f, beltY + 0.14f, -halfL - 0.016f),
-            busWorld(halfW - 0.20f, cantY - 0.04f, -halfL - 0.016f),
-            busWorld(-halfW + 0.20f, cantY - 0.04f, -halfL - 0.016f),
-            hinoWindowGlass,
-            biasDist = -0.06f
-        )
-    )
-    // Upper Rear Destination / Model Header ("HINO RM 2 AC COACH")
-    faces.add(
-        QuadFace3D(
-            busWorld(-0.76f, cantY + 0.03f, -halfL - 0.02f),
-            busWorld(0.76f, cantY + 0.03f, -halfL - 0.02f),
-            busWorld(0.76f, roofY - 0.06f, -halfL - 0.02f),
-            busWorld(-0.76f, roofY - 0.06f, -halfL - 0.02f),
-            Color(0xFF091326),
-            biasDist = -0.07f
-        )
-    )
-
-    // 8. 3-Tier Vertical LED Taillights ("back light" = Red, "back light.003" = Amber, "back light.002" = White Reverse)
-    val brakeActive = state.brakeInput > 0.05f || state.isParkBrakeActive
-    val brakeCol = if (brakeActive) Color(0xFFFF1E1E) else Color(0xFFB91C1C)
-    val revActive = state.gear == com.bharatbussim.game.model.TransmissionGear.Reverse
-    val revCol = if (revActive) Color(0xFFFFFFFF) else Color(0xFFCBD5E1)
-    val leftIndCol = if (leftBlinkOn) Color(0xFFFBBF24) else Color(0xFF78350F)
-    val rightIndCol = if (rightBlinkOn) Color(0xFFFBBF24) else Color(0xFF78350F)
-
-    for (side in intArrayOf(-1, 1)) {
-        val xOuter = side * (halfW - 0.08f)
-        val xInner = side * (halfW - 0.38f)
-        val xL = min(xOuter, xInner)
-        val xR = max(xOuter, xInner)
-        // Top tier: Red Brake / Tail Lamp ("back light")
-        faces.add(
-            QuadFace3D(
-                busWorld(xL, skirtY + 0.42f, -halfL - 0.025f),
-                busWorld(xR, skirtY + 0.42f, -halfL - 0.025f),
-                busWorld(xR, skirtY + 0.76f, -halfL - 0.025f),
-                busWorld(xL, skirtY + 0.76f, -halfL - 0.025f),
-                brakeCol,
-                biasDist = -0.09f
-            )
-        )
-        // Middle tier: Amber Turn Indicator ("back light.003")
-        faces.add(
-            QuadFace3D(
-                busWorld(xL, skirtY + 0.22f, -halfL - 0.025f),
-                busWorld(xR, skirtY + 0.22f, -halfL - 0.025f),
-                busWorld(xR, skirtY + 0.40f, -halfL - 0.025f),
-                busWorld(xL, skirtY + 0.40f, -halfL - 0.025f),
-                if (side == -1) leftIndCol else rightIndCol,
-                biasDist = -0.09f
-            )
-        )
-        // Bottom tier: White Reverse Lamp ("back light.002")
-        faces.add(
-            QuadFace3D(
-                busWorld(xL, skirtY + 0.06f, -halfL - 0.025f),
-                busWorld(xR, skirtY + 0.06f, -halfL - 0.025f),
-                busWorld(xR, skirtY + 0.20f, -halfL - 0.025f),
-                busWorld(xL, skirtY + 0.20f, -halfL - 0.025f),
-                revCol,
-                biasDist = -0.09f
-            )
-        )
-    }
-
-    faces.sortByDescending { face ->
-        val cx = (face.v0.x + face.v1.x + face.v2.x + face.v3.x) * 0.25f - rig.eye.x
-        val cy = (face.v0.y + face.v1.y + face.v2.y + face.v3.y) * 0.25f - rig.eye.y
-        val cz = (face.v0.z + face.v1.z + face.v2.z + face.v3.z) * 0.25f - rig.eye.z
-        hypot(hypot(cx, cy), cz) + face.biasDist
-    }
-
-    for (face in faces) {
+    for (i in 0 until facesBuffer.size) {
+        val face = facesBuffer[i]
         if (rig.buildClippedQuadPath(path, face.v0, face.v1, face.v2, face.v3)) {
             drawPath(path, face.color)
-            if (face.strokeColor != null) {
-                drawPath(path, face.strokeColor, style = Stroke(width = 1f))
-            }
         }
     }
 
-    // 9. Render 3D "HINO RM 2" Chrome Badge on the Rear Tailgate & Dual Animated Front Wipers
-    val rearBadgePt = rig.projectPoint(busWorld(0f, beltY - 0.17f, -halfL - 0.03f))
-    if (rearBadgePt != null) {
-        val cRear = rig.toCamSpace(busWorld(0f, beltY - 0.17f, -halfL - 0.03f))
-        if (cRear.cz in 2.5f..42f) {
-            val badgeSize = (180f / cRear.cz).coerceIn(8f, 18f)
-            titlePaint.color = Color(0xFFFef08a).toArgb()
-            titlePaint.textSize = badgeSize
-            subPaint.color = Color.White.toArgb()
-            subPaint.textSize = (badgeSize * 0.78f).coerceAtLeast(7f)
-            val nc = drawContext.canvas.nativeCanvas
-            nc.drawText("HINO RM 2", rearBadgePt.x, rearBadgePt.y, titlePaint)
+    // 4. Crisp Perspective-Aligned 3D Typography Decals on the Imported Mesh Surfaces
+    //    ("BUS LOVER", "WinS", "RM", "EAGLE", "RM-2 Exclusive")
+    val eagleMagenta = Color(0xFFB0548B)
+    val eagleMagentaDeep = Color(0xFF963B72)
+    val charcoalBumper = Color(0xFF1C1F26)
+    val nc = drawContext.canvas.nativeCanvas
+
+    fun drawCoachDecal(
+        worldLeft: Vec3,
+        worldRight: Vec3,
+        worldTop: Vec3,
+        worldBottom: Vec3,
+        text: String,
+        color: Color
+    ) {
+        val pL = rig.projectPoint(worldLeft) ?: return
+        val pR = rig.projectPoint(worldRight) ?: return
+        val pT = rig.projectPoint(worldTop) ?: return
+        val pB = rig.projectPoint(worldBottom) ?: return
+        val pixW = hypot(pR.x - pL.x, pR.y - pL.y)
+        val pixH = hypot(pB.x - pT.x, pB.y - pT.y)
+        if (pixW < 14f || pixH < 5f) return
+
+        val cx = (pL.x + pR.x) * 0.5f
+        val cy = (pT.y + pB.y) * 0.5f
+        var ang = Math.toDegrees(atan2((pR.y - pL.y).toDouble(), (pR.x - pL.x).toDouble())).toFloat()
+        if (ang > 90f) ang -= 180f
+        if (ang < -90f) ang += 180f
+
+        val textSizePx = min(pixH * 0.85f, pixW / (text.length.coerceAtLeast(2) * 0.56f)).coerceIn(6.5f, 34f)
+        titlePaint.color = color.toArgb()
+        titlePaint.textSize = textSizePx
+        nc.save()
+        nc.translate(cx, cy)
+        nc.rotate(ang)
+        nc.drawText(text, 0f, textSizePx * 0.34f, titlePaint)
+        nc.restore()
+    }
+
+    // Front Fascia Decals on HINO_RM2.obj front mask (Z = +5.81m)
+    if (camLocalZ > 2.2f) {
+        val fZ = 5.81f
+        drawCoachDecal(
+            busWorld(-0.54f, 1.32f, fZ),
+            busWorld(0.54f, 1.32f, fZ),
+            busWorld(0f, 1.43f, fZ),
+            busWorld(0f, 1.21f, fZ),
+            "BUS LOVER",
+            eagleMagentaDeep
+        )
+        drawCoachDecal(
+            busWorld(1.06f, 1.24f, 5.66f),
+            busWorld(0.68f, 1.24f, 5.76f),
+            busWorld(0.87f, 1.32f, 5.71f),
+            busWorld(0.87f, 1.16f, 5.71f),
+            "WinS",
+            charcoalBumper
+        )
+    }
+
+    // Left & Right Side Body Decals on HINO_RM2.obj side panels (X = +/-1.235m)
+    for (side in intArrayOf(-1, 1)) {
+        val isVisibleSide = (side == -1 && camLocalX < -0.35f) || (side == 1 && camLocalX > 0.35f)
+        if (isVisibleSide) {
+            val sx = side * 1.242f
+            drawCoachDecal(
+                busWorld(sx, 1.56f, 1.75f),
+                busWorld(sx, 1.56f, 0.05f),
+                busWorld(sx, 1.78f, 0.90f),
+                busWorld(sx, 1.34f, 0.90f),
+                "EAGLE",
+                eagleMagenta
+            )
+            val glassX = side * 1.218f
+            drawCoachDecal(
+                busWorld(glassX, 2.66f, 1.95f),
+                busWorld(glassX, 2.66f, 0.65f),
+                busWorld(glassX, 2.76f, 1.30f),
+                busWorld(glassX, 2.56f, 1.30f),
+                "RM-2 Exclusive",
+                Color(0xE6FFFFFF)
+            )
+            drawCoachDecal(
+                busWorld(glassX, 2.66f, 0.35f),
+                busWorld(glassX, 2.66f, -0.75f),
+                busWorld(glassX, 2.76f, -0.20f),
+                busWorld(glassX, 2.56f, -0.20f),
+                "EAGLE",
+                Color(0xE6FFFFFF)
+            )
+            drawCoachDecal(
+                busWorld(glassX, 2.66f, -1.05f),
+                busWorld(glassX, 2.66f, -2.35f),
+                busWorld(glassX, 2.76f, -1.70f),
+                busWorld(glassX, 2.56f, -1.70f),
+                "RM-2 Exclusive",
+                Color(0xE6FFFFFF)
+            )
+            drawCoachDecal(
+                busWorld(glassX, 2.66f, -2.65f),
+                busWorld(glassX, 2.66f, -3.75f),
+                busWorld(glassX, 2.76f, -3.20f),
+                busWorld(glassX, 2.56f, -3.20f),
+                "EAGLE",
+                Color(0xE6FFFFFF)
+            )
         }
     }
 
-    // Animated Dual Windshield Wipers on Reconstructed Front Glass ("front glass")
+    // Rear Tailgate Decals on HINO_RM2.obj rear engine hatch (Z = -6.26m)
+    if (camLocalZ < -2.2f) {
+        val rZ = -6.26f
+        drawCoachDecal(
+            busWorld(-0.52f, 2.02f, -6.14f),
+            busWorld(0.52f, 2.02f, -6.14f),
+            busWorld(0f, 2.13f, -6.14f),
+            busWorld(0f, 1.91f, -6.14f),
+            "BUS LOVER",
+            Color(0xFFF8FAFC)
+        )
+        drawCoachDecal(
+            busWorld(-0.50f, 1.46f, rZ),
+            busWorld(0.50f, 1.46f, rZ),
+            busWorld(0f, 1.56f, rZ),
+            busWorld(0f, 1.36f, rZ),
+            "EAGLE",
+            eagleMagentaDeep
+        )
+    }
+
+    // 5. Animated Dual Windshield Wipers on Raked Front Windshield (Z = +5.65m -> +5.38m)
     val wiperSweep = if (state.wipersOn) sin(state.wiperPhaseRad) * 0.42f else -0.32f
-    for (pivotX in floatArrayOf(-0.55f, 0.35f)) {
-        val pBase = busWorld(pivotX, beltY + 0.10f, halfL + 0.025f)
-        val pTip = busWorld(pivotX + sin(wiperSweep) * 0.62f, beltY + 0.10f + cos(wiperSweep) * 0.68f, halfL + 0.025f)
+    for (pivotX in floatArrayOf(-0.45f, 0.45f)) {
+        val pBase = busWorld(pivotX, 1.54f, 5.68f)
+        val dy = cos(wiperSweep) * 0.66f
+        val pTip = busWorld(pivotX + sin(wiperSweep) * 0.60f, 1.54f + dy, 5.68f - dy * 0.42f)
         val seg = rig.projectSegmentClipped(pBase, pTip)
         if (seg != null) {
             drawLine(Color(0xFF0F172A), seg.first, seg.second, strokeWidth = 2.6f, cap = StrokeCap.Round)
@@ -2110,28 +1997,52 @@ private fun DrawScope.drawHinoRm2Bus3D(
 
 /**
  * Renders the 3D Hino RM 2 Driver Cockpit Interior when [CameraViewMode.Cockpit] is active:
- * - Upper tinted sun-visor header ("FRONT GLASS.png") & Left/Right A-pillars
+ * - 4 Crimson-Red Scalloped / Pleated Windshield Curtains across the top header (Matching Image 1)
+ * - Left & Right Coach A-pillars
  * - Wrap-around Hino RM 2 charcoal dashboard ("dashboard")
  * - 3 illuminated circular instrument gauges ("circle.009" Speedo, "circle.010" RPM, "circle.011" Air Pressure)
- * - AC Control panel ("AC CONTROLL.png"), Digital Hour Meter ("hour meter"), and Tissue Box ("tissue")
- * - Animated dual windshield wipers when active
+ * - Tissue Box ("tissue") on center dash & Animated dual windshield wipers
  */
 private fun DrawScope.drawHinoRm2Cockpit3D(state: SimUiState) {
     val w = size.width
     val h = size.height
 
-    // 1. Upper Sun-Visor Tint Band ("FRONT GLASS.png")
+    // 1. Upper Windshield Tint & 4 Crimson-Red Scalloped Curtains (Matching Image 1)
     drawRect(
         brush = Brush.verticalGradient(
-            0.0f to Color(0xCC040D21),
-            0.75f to Color(0x66081B38),
+            0.0f to Color(0xCC090D16),
+            0.75f to Color(0x440D1526),
             1.0f to Color.Transparent,
             startY = 0f,
-            endY = h * 0.18f
+            endY = h * 0.16f
         ),
         topLeft = Offset.Zero,
-        size = Size(w, h * 0.18f)
+        size = Size(w, h * 0.16f)
     )
+    val scallopCount = 4
+    val curtainLeft = w * 0.06f
+    val curtainRight = w * 0.94f
+    val scallopW = (curtainRight - curtainLeft) / scallopCount
+    val curtainDrop = h * 0.115f
+    for (i in 0 until scallopCount) {
+        val x0 = curtainLeft + i * scallopW
+        val x1 = x0 + scallopW
+        val xMid = (x0 + x1) * 0.5f
+        val scPath = Path().apply {
+            moveTo(x0, 0f)
+            quadraticTo(xMid, curtainDrop * 1.45f, x1, 0f)
+            close()
+        }
+        drawPath(scPath, Color(0xFFDC2626))
+        drawPath(scPath, Color(0xFF991B1B), style = Stroke(width = 2.dp.toPx()))
+
+        val innerPath = Path().apply {
+            moveTo(x0 + scallopW * 0.16f, 0f)
+            quadraticTo(xMid, curtainDrop * 0.95f, x1 - scallopW * 0.16f, 0f)
+            close()
+        }
+        drawPath(innerPath, Color(0xFFEF4444))
+    }
 
     // 2. Left & Right Coach A-Pillars
     val pillarPathL = Path().apply {
@@ -2180,12 +2091,18 @@ private fun DrawScope.drawHinoRm2Cockpit3D(state: SimUiState) {
     drawPath(dashPath, Color(0xFF1B222D))
     drawPath(dashPath, Color(0xFF334155), style = Stroke(width = 2.dp.toPx()))
 
-    // 5. Tissue Box on Center Dash ("tissue" / "tissue rtexture.png")
+    // 5. Beige & White Tissue Box on Center Dash ("tissue" / "tissue rtexture.png" from Image 1)
     drawRoundRect(
-        color = Color(0xFFE2E8F0),
+        color = Color(0xFFDCC7A1),
         topLeft = Offset(w * 0.42f, dashTopY - 14.dp.toPx()),
         size = Size(54.dp.toPx(), 20.dp.toPx()),
         cornerRadius = androidx.compose.ui.geometry.CornerRadius(5.dp.toPx())
+    )
+    drawRoundRect(
+        color = Color.White,
+        topLeft = Offset(w * 0.435f, dashTopY - 22.dp.toPx()),
+        size = Size(24.dp.toPx(), 10.dp.toPx()),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx())
     )
 
     // 6. Three Circular Hino RM 2 Instrument Dials ("circle.009" km/h, "circle.010" RPM, "circle.011" Air Pressure)

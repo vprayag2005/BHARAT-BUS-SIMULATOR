@@ -114,22 +114,23 @@ def generate_hino_textures():
     """Generates all PBR textures referenced by HinoBusFactory.cs."""
     os.makedirs(HINO_TEX_DIR, exist_ok=True)
 
-    # 1. Rm 2 paint .png (Pearl White base with Royal Blue, Crimson Red, and Gold Hino RM 2 livery stripes)
+    # 1. Rm 2 paint .png & Eagle paint test.png (Pearl White base with Eagle Magenta/Orchid-Purple swooping livery)
     def draw_livery(px, w, h):
-        fill_rect(px, w, h, 0, 0, w, h, 0.95, 0.96, 0.98, 1.0)
-        fill_rect(px, w, h, 0, 0, w, int(h * 0.16), 0.07, 0.16, 0.36, 1.0)
+        fill_rect(px, w, h, 0, 0, w, h, 0.96, 0.97, 0.99, 1.0)
+        # Matte charcoal lower bumper skirt band
+        fill_rect(px, w, h, 0, 0, w, int(h * 0.14), 0.11, 0.12, 0.15, 1.0)
         for x in range(w):
             u = x / float(w)
-            wave = int(math.sin(u * math.pi * 2.0) * (h * 0.06))
-            y_blue = int(h * 0.34) + wave
-            y_red = int(h * 0.24) + wave // 2
-            y_gold = int(h * 0.42) + wave
-            for y in range(max(0, y_blue - 14), min(h, y_blue + 14)):
-                set_px(px, w, h, x, y, 0.08, 0.26, 0.68, 1.0)
-            for y in range(max(0, y_red - 9), min(h, y_red + 9)):
-                set_px(px, w, h, x, y, 0.78, 0.12, 0.16, 1.0)
-            for y in range(max(0, y_gold - 4), min(h, y_gold + 4)):
-                set_px(px, w, h, x, y, 0.92, 0.74, 0.14, 1.0)
+            # Diagonal front Eagle ribbon + 4 concentric rear sweeping magenta-purple arcs
+            diag_y = int(h * (0.28 + 0.48 * u))
+            for y in range(max(0, diag_y - 10), min(h, diag_y + 10)):
+                set_px(px, w, h, x, y, 0.69, 0.33, 0.55, 1.0)
+            for arc_idx in range(4):
+                arc_u = (u - 0.35 - arc_idx * 0.11)
+                if arc_u > 0.0:
+                    arc_y = int(h * (0.16 + 1.45 * (arc_u ** 1.35)))
+                    for y in range(max(0, arc_y - 6), min(h, arc_y + 6)):
+                        set_px(px, w, h, x, y, 0.75, 0.42, 0.62, 1.0)
 
     save_image(os.path.join(HINO_TEX_DIR, "Rm 2 paint .png"), 256, 256, draw_livery)
     save_image(os.path.join(HINO_TEX_DIR, "Rm 2 templataet .png"), 128, 128, draw_livery)
@@ -137,10 +138,14 @@ def generate_hino_textures():
     save_image(os.path.join(HINO_TEX_DIR, "Eagle paint test.png"), 128, 128, draw_livery)
     save_image(os.path.join(HINO_TEX_DIR, "Robi express template.png"), 128, 128, draw_livery)
 
-    # 2. FRONT GLASS.png (Reconstructed panoramic windshield with upper sun-visor tint band)
+    # 2. FRONT GLASS.png (Reconstructed panoramic windshield with 4 crimson-red scalloped curtains at top)
     def draw_front_glass(px, w, h):
-        fill_rect(px, w, h, 0, 0, w, int(h * 0.82), 0.14, 0.22, 0.28, 0.38)
-        fill_rect(px, w, h, 0, int(h * 0.82), w, h, 0.04, 0.10, 0.22, 0.82)
+        fill_rect(px, w, h, 0, 0, w, int(h * 0.80), 0.09, 0.12, 0.16, 0.38)
+        for x in range(w):
+            scallop_phase = abs(math.sin((x / float(w)) * math.pi * 4.0))
+            curtain_bottom = int(h * (0.88 - 0.12 * scallop_phase))
+            for y in range(curtain_bottom, h):
+                set_px(px, w, h, x, y, 0.86, 0.15, 0.15, 0.96)
 
     save_image(os.path.join(HINO_TEX_DIR, "FRONT GLASS.png"), 128, 128, draw_front_glass)
     save_image(os.path.join(HINO_TEX_DIR, "Ak travels glass.png"), 128, 128, draw_front_glass)

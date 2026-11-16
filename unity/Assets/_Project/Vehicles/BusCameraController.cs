@@ -494,60 +494,40 @@ namespace BharatBusSim.Vehicles
                 _currentCockpitPitch = Mathf.Lerp(_currentCockpitPitch, _cockpitLookPitch, cockpitLookSmoothSpeed * dt);
 
                 Vector3 wantedEyePos = target.position + target.TransformDirection(new Vector3(activePreset.lateralOffset, activePreset.height, cockpitEyeZ));
-                transform.position = Vector3.Lerp(transform.position, wantedEyePos, activePreset.positionDamping * dt);
+                transform.position = Vector3.Lerp(transform.position, wantedEyePos, Mathf.Clamp01(activePreset.positionDamping * dt));
 
                 Quaternion headRot = target.rotation * Quaternion.Euler(cockpitBasePitch + _currentCockpitPitch, _currentCockpitYaw, 0f);
-                transform.rotation = Quaternion.Slerp(transform.rotation, headRot, activePreset.rotationDamping * dt);
+                transform.rotation = Quaternion.Slerp(transform.rotation, headRot, Mathf.Clamp01(activePreset.rotationDamping * dt));
             }
             // 2. Camera Mode: 360 Orbit View (finger touch rotation around entire bus)
             else if (activePreset.mode == CameraMode.Orbit360)
             {
-                Vector3 focalPoint = target.position + target.TransformDirection(activePreset.lookAtOffset);
+                Vector3 rawFocalPoint = target.position + target.TransformDirection(activePreset.lookAtOffset);
+                Vector3 focalPoint = Vector3.Lerp(
+                    transform.position + transform.forward * activePreset.distance,
+                    rawFocalPoint,
+                    Mathf.Clamp01(activePreset.positionDamping * 1.15f * dt)
+                );
+                focalPoint = Vector3.Lerp(focalPoint, rawFocalPoint, 0.65f);
 
-                _currentOrbitYaw = Mathf.LerpAngle(_currentOrbitYaw, _orbitYaw, 20f * dt);
-                _currentOrbitPitch = Mathf.Lerp(_currentOrbitPitch, _orbitPitch, 20f * dt);
+                _currentOrbitYaw = Mathf.LerpAngle(_currentOrbitYaw, _orbitYaw, Mathf.Clamp01(20f * dt));
+                _currentOrbitPitch = Mathf.Lerp(_currentOrbitPitch, _orbitPitch, Mathf.Clamp01(20f * dt));
 
                 float totalYaw = target.eulerAngles.y + _currentOrbitYaw;
                 Quaternion orbitRot = Quaternion.Euler(_currentOrbitPitch, totalYaw, 0f);
 
-                Vector3 wantedPos = focalPoint - (orbitRot * Vector3.forward * activePreset.distance);
+                Vector3 wantedPos = rawFocalPoint - (orbitRot * Vector3.forward * activePreset.distance);
+                wantedPos = PreventRoadMeshClipping(rawFocalPoint, wantedPos, 1.35f);
 
-                // Anti-clipping spherecast protection
-                Vector3 camRayDir = wantedPos - focalPoint;
-                float camRayDist = camRayDir.magnitude;
-                if (camRayDist > 0.5f)
-                {
-                    camRayDir.Normalize();
-                    int layerMask = ~LayerMask.GetMask("Ignore Raycast");
-                    RaycastHit[] hits = Physics.SphereCastAll(focalPoint, 0.30f, camRayDir, camRayDist, layerMask, QueryTriggerInteraction.Ignore);
-                    float closestDist = camRayDist;
-                    for (int h = 0; h < hits.Length; h++)
-                    {
-                        var hit = hits[h];
-                        if (hit.collider == null || hit.collider.isTrigger) continue;
-                        if (hit.transform == target || hit.transform.IsChildOf(target)) continue;
-
-                        if (hit.distance < closestDist && hit.distance > 0.2f)
-                        {
-                            closestDist = hit.distance;
-                        }
-                    }
-
-                    if (closestDist < camRayDist)
-                    {
-                        float safeDist = Mathf.Max(4.0f, closestDist - 0.35f);
-                        wantedPos = focalPoint + camRayDir * safeDist;
-                    }
-                }
-
-                transform.position = Vector3.Lerp(transform.position, wantedPos, activePreset.positionDamping * dt);
-                transform.LookAt(focalPoint);
+                Vector3 lerpedPos = Vector3.Lerp(transform.position, wantedPos, Mathf.Clamp01(activePreset.positionDamping * dt));
+                transform.position = PreventRoadMeshClipping(rawFocalPoint, lerpedPos, 1.35f);
+                transform.LookAt(rawFocalPoint);
             }
-            // 3. Camera Mode: Rear Chase View (Follow view centered behind bus)
+            // 3. Camera Mode: Third-Person Follow / Rear Chase View (Smooth Lerp + Road-Mesh Anti-Clipping)
             else
             {
                 float wantedYaw = target.eulerAngles.y + (IsRearViewActive ? 180f : 0f);
-                _chaseYaw = Mathf.LerpAngle(_chaseYaw, wantedYaw, activePreset.rotationDamping * dt);
+                _chaseYaw = Mathf.LerpAngle(_chaseYaw, wantedYaw, Mathf.Clamp01(activePreset.rotationDamping * dt));
 
                 Quaternion chaseRot = Quaternion.Euler(0f, _chaseYaw, 0f);
                 Vector3 targetFocalPoint = target.position + target.TransformDirection(activePreset.lookAtOffset);
@@ -574,29 +554,101 @@ namespace BharatBusSim.Vehicles
                 {
                     targetDist = Mathf.Max(6.5f, closestDist - 0.4f);
                 }
-                _currentChaseDist = Mathf.Lerp(_currentChaseDist, targetDist, 15f * dt);
+                _currentChaseDist = Mathf.Lerp(_currentChaseDist, targetDist, Mathf.Clamp01(15f * dt));
 
                 Vector3 wantedPosition = targetFocalPoint - (chaseRot * Vector3.forward * _currentChaseDist) + (chaseRot * Vector3.right * activePreset.lateralOffset);
                 wantedPosition.y = target.position.y + activePreset.height;
+                wantedPosition = PreventRoadMeshClipping(targetFocalPoint, wantedPosition, 1.40f);
 
-                transform.position = Vector3.Lerp(transform.position, wantedPosition, activePreset.positionDamping * dt);
+                Vector3 lerpedPos = Vector3.Lerp(transform.position, wantedPosition, Mathf.Clamp01(activePreset.positionDamping * dt));
+                transform.position = PreventRoadMeshClipping(targetFocalPoint, lerpedPos, 1.40f);
 
                 Vector3 lookDir = targetFocalPoint - transform.position;
                 if (lookDir.sqrMagnitude > 0.001f)
                 {
-                    transform.rotation = Quaternion.LookRotation(lookDir.normalized, Vector3.up);
+                    Quaternion desiredLookRot = Quaternion.LookRotation(lookDir.normalized, Vector3.up);
+                    transform.rotation = Quaternion.Slerp(transform.rotation, desiredLookRot, Mathf.Clamp01(activePreset.rotationDamping * 2.2f * dt));
                 }
             }
 
-            // Smoothly update Camera FOV and NearClipPlane
+            // Smoothly update Camera FOV and NearClipPlane for consistent cinematic framing
             if (_attachedCamera != null)
             {
-                if (Mathf.Abs(_attachedCamera.fieldOfView - activePreset.fieldOfView) > 0.1f)
+                if (Mathf.Abs(_attachedCamera.fieldOfView - activePreset.fieldOfView) > 0.05f)
                 {
-                    _attachedCamera.fieldOfView = Mathf.Lerp(_attachedCamera.fieldOfView, activePreset.fieldOfView, 12f * dt);
+                    _attachedCamera.fieldOfView = Mathf.Lerp(_attachedCamera.fieldOfView, activePreset.fieldOfView, Mathf.Clamp01(12f * dt));
                 }
                 _attachedCamera.nearClipPlane = activePreset.nearClipPlane;
             }
+        }
+
+        /// <summary>
+        /// Prevents camera from clipping through road meshes, curbs, elevated bridges, or terrain
+        /// by performing both a sightline spherecast and a vertical downward road-surface height probe.
+        /// </summary>
+        private Vector3 PreventRoadMeshClipping(Vector3 focalPoint, Vector3 candidatePos, float minClearance)
+        {
+            Vector3 safePos = candidatePos;
+            int layerMask = ~LayerMask.GetMask("Ignore Raycast");
+
+            // 1. Sightline spherecast from focalPoint to candidatePos
+            Vector3 camRayDir = safePos - focalPoint;
+            float camRayDist = camRayDir.magnitude;
+            if (camRayDist > 0.5f)
+            {
+                camRayDir /= camRayDist;
+                RaycastHit[] hits = Physics.SphereCastAll(focalPoint, 0.32f, camRayDir, camRayDist, layerMask, QueryTriggerInteraction.Ignore);
+                float closestDist = camRayDist;
+                for (int h = 0; h < hits.Length; h++)
+                {
+                    var hit = hits[h];
+                    if (hit.collider == null || hit.collider.isTrigger) continue;
+                    if (target != null && (hit.transform == target || hit.transform.IsChildOf(target))) continue;
+
+                    // If hitting upward-facing road/ground mesh, push camera y up rather than collapsing distance too close
+                    if (hit.normal.y > 0.55f)
+                    {
+                        float requiredY = hit.point.y + minClearance;
+                        if (safePos.y < requiredY)
+                        {
+                            safePos.y = requiredY;
+                        }
+                    }
+                    else if (hit.distance < closestDist && hit.distance > 0.2f)
+                    {
+                        closestDist = hit.distance;
+                    }
+                }
+
+                if (closestDist < camRayDist)
+                {
+                    float clampedDist = Mathf.Max(4.5f, closestDist - 0.35f);
+                    safePos = focalPoint + camRayDir * clampedDist;
+                }
+            }
+
+            // 2. Vertical downward probe above candidate XZ to detect road mesh surface height directly below camera
+            Vector3 probeOrigin = new Vector3(safePos.x, Mathf.Max(safePos.y + 6.0f, (target != null ? target.position.y : 0f) + 8.0f), safePos.z);
+            RaycastHit[] groundHits = Physics.RaycastAll(probeOrigin, Vector3.down, 18.0f, layerMask, QueryTriggerInteraction.Ignore);
+            float roadFloorY = target != null ? target.position.y : 0f;
+            for (int i = 0; i < groundHits.Length; i++)
+            {
+                var gh = groundHits[i];
+                if (gh.collider == null || gh.collider.isTrigger) continue;
+                if (target != null && (gh.transform == target || gh.transform.IsChildOf(target))) continue;
+                if (gh.normal.y > 0.45f && gh.point.y > roadFloorY)
+                {
+                    roadFloorY = gh.point.y;
+                }
+            }
+
+            float minAllowedY = roadFloorY + minClearance;
+            if (safePos.y < minAllowedY)
+            {
+                safePos.y = minAllowedY;
+            }
+
+            return safePos;
         }
 
         public void CycleCamera()
