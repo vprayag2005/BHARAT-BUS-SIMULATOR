@@ -518,7 +518,7 @@ fun Thrissur3DRoadViewport(
 ) {
     val context = LocalContext.current
     val hinoRealMesh = remember(context) { loadHinoRealMeshFromAssets(context) }
-    val renderFacesBuffer = remember { ArrayList<QuadFace3D>(10500) }
+    val renderFacesBuffer = remember { ArrayList<QuadFace3D>(18000) }
     val titlePaint = remember {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER
@@ -536,10 +536,12 @@ fun Thrissur3DRoadViewport(
         modifier = modifier
             .fillMaxSize()
             .testTag("thrissur_3d_viewport")
-            .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
-                    change.consume()
-                    onOrbitDrag(dragAmount.x * 0.22f, dragAmount.y * 0.14f)
+            .pointerInput(state.cameraMode) {
+                if (state.cameraMode == CameraViewMode.Orbit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        onOrbitDrag(dragAmount.x * 0.22f, dragAmount.y * 0.14f)
+                    }
                 }
             }
     ) {
@@ -715,7 +717,7 @@ fun Thrissur3DRoadViewport(
         // PASS 5: Render Player's Real Imported Hino RM 2 3D Mesh (HINO_RM2.obj + 6 Wheels + Eagle Livery)
         // Source: https://www.cgtrader.com/free-3d-models/vehicle/bus/hino-rm-2-bus
         // Creator: asrafullislamsiam | License: CGTrader Royalty Free License (No AI)
-        if (state.cameraMode == CameraViewMode.Chase || state.cameraMode == CameraViewMode.TopDown) {
+        if (state.cameraMode == CameraViewMode.Chase || state.cameraMode == CameraViewMode.Orbit) {
             drawHinoRm2Bus3D(
                 rig = rig,
                 path = sharedPath,
@@ -1773,17 +1775,17 @@ private fun DrawScope.drawHinoRm2Bus3D(
 
     fun transformWheelOrStatic(partId: Int, lx: Float, ly: Float, lz: Float): Vec3 {
         if (partId == 6) {
-            // PART_WHEEL_FL hub at (-1.10f, 0.52f, 3.00f)
-            val dx = lx - (-1.10f)
+            // PART_WHEEL_FL hub at (-1.02f, 0.52f, 3.00f)
+            val dx = lx - (-1.02f)
             val dz = lz - 3.00f
-            val rx = -1.10f + dx * wc + dz * ws
+            val rx = -1.02f + dx * wc + dz * ws
             val rz = 3.00f - dx * ws + dz * wc
             return busWorld(rx, ly, rz)
         } else if (partId == 7) {
-            // PART_WHEEL_FR hub at (1.10f, 0.52f, 3.00f)
-            val dx = lx - 1.10f
+            // PART_WHEEL_FR hub at (1.02f, 0.52f, 3.00f)
+            val dx = lx - 1.02f
             val dz = lz - 3.00f
-            val rx = 1.10f + dx * wc + dz * ws
+            val rx = 1.02f + dx * wc + dz * ws
             val rz = 3.00f - dx * ws + dz * wc
             return busWorld(rx, ly, rz)
         }
@@ -1914,69 +1916,105 @@ private fun DrawScope.drawHinoRm2Bus3D(
 
     // Left & Right Side Body Decals on HINO_RM2.obj side panels (X = +/-1.235m)
     for (side in intArrayOf(-1, 1)) {
-        val isVisibleSide = (side == -1 && camLocalX < -0.35f) || (side == 1 && camLocalX > 0.35f)
+        val isVisibleSide = (side == -1 && camLocalX < -0.85f && camLocalZ > -5.2f) ||
+                (side == 1 && camLocalX > 0.85f && camLocalZ > -5.2f)
         if (isVisibleSide) {
             val sx = side * 1.242f
+
+            // 1. Sleek diagonal magenta sash from rocker up through front pillar (Matching Blender Model)
+            val sash0 = busWorld(sx, 0.72f, 3.60f)
+            val sash1 = busWorld(sx, 0.96f, 3.60f)
+            val sash2 = busWorld(sx, 2.45f, 2.10f)
+            val sash3 = busWorld(sx, 2.21f, 2.10f)
+            if (rig.buildClippedQuadPath(path, sash0, sash1, sash2, sash3)) {
+                drawPath(path, eagleMagenta)
+            }
+
+            // 2. 4 Aerodynamic radiating curved swooshes over rear wheels (Matching Blender Model)
+            val arcOffsets = floatArrayOf(0f, 0.28f, 0.56f, 0.84f)
+            for (ao in arcOffsets) {
+                val a0 = busWorld(sx, 0.70f, -1.80f - ao * 0.75f)
+                val a1 = busWorld(sx, 0.82f, -1.80f - ao * 0.75f)
+                val a2 = busWorld(sx, 1.82f + ao * 0.18f, -3.85f - ao * 0.85f)
+                val a3 = busWorld(sx, 1.70f + ao * 0.18f, -3.85f - ao * 0.85f)
+                if (rig.buildClippedQuadPath(path, a0, a1, a2, a3)) {
+                    drawPath(path, eagleMagenta)
+                }
+            }
+
+            // 3. Bold "EAGLE" emblem on center luggage locker door
             drawCoachDecal(
-                busWorld(sx, 1.56f, 1.75f),
-                busWorld(sx, 1.56f, 0.05f),
-                busWorld(sx, 1.78f, 0.90f),
-                busWorld(sx, 1.34f, 0.90f),
+                busWorld(sx, 1.62f, 1.55f),
+                busWorld(sx, 1.62f, -0.15f),
+                busWorld(sx, 1.90f, 0.70f),
+                busWorld(sx, 1.34f, 0.70f),
                 "EAGLE",
                 eagleMagenta
             )
+
+            // 2. Clean window branding on tinted glass (Matching Blender Model)
             val glassX = side * 1.218f
             drawCoachDecal(
-                busWorld(glassX, 2.66f, 1.95f),
-                busWorld(glassX, 2.66f, 0.65f),
-                busWorld(glassX, 2.76f, 1.30f),
-                busWorld(glassX, 2.56f, 1.30f),
+                busWorld(glassX, 2.70f, 2.10f),
+                busWorld(glassX, 2.70f, 0.95f),
+                busWorld(glassX, 2.82f, 1.50f),
+                busWorld(glassX, 2.58f, 1.50f),
                 "RM-2 Exclusive",
-                Color(0xE6FFFFFF)
+                Color(0xEEFFFFFF)
             )
             drawCoachDecal(
-                busWorld(glassX, 2.66f, 0.35f),
-                busWorld(glassX, 2.66f, -0.75f),
-                busWorld(glassX, 2.76f, -0.20f),
-                busWorld(glassX, 2.56f, -0.20f),
+                busWorld(glassX, 2.70f, 0.65f),
+                busWorld(glassX, 2.70f, -0.50f),
+                busWorld(glassX, 2.82f, 0.05f),
+                busWorld(glassX, 2.58f, 0.05f),
                 "EAGLE",
-                Color(0xE6FFFFFF)
+                Color(0xEEFFFFFF)
             )
             drawCoachDecal(
-                busWorld(glassX, 2.66f, -1.05f),
-                busWorld(glassX, 2.66f, -2.35f),
-                busWorld(glassX, 2.76f, -1.70f),
-                busWorld(glassX, 2.56f, -1.70f),
+                busWorld(glassX, 2.70f, -0.80f),
+                busWorld(glassX, 2.70f, -1.95f),
+                busWorld(glassX, 2.82f, -1.40f),
+                busWorld(glassX, 2.58f, -1.40f),
                 "RM-2 Exclusive",
-                Color(0xE6FFFFFF)
+                Color(0xEEFFFFFF)
             )
             drawCoachDecal(
-                busWorld(glassX, 2.66f, -2.65f),
-                busWorld(glassX, 2.66f, -3.75f),
-                busWorld(glassX, 2.76f, -3.20f),
-                busWorld(glassX, 2.56f, -3.20f),
+                busWorld(glassX, 2.70f, -2.25f),
+                busWorld(glassX, 2.70f, -3.40f),
+                busWorld(glassX, 2.82f, -2.80f),
+                busWorld(glassX, 2.58f, -2.80f),
                 "EAGLE",
-                Color(0xE6FFFFFF)
+                Color(0xEEFFFFFF)
             )
         }
     }
 
-    // Rear Tailgate Decals on HINO_RM2.obj rear engine hatch (Z = -6.26m)
-    if (camLocalZ < -2.2f) {
-        val rZ = -6.26f
+    // Rear Tailgate Decals & Defroster on HINO_RM2.obj rear (Z = -6.195m)
+    if (camLocalZ < -1.8f && kotlin.math.abs(camLocalX) < 1.4f) {
+        val rZ = -6.195f
+
+        // Subtle copper defroster heating lines across the rear window
+        for (step in 1..4) {
+            val dy = 2.25f + step * 0.17f
+            val seg = rig.projectSegmentClipped(busWorld(-0.95f, dy, -6.182f), busWorld(0.95f, dy, -6.182f))
+            if (seg != null) {
+                drawLine(Color(0x33FF9966), seg.first, seg.second, strokeWidth = 1.2f)
+            }
+        }
+
         drawCoachDecal(
-            busWorld(-0.52f, 2.02f, -6.14f),
-            busWorld(0.52f, 2.02f, -6.14f),
-            busWorld(0f, 2.13f, -6.14f),
-            busWorld(0f, 1.91f, -6.14f),
+            busWorld(-0.55f, 2.22f, rZ),
+            busWorld(0.55f, 2.22f, rZ),
+            busWorld(0f, 2.34f, rZ),
+            busWorld(0f, 2.10f, rZ),
             "BUS LOVER",
             Color(0xFFF8FAFC)
         )
         drawCoachDecal(
-            busWorld(-0.50f, 1.46f, rZ),
-            busWorld(0.50f, 1.46f, rZ),
-            busWorld(0f, 1.56f, rZ),
-            busWorld(0f, 1.36f, rZ),
+            busWorld(-0.48f, 1.48f, rZ),
+            busWorld(0.48f, 1.48f, rZ),
+            busWorld(0f, 1.62f, rZ),
+            busWorld(0f, 1.34f, rZ),
             "EAGLE",
             eagleMagentaDeep
         )
@@ -2131,5 +2169,274 @@ private fun DrawScope.drawHinoRm2Cockpit3D(state: SimUiState) {
             cap = StrokeCap.Round
         )
     }
+
+    // 7. Left & Right Exterior Side Mirrors with Rear-view Road Reflections (Matching Reference Image 2)
+    val mirrorCornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx())
+    val mirrorInnerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx())
+
+    // Left Mirror Mounting Arm & Housing
+    val leftMirrorW = w * 0.078f
+    val leftMirrorH = h * 0.26f
+    val leftMirrorX = w * 0.062f
+    val leftMirrorY = h * 0.038f
+
+    // Left mounting bracket arm (attached to A-pillar)
+    val armPathL = Path().apply {
+        moveTo(0f, leftMirrorY + leftMirrorH * 0.15f)
+        lineTo(leftMirrorX + leftMirrorW * 0.2f, leftMirrorY - 8.dp.toPx())
+        lineTo(leftMirrorX + leftMirrorW * 0.6f, leftMirrorY)
+        lineTo(leftMirrorX + leftMirrorW * 0.2f, leftMirrorY + 6.dp.toPx())
+        close()
+    }
+    drawPath(armPathL, Color(0xFF0F172A))
+    drawLine(
+        color = Color(0xFF1E293B),
+        start = Offset(0f, leftMirrorY + leftMirrorH * 0.45f),
+        end = Offset(leftMirrorX, leftMirrorY + leftMirrorH * 0.55f),
+        strokeWidth = 4.dp.toPx(),
+        cap = StrokeCap.Round
+    )
+
+    // Left Mirror Outer Casing (Kerala Coach Bright Green with Yellow Trim)
+    drawRoundRect(
+        color = Color(0xFF15803D),
+        topLeft = Offset(leftMirrorX - 3.dp.toPx(), leftMirrorY - 3.dp.toPx()),
+        size = Size(leftMirrorW + 6.dp.toPx(), leftMirrorH + 6.dp.toPx()),
+        cornerRadius = mirrorCornerRadius
+    )
+    drawRoundRect(
+        color = Color(0xFF84CC16),
+        topLeft = Offset(leftMirrorX - 1.dp.toPx(), leftMirrorY - 1.dp.toPx()),
+        size = Size(leftMirrorW + 2.dp.toPx(), leftMirrorH + 2.dp.toPx()),
+        cornerRadius = mirrorCornerRadius,
+        style = Stroke(width = 2.dp.toPx())
+    )
+
+    // Left Mirror Bezel & Glass
+    val glassBezelL = 4.dp.toPx()
+    val glassXL = leftMirrorX + glassBezelL
+    val glassYL = leftMirrorY + glassBezelL
+    val glassWL = leftMirrorW - glassBezelL * 2f
+    val glassHL = leftMirrorH - glassBezelL * 2f
+
+    drawRoundRect(
+        color = Color(0xFF090D16),
+        topLeft = Offset(leftMirrorX, leftMirrorY),
+        size = Size(leftMirrorW, leftMirrorH),
+        cornerRadius = mirrorCornerRadius
+    )
+
+    val mirrorHorizonYL = glassYL + glassHL * 0.45f
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            0.0f to Color(0xFF7DD3FC),
+            0.45f to Color(0xFFBAE6FD),
+            0.451f to Color(0xFF475569),
+            1.0f to Color(0xFF1E293B),
+            startY = glassYL,
+            endY = glassYL + glassHL
+        ),
+        topLeft = Offset(glassXL, glassYL),
+        size = Size(glassWL, glassHL),
+        cornerRadius = mirrorInnerRadius
+    )
+
+    // Rear Road Ribbon & Lane in Left Mirror
+    val mirrorVanishingXL = glassXL + glassWL * 0.52f
+    val mirrorRoadL = Path().apply {
+        moveTo(glassXL + glassWL * 0.28f, glassYL + glassHL)
+        lineTo(glassXL + glassWL * 0.82f, glassYL + glassHL)
+        lineTo(mirrorVanishingXL + glassWL * 0.08f, mirrorHorizonYL)
+        lineTo(mirrorVanishingXL - glassWL * 0.08f, mirrorHorizonYL)
+        close()
+    }
+    drawPath(mirrorRoadL, Color(0xFF334155))
+
+    drawLine(
+        color = Color(0xFFFACC15),
+        start = Offset(glassXL + glassWL * 0.55f, glassYL + glassHL),
+        end = Offset(mirrorVanishingXL, mirrorHorizonYL),
+        strokeWidth = 1.8.dp.toPx(),
+        cap = StrokeCap.Round
+    )
+
+    // Bus Left Body Flank visible on inner mirror edge
+    val busFlankL = Path().apply {
+        moveTo(glassXL + glassWL, glassYL + glassHL * 0.25f)
+        lineTo(glassXL + glassWL * 0.86f, glassYL + glassHL * 0.35f)
+        lineTo(glassXL + glassWL * 0.78f, glassYL + glassHL)
+        lineTo(glassXL + glassWL, glassYL + glassHL)
+        close()
+    }
+    drawPath(busFlankL, Color(0xFFF1F5F9))
+    val busFlankDecalL = Path().apply {
+        moveTo(glassXL + glassWL, glassYL + glassHL * 0.65f)
+        lineTo(glassXL + glassWL * 0.81f, glassYL + glassHL * 0.72f)
+        lineTo(glassXL + glassWL * 0.78f, glassYL + glassHL * 0.95f)
+        lineTo(glassXL + glassWL, glassYL + glassHL * 0.95f)
+        close()
+    }
+    drawPath(busFlankDecalL, Color(0xFF7C3AED))
+
+    // Glass Specular Glint
+    drawLine(
+        brush = Brush.linearGradient(
+            0.0f to Color.Transparent,
+            0.5f to Color(0x55FFFFFF),
+            1.0f to Color.Transparent,
+            start = Offset(glassXL, glassYL),
+            end = Offset(glassXL + glassWL, glassYL + glassHL * 0.6f)
+        ),
+        start = Offset(glassXL, glassYL),
+        end = Offset(glassXL + glassWL, glassYL + glassHL * 0.6f),
+        strokeWidth = 2.dp.toPx()
+    )
+
+    // --- Right Mirror Mounting Arm & Housing (Hanging from header, matching Reference Image 2) ---
+    val rightMirrorW = w * 0.078f
+    val rightMirrorH = h * 0.26f
+    val rightMirrorX = w * 0.645f
+    val rightMirrorY = h * 0.015f
+
+    // Right mounting bracket arm (attached to windshield header)
+    val armPathR = Path().apply {
+        moveTo(rightMirrorX + rightMirrorW * 0.5f - 6.dp.toPx(), 0f)
+        lineTo(rightMirrorX + rightMirrorW * 0.5f + 6.dp.toPx(), 0f)
+        lineTo(rightMirrorX + rightMirrorW * 0.6f, rightMirrorY + 8.dp.toPx())
+        lineTo(rightMirrorX + rightMirrorW * 0.4f, rightMirrorY + 8.dp.toPx())
+        close()
+    }
+    drawPath(armPathR, Color(0xFF0F172A))
+    drawLine(
+        color = Color(0xFF1E293B),
+        start = Offset(rightMirrorX + rightMirrorW * 0.5f, 0f),
+        end = Offset(rightMirrorX + rightMirrorW * 0.5f, rightMirrorY + 10.dp.toPx()),
+        strokeWidth = 6.dp.toPx(),
+        cap = StrokeCap.Round
+    )
+
+    // Right Mirror Outer Casing (Kerala Coach Bright Green)
+    drawRoundRect(
+        color = Color(0xFF15803D),
+        topLeft = Offset(rightMirrorX - 3.dp.toPx(), rightMirrorY - 3.dp.toPx()),
+        size = Size(rightMirrorW + 6.dp.toPx(), rightMirrorH + 6.dp.toPx()),
+        cornerRadius = mirrorCornerRadius
+    )
+    drawRoundRect(
+        color = Color(0xFF84CC16),
+        topLeft = Offset(rightMirrorX - 1.dp.toPx(), rightMirrorY - 1.dp.toPx()),
+        size = Size(rightMirrorW + 2.dp.toPx(), rightMirrorH + 2.dp.toPx()),
+        cornerRadius = mirrorCornerRadius,
+        style = Stroke(width = 2.dp.toPx())
+    )
+
+    // Right Mirror Bezel & Glass
+    val glassXR = rightMirrorX + glassBezelL
+    val glassYR = rightMirrorY + glassBezelL
+    val glassWR = rightMirrorW - glassBezelL * 2f
+    val glassHR = rightMirrorH - glassBezelL * 2f
+
+    drawRoundRect(
+        color = Color(0xFF090D16),
+        topLeft = Offset(rightMirrorX, rightMirrorY),
+        size = Size(rightMirrorW, rightMirrorH),
+        cornerRadius = mirrorCornerRadius
+    )
+
+    val mirrorHorizonYR = glassYR + glassHR * 0.45f
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            0.0f to Color(0xFF7DD3FC),
+            0.45f to Color(0xFFBAE6FD),
+            0.451f to Color(0xFF475569),
+            1.0f to Color(0xFF1E293B),
+            startY = glassYR,
+            endY = glassYR + glassHR
+        ),
+        topLeft = Offset(glassXR, glassYR),
+        size = Size(glassWR, glassHR),
+        cornerRadius = mirrorInnerRadius
+    )
+
+    // Rear Road Ribbon & Lane in Right Mirror
+    val mirrorVanishingXR = glassXR + glassWR * 0.48f
+    val mirrorRoadR = Path().apply {
+        moveTo(glassXR + glassWR * 0.18f, glassYR + glassHR)
+        lineTo(glassXR + glassWR * 0.72f, glassYR + glassHR)
+        lineTo(mirrorVanishingXR + glassWR * 0.08f, mirrorHorizonYR)
+        lineTo(mirrorVanishingXR - glassWR * 0.08f, mirrorHorizonYR)
+        close()
+    }
+    drawPath(mirrorRoadR, Color(0xFF334155))
+
+    drawLine(
+        color = Color(0xFFFACC15),
+        start = Offset(glassXR + glassWR * 0.45f, glassYR + glassHR),
+        end = Offset(mirrorVanishingXR, mirrorHorizonYR),
+        strokeWidth = 1.8.dp.toPx(),
+        cap = StrokeCap.Round
+    )
+
+    // Bus Right Body Flank on inner mirror edge
+    val busFlankR = Path().apply {
+        moveTo(glassXR, glassYR + glassHR * 0.25f)
+        lineTo(glassXR + glassWR * 0.14f, glassYR + glassHR * 0.35f)
+        lineTo(glassXR + glassWR * 0.22f, glassYR + glassHR)
+        lineTo(glassXR, glassYR + glassHR)
+        close()
+    }
+    drawPath(busFlankR, Color(0xFFF1F5F9))
+    val busFlankDecalR = Path().apply {
+        moveTo(glassXR, glassYR + glassHR * 0.65f)
+        lineTo(glassXR + glassWR * 0.19f, glassYR + glassHR * 0.72f)
+        lineTo(glassXR + glassWR * 0.22f, glassYR + glassHR * 0.95f)
+        lineTo(glassXR, glassYR + glassHR * 0.95f)
+        close()
+    }
+    drawPath(busFlankDecalR, Color(0xFF7C3AED))
+
+    // Glass Specular Glint
+    drawLine(
+        brush = Brush.linearGradient(
+            0.0f to Color.Transparent,
+            0.5f to Color(0x55FFFFFF),
+            1.0f to Color.Transparent,
+            start = Offset(glassXR, glassYR),
+            end = Offset(glassXR + glassWR, glassYR + glassHR * 0.6f)
+        ),
+        start = Offset(glassXR, glassYR),
+        end = Offset(glassXR + glassWR, glassYR + glassHR * 0.6f),
+        strokeWidth = 2.dp.toPx()
+    )
+
+    // 8. GPS Navigation Screen on Center-Left Dashboard (Matching Reference Image 2)
+    val gpsW = w * 0.14f
+    val gpsH = h * 0.14f
+    val gpsX = w * 0.38f
+    val gpsY = dashTopY + 12.dp.toPx()
+    drawRoundRect(
+        color = Color(0xFF090D16),
+        topLeft = Offset(gpsX - 2.dp.toPx(), gpsY - 2.dp.toPx()),
+        size = Size(gpsW + 4.dp.toPx(), gpsH + 4.dp.toPx()),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx())
+    )
+    drawRoundRect(
+        color = Color(0xFF020617),
+        topLeft = Offset(gpsX, gpsY),
+        size = Size(gpsW, gpsH),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx())
+    )
+    val gpsPath = Path().apply {
+        moveTo(gpsX + gpsW * 0.15f, gpsY + gpsH * 0.85f)
+        quadraticTo(gpsX + gpsW * 0.5f, gpsY + gpsH * 0.6f, gpsX + gpsW * 0.85f, gpsY + gpsH * 0.2f)
+    }
+    drawPath(gpsPath, Color(0xFF38BDF8), style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
+    val gpsArrow = Path().apply {
+        moveTo(gpsX + gpsW * 0.45f, gpsY + gpsH * 0.65f)
+        lineTo(gpsX + gpsW * 0.52f, gpsY + gpsH * 0.52f)
+        lineTo(gpsX + gpsW * 0.55f, gpsY + gpsH * 0.68f)
+        close()
+    }
+    drawPath(gpsArrow, Color(0xFFF97316))
 }
 

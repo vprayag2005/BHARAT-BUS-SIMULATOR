@@ -118,7 +118,7 @@ namespace BharatBusSim.Editor
             var camCtrl = camGo.GetComponent<BusCameraController>();
             if (camera == null || camCtrl == null) return;
 
-            camCtrl.SetCameraPreset(0); // Driver Cockpit
+            camCtrl.SetCameraPreset(1); // Driver Cockpit (Preset 1)
             camCtrl.SnapToTarget();
 
             int width = 1920;
@@ -147,15 +147,15 @@ namespace BharatBusSim.Editor
             SaveRenderTexture(rt, "C:/Project/BHARAT BUS SIMULATOR/screen_cam1_passenger_door.png");
             Debug.Log("[CockpitScreenshot] Saved screen_cam1_passenger_door.png");
 
-            // 4. Cam 2 (Rear Chase View)
-            camCtrl.SetCameraPreset(1);
+            // 4. Cam 0 (Static Rear Chase View)
+            camCtrl.SetCameraPreset(0);
             camCtrl.SnapToTarget();
             for (int i = 0; i < 30; i++) if (lateUpdate != null) lateUpdate.Invoke(camCtrl, null);
             camera.Render();
             SaveRenderTexture(rt, "C:/Project/BHARAT BUS SIMULATOR/screen_cam2_chase.png");
             Debug.Log("[CockpitScreenshot] Saved screen_cam2_chase.png");
 
-            // 5. Cam 3 (360 Orbit View)
+            // 5. Cam 2 (360 Orbit View)
             camCtrl.SetCameraPreset(2);
             camCtrl.SnapToTarget();
             camCtrl.OnOrbitDrag(new Vector2(150f, 0f));
@@ -164,7 +164,7 @@ namespace BharatBusSim.Editor
             SaveRenderTexture(rt, "C:/Project/BHARAT BUS SIMULATOR/screen_cam3_orbit.png");
             Debug.Log("[CockpitScreenshot] Saved screen_cam3_orbit.png");
 
-            // Reset back to Cam 1
+            // Reset back to Cam 0 (Static Rear Chase)
             camCtrl.SetCameraPreset(0);
             camCtrl.SnapToTarget();
 

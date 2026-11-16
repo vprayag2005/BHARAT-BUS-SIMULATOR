@@ -32,14 +32,14 @@ import kotlin.math.tan
 
 private const val MAX_STEERING_WHEEL_DEG = 420f
 private const val CINEMATIC_FOLLOW_FOV_DEG = 58.0f
-private const val CINEMATIC_COCKPIT_FOV_DEG = 64.0f
+private const val CINEMATIC_COCKPIT_FOV_DEG = 80.0f
 private const val MIN_ROAD_CAMERA_CLEARANCE_M = 1.42f
 
 @Immutable
 data class SimUiState(
     val roads: List<ThrissurOsmRoad> = emptyList(),
     val activeRoadIndex: Int = 1, // Default: Sakthan Stand -> M.O. Road -> Swaraj Round
-    val busPos: Vec3 = Vec3(25.0f, 0.06f, -176.0f),
+    val busPos: Vec3 = Vec3(25.0f, 0.06f, -105.0f),
     val busHeadingRad: Float = 0f, // 0 = +Z (North toward Sakthan Exit Gate)
     val speedKmh: Float = 0f,
     val signedSpeedMps: Float = 0f, // Positive = forward, Negative = reverse
@@ -418,28 +418,35 @@ class ThrissurSimViewModel : ViewModel() {
             }
         }
 
-        // 6. Third-Person Follow Camera Lerp & Road-Mesh Anti-Clipping
+        // 6. Camera Rig & Road-Mesh Anti-Clipping (Static Chase, Cockpit, or 360 Orbit)
         val newSpeedKmh = abs(speedMps) * 3.6f
         val yawFollowRate = when (s.cameraMode) {
-            CameraViewMode.Chase -> 7.2f
-            CameraViewMode.TopDown -> 6.5f
-            CameraViewMode.Cockpit, CameraViewMode.Hood -> 24.0f
+            CameraViewMode.Chase, CameraViewMode.Cockpit -> 0f
+            CameraViewMode.Orbit -> 10.5f
         }
-        val nextFollowYawRad = lerpAngleRad(
-            fromRad = s.camFollowYawRad,
-            toRad = newHeading,
-            t = (dt * yawFollowRate).coerceIn(0f, 1f)
-        )
-        val nextOrbitYawDeg = lerpAngleDeg(
-            fromDeg = s.smoothedOrbitYawDeg,
-            toDeg = s.cameraOrbitYawDeg,
-            t = (dt * 15.0f).coerceIn(0f, 1f)
-        )
-        val nextOrbitPitchDeg = lerp(
-            start = s.smoothedOrbitPitchDeg,
-            end = s.cameraOrbitPitchDeg,
-            t = (dt * 15.0f).coerceIn(0f, 1f)
-        )
+        val nextFollowYawRad = if (s.cameraMode == CameraViewMode.Chase || s.cameraMode == CameraViewMode.Cockpit) {
+            newHeading
+        } else {
+            lerpAngleRad(
+                fromRad = s.camFollowYawRad,
+                toRad = newHeading,
+                t = (dt * yawFollowRate).coerceIn(0f, 1f)
+            )
+        }
+        val nextOrbitYawDeg = if (s.cameraMode == CameraViewMode.Orbit) {
+            lerpAngleDeg(
+                fromDeg = s.smoothedOrbitYawDeg,
+                toDeg = s.cameraOrbitYawDeg,
+                t = (dt * 15.0f).coerceIn(0f, 1f)
+            )
+        } else 0f
+        val nextOrbitPitchDeg = if (s.cameraMode == CameraViewMode.Orbit) {
+            lerp(
+                start = s.smoothedOrbitPitchDeg,
+                end = s.cameraOrbitPitchDeg,
+                t = (dt * 15.0f).coerceIn(0f, 1f)
+            )
+        } else 0f
 
         val (desiredFocus, desiredEye, desiredFov) = computeDesiredCameraRig(
             busPos = newPos,
@@ -454,21 +461,20 @@ class ThrissurSimViewModel : ViewModel() {
         )
 
         val focusLerpRate = when (s.cameraMode) {
-            CameraViewMode.Chase, CameraViewMode.TopDown -> 12.5f
-            CameraViewMode.Cockpit, CameraViewMode.Hood -> 28.0f
+            CameraViewMode.Chase, CameraViewMode.Cockpit -> 0f
+            CameraViewMode.Orbit -> 12.5f
         }
         val eyeLerpRate = when (s.cameraMode) {
-            CameraViewMode.Chase -> 10.5f
-            CameraViewMode.TopDown -> 9.5f
-            CameraViewMode.Cockpit, CameraViewMode.Hood -> 28.0f
+            CameraViewMode.Chase, CameraViewMode.Cockpit -> 0f
+            CameraViewMode.Orbit -> 10.5f
         }
 
-        val lerpedFocus = lerpVec3(
+        val lerpedFocus = if (focusLerpRate <= 0.05f) desiredFocus else lerpVec3(
             start = s.camFocusPos,
             end = desiredFocus,
             t = (dt * focusLerpRate).coerceIn(0f, 1f)
         )
-        val rawLerpedEye = lerpVec3(
+        val rawLerpedEye = if (eyeLerpRate <= 0.05f) desiredEye else lerpVec3(
             start = s.camEyePos,
             end = desiredEye,
             t = (dt * eyeLerpRate).coerceIn(0f, 1f)
@@ -705,6 +711,8 @@ class ThrissurSimViewModel : ViewModel() {
                 rearViewActive = false,
                 cameraOrbitYawDeg = 0f,
                 cameraOrbitPitchDeg = 0f,
+                smoothedOrbitYawDeg = 0f,
+                smoothedOrbitPitchDeg = 0f,
                 statusBanner = "Camera Mode: ${nextMode.label}"
             )
             snapCameraToBus(updated)
@@ -717,21 +725,21 @@ class ThrissurSimViewModel : ViewModel() {
 
     fun toggleFrontShowcaseView() {
         _uiState.update { s ->
-            val isFront = abs(s.cameraOrbitYawDeg) > 95f
+            val isFront = abs(s.cameraOrbitYawDeg) > 95f && s.cameraMode == CameraViewMode.Orbit
             if (isFront) {
                 s.copy(
                     cameraMode = CameraViewMode.Chase,
                     rearViewActive = false,
                     cameraOrbitYawDeg = 0f,
                     cameraOrbitPitchDeg = 0f,
-                    statusBanner = "Hino RM 2 EAGLE (BUS LOVER) • Third-Person Follow View"
+                    statusBanner = "Hino RM 2 EAGLE (BUS LOVER) • Static Chase View"
                 )
             } else {
                 s.copy(
-                    cameraMode = CameraViewMode.Chase,
+                    cameraMode = CameraViewMode.Orbit,
                     rearViewActive = false,
                     cameraOrbitYawDeg = 146f,
-                    cameraOrbitPitchDeg = 0f,
+                    cameraOrbitPitchDeg = 4f,
                     statusBanner = "Hino RM 2 EAGLE (BUS LOVER) • 3/4 Front Showcase View"
                 )
             }
@@ -739,6 +747,7 @@ class ThrissurSimViewModel : ViewModel() {
     }
 
     fun orbitCamera(deltaYawDeg: Float, deltaPitchDeg: Float) {
+        if (_uiState.value.cameraMode != CameraViewMode.Orbit) return
         _uiState.update {
             var nextYaw = it.cameraOrbitYawDeg + deltaYawDeg
             while (nextYaw > 180f) nextYaw -= 360f
@@ -955,52 +964,15 @@ class ThrissurSimViewModel : ViewModel() {
 
         return when (cameraMode) {
             CameraViewMode.Chase -> {
-                val orbitYawRad = followYawRad + rearYawOffset +
-                    Math.toRadians(orbitYawDeg.toDouble()).toFloat()
-                val frontBlend = (abs(orbitYawDeg) / 90f).coerceIn(0f, 1f)
-
-                // Third-Person Follow focal point: lead gently into turns and aim slightly ahead of coach center
-                val targetLocalX = steerInput * 0.48f * (1f - frontBlend)
-                val targetLocalY = 2.12f * (1f - frontBlend) + 1.80f * frontBlend
-                val targetLocalZ = if (rearViewActive) {
-                    -2.10f
-                } else {
-                    (2.25f + speedNorm * 0.55f) * (1f - frontBlend) + 0.35f * frontBlend
-                }
+                // Strictly static rear follow view locked rigidly to bus heading (zero touch orbit, zero sway)
+                val orbitYawRad = followYawRad + rearYawOffset
+                val targetLocalX = 0f
+                val targetLocalY = 1.55f
+                val targetLocalZ = if (rearViewActive) -2.10f else 0.80f
                 val focusPos = busLocalToWorld(targetLocalX, targetLocalY, targetLocalZ)
 
-                val orbitDist = (13.9f + speedNorm * 0.55f) * (1f - frontBlend) + 12.9f * frontBlend
-                val basePitchDeg = 13.8f * (1f - frontBlend) + 10.8f * frontBlend
-                val elevDeg = (basePitchDeg + orbitPitchDeg).coerceIn(5.0f, 56f)
-                val pitchRad = Math.toRadians(elevDeg.toDouble()).toFloat()
-                val cosP = cos(pitchRad)
-                val sinP = sin(pitchRad)
-                val sinY = sin(orbitYawRad)
-                val cosY = cos(orbitYawRad)
-
-                val horizDist = orbitDist * cosP
-                val candidateEye = Vec3(
-                    x = focusPos.x - sinY * horizDist,
-                    y = focusPos.y + orbitDist * sinP,
-                    z = focusPos.z - cosY * horizDist
-                )
-                val safeEye = preventRoadMeshCameraClip(
-                    focusPos = focusPos,
-                    candidateEye = candidateEye,
-                    busPos = busPos,
-                    busHeadingRad = busHeadingRad,
-                    cameraMode = cameraMode
-                )
-                // Consistent cinematic FOV (58° base, gently stabilized +1.6° at cruise speed)
-                val fov = CINEMATIC_FOLLOW_FOV_DEG + speedNorm * 1.6f * (1f - frontBlend)
-                Triple(focusPos, safeEye, fov)
-            }
-            CameraViewMode.TopDown -> {
-                val orbitYawRad = followYawRad + rearYawOffset +
-                    Math.toRadians(orbitYawDeg.toDouble()).toFloat()
-                val focusPos = busLocalToWorld(steerInput * 0.42f, 1.50f, 2.85f)
-                val orbitDist = 22.0f
-                val elevDeg = (45.0f + orbitPitchDeg).coerceIn(24f, 72f)
+                val orbitDist = 9.8f
+                val elevDeg = 3.2f
                 val pitchRad = Math.toRadians(elevDeg.toDouble()).toFloat()
                 val cosP = cos(pitchRad)
                 val sinP = sin(pitchRad)
@@ -1023,10 +995,10 @@ class ThrissurSimViewModel : ViewModel() {
                 Triple(focusPos, safeEye, CINEMATIC_FOLLOW_FOV_DEG)
             }
             CameraViewMode.Cockpit -> {
-                val eyePos = busLocalToWorld(0.68f, 2.32f, 4.75f)
-                val lookYaw = busHeadingRad + rearYawOffset +
-                    Math.toRadians((orbitYawDeg * 0.35f).toDouble()).toFloat()
-                val elevDeg = (5.0f + orbitPitchDeg * 0.5f).coerceIn(-6f, 22f)
+                // Strictly static driver eye position looking forward through windshield and mirrors
+                val eyePos = busLocalToWorld(0.62f, 2.28f, 4.05f)
+                val lookYaw = busHeadingRad + rearYawOffset
+                val elevDeg = 4.2f
                 val pitchRad = Math.toRadians(elevDeg.toDouble()).toFloat()
                 val cosP = cos(pitchRad)
                 val sinP = sin(pitchRad)
@@ -1037,20 +1009,33 @@ class ThrissurSimViewModel : ViewModel() {
                 )
                 Triple(focusPos, eyePos, CINEMATIC_COCKPIT_FOV_DEG)
             }
-            CameraViewMode.Hood -> {
-                val eyePos = busLocalToWorld(0f, 2.05f, 5.88f)
-                val lookYaw = busHeadingRad + rearYawOffset +
-                    Math.toRadians((orbitYawDeg * 0.55f).toDouble()).toFloat()
-                val elevDeg = (5.5f + orbitPitchDeg * 0.6f).coerceIn(-8f, 28f)
+            CameraViewMode.Orbit -> {
+                // 360-degree free exterior orbit mode with touch drag
+                val orbitYawRad = followYawRad + rearYawOffset +
+                    Math.toRadians(orbitYawDeg.toDouble()).toFloat()
+                val focusPos = busLocalToWorld(0f, 1.65f, 0.20f)
+                val orbitDist = 12.0f
+                val elevDeg = (12.0f + orbitPitchDeg).coerceIn(-4.0f, 65f)
                 val pitchRad = Math.toRadians(elevDeg.toDouble()).toFloat()
                 val cosP = cos(pitchRad)
                 val sinP = sin(pitchRad)
-                val focusPos = Vec3(
-                    x = eyePos.x + sin(lookYaw) * cosP * 18.0f,
-                    y = eyePos.y - sinP * 18.0f,
-                    z = eyePos.z + cos(lookYaw) * cosP * 18.0f
+                val sinY = sin(orbitYawRad)
+                val cosY = cos(orbitYawRad)
+
+                val horizDist = orbitDist * cosP
+                val candidateEye = Vec3(
+                    x = focusPos.x - sinY * horizDist,
+                    y = focusPos.y + orbitDist * sinP,
+                    z = focusPos.z - cosY * horizDist
                 )
-                Triple(focusPos, eyePos, CINEMATIC_COCKPIT_FOV_DEG)
+                val safeEye = preventRoadMeshCameraClip(
+                    focusPos = focusPos,
+                    candidateEye = candidateEye,
+                    busPos = busPos,
+                    busHeadingRad = busHeadingRad,
+                    cameraMode = cameraMode
+                )
+                Triple(focusPos, safeEye, CINEMATIC_FOLLOW_FOV_DEG)
             }
         }
     }
@@ -1134,7 +1119,7 @@ class ThrissurSimViewModel : ViewModel() {
             var eyeY = candidateEye.y
             var eyeZ = candidateEye.z
 
-            if (cameraMode == CameraViewMode.Chase || cameraMode == CameraViewMode.TopDown) {
+            if (cameraMode == CameraViewMode.Chase || cameraMode == CameraViewMode.Orbit) {
                 // 1. Sample 5 points along the sightline ray from focusPos to candidateEye
                 // to guarantee neither the camera nor its near-clip frustum slices road/platform meshes.
                 var maxRoadFloorAlongRay = computeRoadSurfaceFloorHeight(eyeX, eyeZ)

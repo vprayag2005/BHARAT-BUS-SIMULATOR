@@ -46,7 +46,21 @@ namespace BharatBusSim.Vehicles
         [Header("Presets (Exactly 3 Angles)")]
         [SerializeField] private CameraPreset[] presets = new CameraPreset[]
         {
-            // Cam 1: Driver Cockpit (Interior RHD cabin view, ref Screenshot_20261027_173056)
+            // Cam 1: Static Rear Chase (External follow view, locked directly behind bus, ref screenshot 1)
+            new CameraPreset
+            {
+                name = "Static Rear Chase",
+                mode = CameraMode.RearChase,
+                distance = 12.5f,
+                height = 3.8f,
+                lateralOffset = 0f,
+                lookAtOffset = new Vector3(0f, 1.8f, 1.0f),
+                positionDamping = 0.0f,
+                rotationDamping = 0.0f,
+                fieldOfView = 60.0f,
+                nearClipPlane = 0.3f
+            },
+            // Cam 2: Driver Cockpit (Interior RHD cabin view, ref screenshot 2)
             new CameraPreset
             {
                 name = "Driver Cockpit",
@@ -54,35 +68,21 @@ namespace BharatBusSim.Vehicles
                 distance = 0f,
                 height = 2.35f, // Driver eye level seated in RHD cockpit
                 lateralOffset = 0.70f, // Seated directly behind RHD steering wheel
-                lookAtOffset = new Vector3(0.70f, 1.48f, 12.0f),
+                lookAtOffset = new Vector3(0.70f, 1.65f, 12.0f),
                 positionDamping = 30.0f,
                 rotationDamping = 30.0f,
-                fieldOfView = 72.0f,
+                fieldOfView = 74.0f,
                 nearClipPlane = 0.03f
-            },
-            // Cam 2: Rear Chase (External follow view, ref Screenshot_20261027_173036)
-            new CameraPreset
-            {
-                name = "Rear Chase",
-                mode = CameraMode.RearChase,
-                distance = 15.8f,
-                height = 4.8f,
-                lateralOffset = 0f,
-                lookAtOffset = new Vector3(0f, 1.35f, 0.5f),
-                positionDamping = 10.0f,
-                rotationDamping = 6.0f,
-                fieldOfView = 60.0f,
-                nearClipPlane = 0.3f
             },
             // Cam 3: 360 Touch Orbit (Free-look rotate entire bus with finger swipe)
             new CameraPreset
             {
                 name = "360 Orbit",
                 mode = CameraMode.Orbit360,
-                distance = 11.5f,
-                height = 2.0f,
+                distance = 12.0f,
+                height = 2.2f,
                 lateralOffset = 0f,
-                lookAtOffset = new Vector3(0f, 1.7f, 0f),
+                lookAtOffset = new Vector3(0f, 1.8f, 0f),
                 positionDamping = 12.0f,
                 rotationDamping = 12.0f,
                 fieldOfView = 60.0f,
@@ -122,6 +122,8 @@ namespace BharatBusSim.Vehicles
 
         public int CurrentPresetIndex { get; private set; }
         public int TotalPresets => (presets != null && presets.Length > 0) ? presets.Length : 3;
+        public CameraPreset[] Presets => presets;
+        public CameraPreset GetPreset(int index) => (presets != null && index >= 0 && index < presets.Length) ? presets[index] : default;
         public bool IsRearViewActive { get; private set; }
         public CameraMode CurrentMode => presets != null && CurrentPresetIndex >= 0 && CurrentPresetIndex < presets.Length
             ? presets[CurrentPresetIndex].mode
@@ -213,38 +215,38 @@ namespace BharatBusSim.Vehicles
             {
                 new CameraPreset
                 {
-                    name = "Driver Cockpit",
-                    mode = CameraMode.DriverCockpit,
-                    distance = 0f,
-                    height = 2.35f,
-                    lateralOffset = 0.70f,
-                    lookAtOffset = new Vector3(0.70f, 1.48f, 12.0f),
-                    positionDamping = 30.0f,
-                    rotationDamping = 30.0f,
-                    fieldOfView = 72.0f,
-                    nearClipPlane = 0.03f
-                },
-                new CameraPreset
-                {
-                    name = "Rear Chase",
+                    name = "Static Rear Chase",
                     mode = CameraMode.RearChase,
-                    distance = 15.8f,
-                    height = 4.8f,
+                    distance = 12.5f,
+                    height = 3.8f,
                     lateralOffset = 0f,
-                    lookAtOffset = new Vector3(0f, 1.35f, 0.5f),
-                    positionDamping = 10.0f,
-                    rotationDamping = 6.0f,
+                    lookAtOffset = new Vector3(0f, 1.8f, 1.0f),
+                    positionDamping = 0.0f,
+                    rotationDamping = 0.0f,
                     fieldOfView = 60.0f,
                     nearClipPlane = 0.3f
                 },
                 new CameraPreset
                 {
+                    name = "Driver Cockpit",
+                    mode = CameraMode.DriverCockpit,
+                    distance = 0f,
+                    height = 2.35f,
+                    lateralOffset = 0.70f,
+                    lookAtOffset = new Vector3(0.70f, 1.65f, 12.0f),
+                    positionDamping = 30.0f,
+                    rotationDamping = 30.0f,
+                    fieldOfView = 74.0f,
+                    nearClipPlane = 0.03f
+                },
+                new CameraPreset
+                {
                     name = "360 Orbit",
                     mode = CameraMode.Orbit360,
-                    distance = 11.5f,
-                    height = 2.0f,
+                    distance = 12.0f,
+                    height = 2.2f,
                     lateralOffset = 0f,
-                    lookAtOffset = new Vector3(0f, 1.7f, 0f),
+                    lookAtOffset = new Vector3(0f, 1.8f, 0f),
                     positionDamping = 12.0f,
                     rotationDamping = 12.0f,
                     fieldOfView = 60.0f,
@@ -448,12 +450,20 @@ namespace BharatBusSim.Vehicles
         {
             cockpitEyeZ = eyeZ;
             cockpitBasePitch = Mathf.Abs(basePitch);
-            if (presets != null && presets.Length > 0)
+            if (presets != null)
             {
-                presets[0].height = height;
-                presets[0].lateralOffset = lateralOffset;
-                presets[0].fieldOfView = 72.0f;
-                presets[0].nearClipPlane = 0.03f;
+                for (int i = 0; i < presets.Length; i++)
+                {
+                    if (presets[i].mode == CameraMode.DriverCockpit)
+                    {
+                        presets[i].height = height;
+                        presets[i].lateralOffset = lateralOffset;
+                        presets[i].fieldOfView = 82.0f;
+                        presets[i].nearClipPlane = 0.03f;
+                        presets[i].lookAtOffset = new Vector3(lateralOffset - 0.08f, height - 0.55f, 12.0f);
+                        break;
+                    }
+                }
             }
         }
 
@@ -523,11 +533,18 @@ namespace BharatBusSim.Vehicles
                 transform.position = PreventRoadMeshClipping(rawFocalPoint, lerpedPos, 1.35f);
                 transform.LookAt(rawFocalPoint);
             }
-            // 3. Camera Mode: Third-Person Follow / Rear Chase View (Smooth Lerp + Road-Mesh Anti-Clipping)
+            // 3. Camera Mode: Third-Person Follow / Rear Chase View (Static Follow or Smooth Lerp + Road-Mesh Anti-Clipping)
             else
             {
                 float wantedYaw = target.eulerAngles.y + (IsRearViewActive ? 180f : 0f);
-                _chaseYaw = Mathf.LerpAngle(_chaseYaw, wantedYaw, Mathf.Clamp01(activePreset.rotationDamping * dt));
+                if (activePreset.rotationDamping <= 0.05f)
+                {
+                    _chaseYaw = wantedYaw;
+                }
+                else
+                {
+                    _chaseYaw = Mathf.LerpAngle(_chaseYaw, wantedYaw, Mathf.Clamp01(activePreset.rotationDamping * dt));
+                }
 
                 Quaternion chaseRot = Quaternion.Euler(0f, _chaseYaw, 0f);
                 Vector3 targetFocalPoint = target.position + target.TransformDirection(activePreset.lookAtOffset);
@@ -554,20 +571,41 @@ namespace BharatBusSim.Vehicles
                 {
                     targetDist = Mathf.Max(6.5f, closestDist - 0.4f);
                 }
-                _currentChaseDist = Mathf.Lerp(_currentChaseDist, targetDist, Mathf.Clamp01(15f * dt));
+
+                if (activePreset.positionDamping <= 0.05f)
+                {
+                    _currentChaseDist = targetDist;
+                }
+                else
+                {
+                    _currentChaseDist = Mathf.Lerp(_currentChaseDist, targetDist, Mathf.Clamp01(15f * dt));
+                }
 
                 Vector3 wantedPosition = targetFocalPoint - (chaseRot * Vector3.forward * _currentChaseDist) + (chaseRot * Vector3.right * activePreset.lateralOffset);
                 wantedPosition.y = target.position.y + activePreset.height;
-                wantedPosition = PreventRoadMeshClipping(targetFocalPoint, wantedPosition, 1.40f);
 
-                Vector3 lerpedPos = Vector3.Lerp(transform.position, wantedPosition, Mathf.Clamp01(activePreset.positionDamping * dt));
-                transform.position = PreventRoadMeshClipping(targetFocalPoint, lerpedPos, 1.40f);
+                if (activePreset.positionDamping <= 0.05f)
+                {
+                    transform.position = PreventRoadMeshClipping(targetFocalPoint, wantedPosition, 1.40f);
+                }
+                else
+                {
+                    Vector3 lerpedPos = Vector3.Lerp(transform.position, wantedPosition, Mathf.Clamp01(activePreset.positionDamping * dt));
+                    transform.position = PreventRoadMeshClipping(targetFocalPoint, lerpedPos, 1.40f);
+                }
 
                 Vector3 lookDir = targetFocalPoint - transform.position;
                 if (lookDir.sqrMagnitude > 0.001f)
                 {
                     Quaternion desiredLookRot = Quaternion.LookRotation(lookDir.normalized, Vector3.up);
-                    transform.rotation = Quaternion.Slerp(transform.rotation, desiredLookRot, Mathf.Clamp01(activePreset.rotationDamping * 2.2f * dt));
+                    if (activePreset.rotationDamping <= 0.05f)
+                    {
+                        transform.rotation = desiredLookRot;
+                    }
+                    else
+                    {
+                        transform.rotation = Quaternion.Slerp(transform.rotation, desiredLookRot, Mathf.Clamp01(activePreset.rotationDamping * 2.2f * dt));
+                    }
                 }
             }
 

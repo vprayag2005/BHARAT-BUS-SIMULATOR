@@ -58,19 +58,19 @@ namespace BharatBusSim.Editor
                 return false;
             }
 
-            // Verify Preset 0: Driver Cockpit
+            // Verify Preset 0: Static Rear Chase
             ctrl.SetCameraPreset(0);
-            if (ctrl.CurrentMode != BusCameraController.CameraMode.DriverCockpit)
+            if (ctrl.CurrentMode != BusCameraController.CameraMode.RearChase)
             {
-                Debug.LogError($"[CameraSystemTests] Preset 0 mode expected DriverCockpit, got {ctrl.CurrentMode}");
+                Debug.LogError($"[CameraSystemTests] Preset 0 mode expected RearChase, got {ctrl.CurrentMode}");
                 return false;
             }
 
-            // Verify Preset 1: Rear Chase
+            // Verify Preset 1: Driver Cockpit
             ctrl.SetCameraPreset(1);
-            if (ctrl.CurrentMode != BusCameraController.CameraMode.RearChase)
+            if (ctrl.CurrentMode != BusCameraController.CameraMode.DriverCockpit)
             {
-                Debug.LogError($"[CameraSystemTests] Preset 1 mode expected RearChase, got {ctrl.CurrentMode}");
+                Debug.LogError($"[CameraSystemTests] Preset 1 mode expected DriverCockpit, got {ctrl.CurrentMode}");
                 return false;
             }
 
@@ -235,16 +235,16 @@ namespace BharatBusSim.Editor
             busGo.transform.rotation = Quaternion.Euler(0f, 65f, 0f);
 
             ctrl.target = busGo.transform;
-            ctrl.SetCameraPreset(1); // Cam 2: Rear Chase
+            ctrl.SetCameraPreset(0); // Cam 1: Static Rear Chase
             ctrl.SnapToTarget();
 
             // Initial check: local position relative to bus
             Vector3 initialLocalPos = busGo.transform.InverseTransformPoint(go.transform.position);
-            Debug.Log($"[CameraSystemTests] Initial Cam 2 Local Offset: X={initialLocalPos.x:F3}, Y={initialLocalPos.y:F3}, Z={initialLocalPos.z:F3}");
+            Debug.Log($"[CameraSystemTests] Initial Cam 1 Local Offset: X={initialLocalPos.x:F3}, Y={initialLocalPos.y:F3}, Z={initialLocalPos.z:F3}");
 
             if (Mathf.Abs(initialLocalPos.x) > 0.05f)
             {
-                Debug.LogError($"[CameraSystemTests] Cam 2 is not centered! Lateral offset X={initialLocalPos.x:F3}m (expected ~0)");
+                Debug.LogError($"[CameraSystemTests] Cam 1 is not centered! Lateral offset X={initialLocalPos.x:F3}m (expected ~0)");
                 UnityEngine.Object.DestroyImmediate(go);
                 UnityEngine.Object.DestroyImmediate(busGo);
                 return false;
@@ -252,7 +252,7 @@ namespace BharatBusSim.Editor
 
             if (initialLocalPos.z >= 0f)
             {
-                Debug.LogError($"[CameraSystemTests] Cam 2 is not behind bus! Local Z={initialLocalPos.z:F3}m (expected negative)");
+                Debug.LogError($"[CameraSystemTests] Cam 1 is not behind bus! Local Z={initialLocalPos.z:F3}m (expected negative)");
                 UnityEngine.Object.DestroyImmediate(go);
                 UnityEngine.Object.DestroyImmediate(busGo);
                 return false;
@@ -275,19 +275,19 @@ namespace BharatBusSim.Editor
             }
 
             Vector3 finalLocalPos = busGo.transform.InverseTransformPoint(go.transform.position);
-            Debug.Log($"[CameraSystemTests] Converged Cam 2 Local Offset: X={finalLocalPos.x:F3}, Y={finalLocalPos.y:F3}, Z={finalLocalPos.z:F3}, MaxOscillation={maxOscillation:F5}");
+            Debug.Log($"[CameraSystemTests] Converged Cam 1 Local Offset: X={finalLocalPos.x:F3}, Y={finalLocalPos.y:F3}, Z={finalLocalPos.z:F3}, MaxOscillation={maxOscillation:F5}");
 
             if (Mathf.Abs(finalLocalPos.x) > 0.05f)
             {
-                Debug.LogError($"[CameraSystemTests] Cam 2 drifted off-center after updates! X={finalLocalPos.x:F3}m");
+                Debug.LogError($"[CameraSystemTests] Cam 1 drifted off-center after updates! X={finalLocalPos.x:F3}m");
                 UnityEngine.Object.DestroyImmediate(go);
                 UnityEngine.Object.DestroyImmediate(busGo);
                 return false;
             }
 
-            if (Mathf.Abs(finalLocalPos.y - 4.8f) > 0.25f)
+            if (Mathf.Abs(finalLocalPos.y - 3.8f) > 0.25f)
             {
-                Debug.LogError($"[CameraSystemTests] Cam 2 height expected ~4.8m, got {finalLocalPos.y:F3}m");
+                Debug.LogError($"[CameraSystemTests] Cam 1 height expected ~3.8m, got {finalLocalPos.y:F3}m");
                 UnityEngine.Object.DestroyImmediate(go);
                 UnityEngine.Object.DestroyImmediate(busGo);
                 return false;
@@ -320,7 +320,7 @@ namespace BharatBusSim.Editor
             busGo.transform.rotation = Quaternion.identity;
 
             ctrl.target = busGo.transform;
-            ctrl.SetCameraPreset(0); // Cam 1: Driver Cockpit
+            ctrl.SetCameraPreset(1); // Cam 2: Driver Cockpit
             ctrl.SnapToTarget();
 
             Vector3 localPos = busGo.transform.InverseTransformPoint(go.transform.position);
@@ -495,39 +495,39 @@ namespace BharatBusSim.Editor
             var ctrl = camGo.AddComponent<BusCameraController>();
             ctrl.target = busGo.transform;
 
-            // Mode 0: Cam 1 (Driver Cockpit) -> Realistic Cockpit must be ACTIVE, legacy interior INACTIVE
+            // Mode 0: Cam 1 (Static Rear Chase) -> Realistic Cockpit must be INACTIVE (Zero exterior overlay!), legacy interior ACTIVE
             ctrl.SetCameraPreset(0);
-            ctrl.SnapToTarget();
-
-            if (!cockpitGo.activeSelf)
-            {
-                Debug.LogError("[CameraSystemTests] RHD_DriverCockpit should be ACTIVE in Cam 1 (Driver Cockpit)!");
-                UnityEngine.Object.DestroyImmediate(camGo);
-                UnityEngine.Object.DestroyImmediate(busGo);
-                return false;
-            }
-            if (dasborGo.activeSelf)
-            {
-                Debug.LogError("[CameraSystemTests] Legacy dasbor should be INACTIVE in Cam 1 (Driver Cockpit)!");
-                UnityEngine.Object.DestroyImmediate(camGo);
-                UnityEngine.Object.DestroyImmediate(busGo);
-                return false;
-            }
-
-            // Mode 1: Cam 2 (Rear Chase) -> Realistic Cockpit must be INACTIVE (Zero exterior overlay!), legacy interior ACTIVE
-            ctrl.SetCameraPreset(1);
             ctrl.SnapToTarget();
 
             if (cockpitGo.activeSelf)
             {
-                Debug.LogError("[CameraSystemTests] RHD_DriverCockpit should be INACTIVE in Cam 2 (Rear Chase)!");
+                Debug.LogError("[CameraSystemTests] RHD_DriverCockpit should be INACTIVE in Cam 1 (Static Rear Chase)!");
                 UnityEngine.Object.DestroyImmediate(camGo);
                 UnityEngine.Object.DestroyImmediate(busGo);
                 return false;
             }
             if (!dasborGo.activeSelf)
             {
-                Debug.LogError("[CameraSystemTests] Legacy dasbor should be ACTIVE in Cam 2 (Rear Chase)!");
+                Debug.LogError("[CameraSystemTests] Legacy dasbor should be ACTIVE in Cam 1 (Static Rear Chase)!");
+                UnityEngine.Object.DestroyImmediate(camGo);
+                UnityEngine.Object.DestroyImmediate(busGo);
+                return false;
+            }
+
+            // Mode 1: Cam 2 (Driver Cockpit) -> Realistic Cockpit must be ACTIVE, legacy interior INACTIVE
+            ctrl.SetCameraPreset(1);
+            ctrl.SnapToTarget();
+
+            if (!cockpitGo.activeSelf)
+            {
+                Debug.LogError("[CameraSystemTests] RHD_DriverCockpit should be ACTIVE in Cam 2 (Driver Cockpit)!");
+                UnityEngine.Object.DestroyImmediate(camGo);
+                UnityEngine.Object.DestroyImmediate(busGo);
+                return false;
+            }
+            if (dasborGo.activeSelf)
+            {
+                Debug.LogError("[CameraSystemTests] Legacy dasbor should be INACTIVE in Cam 2 (Driver Cockpit)!");
                 UnityEngine.Object.DestroyImmediate(camGo);
                 UnityEngine.Object.DestroyImmediate(busGo);
                 return false;
@@ -552,11 +552,12 @@ namespace BharatBusSim.Editor
                 return false;
             }
 
-            // Cycle Camera: Cam 3 -> Cam 1 -> Cockpit should become ACTIVE again
-            ctrl.CycleCamera();
+            // Cycle Camera: Cam 3 (Orbit) -> Cam 1 (Static Rear Chase) -> Cam 2 (Cockpit) -> Cockpit should become ACTIVE
+            ctrl.CycleCamera(); // 2 -> 0
+            ctrl.CycleCamera(); // 0 -> 1
             if (ctrl.CurrentMode != BusCameraController.CameraMode.DriverCockpit || !cockpitGo.activeSelf)
             {
-                Debug.LogError($"[CameraSystemTests] After cycling to Cam 1, Cockpit active={cockpitGo.activeSelf}, mode={ctrl.CurrentMode}");
+                Debug.LogError($"[CameraSystemTests] After cycling to Cam 2, Cockpit active={cockpitGo.activeSelf}, mode={ctrl.CurrentMode}");
                 UnityEngine.Object.DestroyImmediate(camGo);
                 UnityEngine.Object.DestroyImmediate(busGo);
                 return false;

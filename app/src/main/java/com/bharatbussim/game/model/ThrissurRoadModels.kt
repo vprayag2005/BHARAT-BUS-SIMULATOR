@@ -84,10 +84,9 @@ enum class TransmissionGear(val code: String) {
 }
 
 enum class CameraViewMode(val label: String) {
-    Chase("CAM 1/4 • CHASE"),
-    Cockpit("CAM 2/4 • COCKPIT"),
-    Hood("CAM 3/4 • FRONT"),
-    TopDown("CAM 4/4 • DRONE")
+    Chase("CAM 1/3 • CHASE"),
+    Cockpit("CAM 2/3 • COCKPIT"),
+    Orbit("CAM 3/3 • 360 ORBIT")
 }
 
 object ThrissurRoadRepository {
