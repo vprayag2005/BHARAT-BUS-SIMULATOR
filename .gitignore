@@ -85,3 +85,8 @@ $RECYCLE.BIN/
 *.blend1
 *.blend2
 *.blend@
+
+# Raw 3D Environment Source Libraries (Local DCC)
+art_src/environment/buildings/
+art_src/environment/trees_and_grass/
+
