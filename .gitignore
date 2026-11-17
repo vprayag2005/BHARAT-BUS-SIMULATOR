@@ -56,6 +56,11 @@ live_phone_*.png
 raw_*.png
 view*.png
 
+# AI Studio & Reference Images
+public/
+**/aistudio/**
+data/reference_hud/*.png
+
 # Raw Geographic Datasets & DEMs (Large binary GIS files)
 data/raw/*
 !data/raw/.gitkeep
