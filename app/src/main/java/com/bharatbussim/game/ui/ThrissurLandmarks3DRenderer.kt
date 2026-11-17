@@ -1,20 +1,15 @@
 package com.bharatbussim.game.ui
 
-import android.graphics.Paint
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import com.bharatbussim.game.model.RoadFrame
 import com.bharatbussim.game.model.ThrissurOsmRoad
 import com.bharatbussim.game.model.Vec3
 import kotlin.math.abs
-import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
-import kotlin.math.min
 import kotlin.math.sin
 
 // Authentic Kerala Temple, Thekkinkadu Maidan, Bus Terminal & Arabian Sea Coastal Material Palette
@@ -80,35 +75,19 @@ internal fun DrawScope.drawThrissurLandmarkGroundPlazas(
     drawTriprayarBeachGround(rig, path, camEye)
 }
 
-/**
- * Renders all 3D Blender-matched architectural landmark structures, bus stands, Kerala roadside scenery,
- * and Kerala PWD / NHAI green direction boards:
- * - Swaraj Round, Thekkinkadu Maidan Stepped Laterite Terraces, Sree Vadakkumnathan Temple inside
- *   Thekkinkadu sacred tree grove, Paramekkavu Devi Temple, Indian Coffee House & Outer Commercial Ring
- * - Vadakke Stand (Thrissur North Bus Stand): Bays, platforms, shelter, ENTRY & EXIT lanes + strict stand labels
- * - Paliyekkara Toll Plaza on NH 544 (10-Lane FASTag Plaza, Kerala Terracotta Canopy & 2-Tiered Gopuram Roof)
- * - Guruvayur Sree Krishna Temple (East Nada, label-free) & Guruvayur Stand (strict stand labels only)
- * - Chavakkad Beach & Azhi Estuary (Lighthouse, Seawall Promenade, Arabian Sea, Access Road)
- * - Triprayar Beach & Triprayar Stand (Bays, platform, shelter, ENTRY & EXIT lanes + strict stand labels)
- * - Kerala PWD / NHAI Green Junction Direction Boards (↑ Straight, ← Left, → Right) on outer road verge
- * - Roadside Kerala-typical buildings, shops, walls, and trees strictly outside drivable road bounds
- */
-internal fun DrawScope.drawThrissurLandmark3DStructures(
-    rig: CameraRig,
-    path: Path,
+internal fun collectThrissurLandmarkSceneFaces(
     camEye: Vec3,
     roads: List<ThrissurOsmRoad>,
-    titlePaint: Paint,
-    subPaint: Paint
+    outFaces: MutableList<QuadFace3D>
 ) {
-    drawSwarajRoundVadakkumnathan3D(rig, path, camEye, roads)
-    drawVadakkeBusStand3D(rig, path, camEye, titlePaint, subPaint)
-    drawPaliyekkaraTollPlaza3D(rig, path, camEye)
-    drawGuruvayurTempleAndStand3D(rig, path, camEye, titlePaint, subPaint)
-    drawChavakkadBeach3D(rig, path, camEye)
-    drawTriprayarBeach3D(rig, path, camEye, titlePaint, subPaint)
-    drawRoadsideKeralaScenery3D(rig, path, camEye, roads)
-    drawNhaiGreenJunctionSignboards3D(rig, path, camEye, roads, titlePaint, subPaint)
+    collectSwarajRoundFaces(camEye, roads, outFaces)
+    collectVadakkeBusStandFaces(camEye, outFaces)
+    collectPaliyekkaraTollFaces(camEye, outFaces)
+    collectGuruvayurFaces(camEye, outFaces)
+    collectChavakkadFaces(camEye, outFaces)
+    collectTriprayarFaces(camEye, outFaces)
+    collectRoadsideSceneryFaces(camEye, roads, outFaces)
+    collectNhaiSignboardFaces(camEye, roads, outFaces)
 }
 
 private fun addSingleBoxFaces(
@@ -123,7 +102,11 @@ private fun addSingleBoxFaces(
     sideCol: Color,
     frontBackCol: Color,
     stroke: Color?,
-    bias: Float
+    bias: Float,
+    emitWest: Boolean,
+    emitEast: Boolean,
+    emitSouth: Boolean,
+    emitNorth: Boolean
 ) {
     // Top face (+Y normal): only visible when camera Y > maxY
     faces.add(
@@ -156,61 +139,69 @@ private fun addSingleBoxFaces(
         )
     }
     // South face (-Z normal): only visible when camera Z < minZ
-    faces.add(
-        QuadFace3D(
-            Vec3(minX, minY, minZ),
-            Vec3(maxX, minY, minZ),
-            Vec3(maxX, maxY, minZ),
-            Vec3(minX, maxY, minZ),
-            frontBackCol,
-            stroke,
-            bias,
-            0f,
-            0f, 0f, -1f
+    if (emitSouth) {
+        faces.add(
+            QuadFace3D(
+                Vec3(minX, minY, minZ),
+                Vec3(maxX, minY, minZ),
+                Vec3(maxX, maxY, minZ),
+                Vec3(minX, maxY, minZ),
+                frontBackCol,
+                stroke,
+                bias,
+                0f,
+                0f, 0f, -1f
+            )
         )
-    )
+    }
     // North face (+Z normal): only visible when camera Z > maxZ
-    faces.add(
-        QuadFace3D(
-            Vec3(minX, minY, maxZ),
-            Vec3(maxX, minY, maxZ),
-            Vec3(maxX, maxY, maxZ),
-            Vec3(minX, maxY, maxZ),
-            frontBackCol,
-            stroke,
-            bias,
-            0f,
-            0f, 0f, 1f
+    if (emitNorth) {
+        faces.add(
+            QuadFace3D(
+                Vec3(minX, minY, maxZ),
+                Vec3(maxX, minY, maxZ),
+                Vec3(maxX, maxY, maxZ),
+                Vec3(minX, maxY, maxZ),
+                frontBackCol,
+                stroke,
+                bias,
+                0f,
+                0f, 0f, 1f
+            )
         )
-    )
+    }
     // West face (-X normal): only visible when camera X < minX
-    faces.add(
-        QuadFace3D(
-            Vec3(minX, minY, minZ),
-            Vec3(minX, maxY, minZ),
-            Vec3(minX, maxY, maxZ),
-            Vec3(minX, minY, maxZ),
-            sideCol,
-            stroke,
-            bias,
-            0f,
-            -1f, 0f, 0f
+    if (emitWest) {
+        faces.add(
+            QuadFace3D(
+                Vec3(minX, minY, minZ),
+                Vec3(minX, maxY, minZ),
+                Vec3(minX, maxY, maxZ),
+                Vec3(minX, minY, maxZ),
+                sideCol,
+                stroke,
+                bias,
+                0f,
+                -1f, 0f, 0f
+            )
         )
-    )
+    }
     // East face (+X normal): only visible when camera X > maxX
-    faces.add(
-        QuadFace3D(
-            Vec3(maxX, minY, minZ),
-            Vec3(maxX, maxY, minZ),
-            Vec3(maxX, maxY, maxZ),
-            Vec3(maxX, minY, maxZ),
-            sideCol,
-            stroke,
-            bias,
-            0f,
-            1f, 0f, 0f
+    if (emitEast) {
+        faces.add(
+            QuadFace3D(
+                Vec3(maxX, minY, minZ),
+                Vec3(maxX, maxY, minZ),
+                Vec3(maxX, maxY, maxZ),
+                Vec3(maxX, minY, maxZ),
+                sideCol,
+                stroke,
+                bias,
+                0f,
+                1f, 0f, 0f
+            )
         )
-    )
+    }
 }
 
 private fun addBoxFaces(
@@ -229,28 +220,42 @@ private fun addBoxFaces(
 ) {
     val spanX = maxX - minX
     val spanZ = maxZ - minZ
-    // Segment elevated canopies/gantries along their long axis so they sort accurately per bay
-    if (minY >= 3.8f && (spanX > 12f || spanZ > 12f)) {
-        val effBias = bias + 1.8f
+    // Segment long walls, arcades, platforms, and elevated canopies along their long axis for crisp Painter depth sorting
+    if (spanX > 13f || spanZ > 13f) {
+        val effBias = if (minY >= 3.8f) bias + 1.8f else bias
         if (spanX >= spanZ) {
-            val segs = ((spanX / 7.5f).toInt()).coerceIn(2, 10)
+            val segs = ((spanX / 8.0f).toInt()).coerceIn(2, 12)
             val stepX = spanX / segs
             for (s in 0 until segs) {
                 val sx0 = minX + s * stepX
                 val sx1 = sx0 + stepX
-                addSingleBoxFaces(faces, sx0, minY, minZ, sx1, maxY, maxZ, topCol, sideCol, frontBackCol, stroke, effBias)
+                addSingleBoxFaces(
+                    faces, sx0, minY, minZ, sx1, maxY, maxZ,
+                    topCol, sideCol, frontBackCol, stroke, effBias,
+                    emitWest = (s == 0), emitEast = (s == segs - 1),
+                    emitSouth = true, emitNorth = true
+                )
             }
         } else {
-            val segs = ((spanZ / 7.5f).toInt()).coerceIn(2, 10)
+            val segs = ((spanZ / 8.0f).toInt()).coerceIn(2, 12)
             val stepZ = spanZ / segs
             for (s in 0 until segs) {
                 val sz0 = minZ + s * stepZ
                 val sz1 = sz0 + stepZ
-                addSingleBoxFaces(faces, minX, minY, sz0, maxX, maxY, sz1, topCol, sideCol, frontBackCol, stroke, effBias)
+                addSingleBoxFaces(
+                    faces, minX, minY, sz0, maxX, maxY, sz1,
+                    topCol, sideCol, frontBackCol, stroke, effBias,
+                    emitWest = true, emitEast = true,
+                    emitSouth = (s == 0), emitNorth = (s == segs - 1)
+                )
             }
         }
     } else {
-        addSingleBoxFaces(faces, minX, minY, minZ, maxX, maxY, maxZ, topCol, sideCol, frontBackCol, stroke, bias)
+        addSingleBoxFaces(
+            faces, minX, minY, minZ, maxX, maxY, maxZ,
+            topCol, sideCol, frontBackCol, stroke, bias,
+            emitWest = true, emitEast = true, emitSouth = true, emitNorth = true
+        )
     }
 }
 
@@ -335,52 +340,42 @@ private fun addPitchedKeralaRoof(
     )
 }
 
-private val visibleLandmarkFaces = ArrayList<QuadFace3D>(1400)
-
-private fun DrawScope.renderSortedFaces(
-    rig: CameraRig,
-    path: Path,
-    camEye: Vec3,
-    faces: List<QuadFace3D>
+private fun addStandBannerQuadFace(
+    faces: MutableList<QuadFace3D>,
+    cacheKey: String,
+    leftVec: Vec3,
+    rightVec: Vec3,
+    bottomY: Float,
+    topY: Float,
+    bgColor: Color,
+    borderColor: Color,
+    titleText: String
 ) {
-    visibleLandmarkFaces.clear()
-    val eyeX = camEye.x
-    val eyeY = camEye.y
-    val eyeZ = camEye.z
-    val fwdX = rig.forward.x
-    val fwdY = rig.forward.y
-    val fwdZ = rig.forward.z
-    val maxDistSq = 250f * 250f
-
-    for (i in 0 until faces.size) {
-        val face = faces[i]
-        val dx = (face.v0.x + face.v1.x + face.v2.x + face.v3.x) * 0.25f - eyeX
-        val dy = (face.v0.y + face.v1.y + face.v2.y + face.v3.y) * 0.25f - eyeY
-        val dz = (face.v0.z + face.v1.z + face.v2.z + face.v3.z) * 0.25f - eyeZ
-        val distSq = dx * dx + dy * dy + dz * dz
-        if (distSq > maxDistSq) continue
-        // Fast camera-space frustum cull: skip faces completely behind the camera
-        val camZ = dx * fwdX + dy * fwdY + dz * fwdZ
-        if (camZ < -14f) continue
-        // Outward-normal backface culling for box faces (culls hidden back walls & roofs)
-        if ((face.nx != 0f || face.ny != 0f || face.nz != 0f) &&
-            (dx * face.nx + dy * face.ny + dz * face.nz >= 0f)
-        ) {
-            continue
-        }
-        face.sortKey = kotlin.math.sqrt(distSq) + face.biasDist
-        visibleLandmarkFaces.add(face)
-    }
-
-    if (visibleLandmarkFaces.isEmpty()) return
-
-    visibleLandmarkFaces.sortWith(FaceDepthComparator)
-    for (i in 0 until visibleLandmarkFaces.size) {
-        val face = visibleLandmarkFaces[i]
-        if (rig.buildClippedQuadPath(path, face.v0, face.v1, face.v2, face.v3)) {
-            drawPath(path, face.color)
-        }
-    }
+    faces.add(
+        QuadFace3D(
+            v0 = Vec3(leftVec.x, bottomY, leftVec.z),
+            v1 = Vec3(rightVec.x, bottomY, rightVec.z),
+            v2 = Vec3(rightVec.x, topY, rightVec.z),
+            v3 = Vec3(leftVec.x, topY, leftVec.z),
+            color = bgColor,
+            strokeColor = null,
+            biasDist = -0.35f,
+            signboard = createBannerSignSpec(
+                cacheKey = cacheKey,
+                bgColorInt = bgColor.toArgb(),
+                borderColorInt = borderColor.toArgb(),
+                titleText = titleText,
+                titleColorInt = if (titleText == "ENTRY" || titleText == "EXIT") {
+                    android.graphics.Color.WHITE
+                } else {
+                    0xFFFEF08A.toInt()
+                },
+                isDoubleSided = true,
+                bmpWidth = 576,
+                bmpHeight = 112
+            )
+        )
+    )
 }
 
 // ============================================================================
@@ -644,21 +639,20 @@ private fun addRealisticMaidanTree3D(
 
 private var cachedSwarajRoundFaces: List<QuadFace3D>? = null
 
-private fun DrawScope.drawSwarajRoundVadakkumnathan3D(
-    rig: CameraRig,
-    path: Path,
+private fun collectSwarajRoundFaces(
     camEye: Vec3,
-    roads: List<ThrissurOsmRoad>
+    roads: List<ThrissurOsmRoad>,
+    outFaces: MutableList<QuadFace3D>
 ) {
     val cx = 3.1f
     val cz = 9.5f
     val dx = camEye.x - cx
     val dz = camEye.z - cz
-    if (dx * dx + dz * dz > 260f * 260f) return
+    if (dx * dx + dz * dz > 205f * 205f) return
 
     val existing = cachedSwarajRoundFaces
     if (existing != null) {
-        renderSortedFaces(rig, path, camEye, existing)
+        outFaces.addAll(existing)
         return
     }
 
@@ -1080,26 +1074,26 @@ private fun DrawScope.drawSwarajRoundVadakkumnathan3D(
     // F. SWARAJ ROUND OUTER RING LANDMARKS & HERITAGE ARCADES (Ref: image_9a4e2fdd.png)
     //    All positioned outside the outer sidewalk with wide clearance for all 4 radial roads!
     // =========================================================================
-    // 1. PARAMEKKAVU BAGAVATHI TEMPLE (Round East — North-East of Thrissur-Palghat Road junction)
+    // 1. PARAMEKKAVU BAGAVATHI TEMPLE (Round East — clear outer setback outside sidewalk & signboards)
     addBoxFaces(
         faces,
-        63.5f, 0.06f, 10.0f,
-        64.4f, 2.60f, 30.0f,
+        69.5f, 0.06f, 10.0f,
+        70.4f, 2.60f, 30.0f,
         topCol = MatTerracottaTile,
         sideCol = MatKeralaWhitewash,
         frontBackCol = MatLateriteStone
     )
     addBoxFaces(
         faces,
-        62.8f, 0.06f, 16.5f,
-        68.5f, 4.40f, 23.5f,
+        68.8f, 0.06f, 16.5f,
+        74.5f, 4.40f, 23.5f,
         topCol = MatTeakWoodCarved,
         sideCol = MatKeralaWhitewash,
         frontBackCol = MatKeralaCreamWall
     )
     addPitchedKeralaRoof(
         faces,
-        61.8f, 69.5f,
+        67.8f, 75.5f,
         15.5f, 24.5f,
         baseY = 4.25f, ridgeY = 6.80f,
         insetX = 1.4f, insetZ = 1.4f,
@@ -1107,7 +1101,7 @@ private fun DrawScope.drawSwarajRoundVadakkumnathan3D(
     )
     addPitchedKeralaRoof(
         faces,
-        62.6f, 68.7f,
+        68.6f, 74.7f,
         16.3f, 23.7f,
         baseY = 6.65f, ridgeY = 9.40f,
         insetX = 2.4f, insetZ = 2.2f,
@@ -1115,42 +1109,42 @@ private fun DrawScope.drawSwarajRoundVadakkumnathan3D(
     )
     addBoxFaces(
         faces,
-        60.2f, 0.06f, 19.5f,
-        61.1f, 12.50f, 20.5f,
+        66.2f, 0.06f, 19.5f,
+        67.1f, 12.50f, 20.5f,
         topCol = MatTempleGold,
         sideCol = MatTempleGold,
         frontBackCol = MatTempleGoldDeep
     )
 
-    // 2. INDIAN COFFEE HOUSE, RAGAM THEATRE & ROUND SOUTH HERITAGE ARCADES
+    // 2. INDIAN COFFEE HOUSE, RAGAM THEATRE & ROUND SOUTH HERITAGE ARCADES (set back outside MO Rd / Swaraj junction signs)
     addBoxFaces(
         faces,
-        38.0f, 0.06f, -42.0f,
-        48.0f, 8.60f, -31.0f,
+        46.5f, 0.06f, -48.5f,
+        56.5f, 8.60f, -37.5f,
         topCol = MatTerracottaRoofDark,
         sideCol = MatCoffeeHouseRed,
         frontBackCol = MatCoffeeHouseRed
     )
     addPitchedKeralaRoof(
         faces,
-        37.2f, 48.8f,
-        -42.8f, -30.2f,
+        45.7f, 57.3f,
+        -49.3f, -36.7f,
         baseY = 8.45f, ridgeY = 10.60f,
         insetX = 4.2f, insetZ = 4.2f,
         roofColor = MatTerracottaTile
     )
     addBoxFaces(
         faces,
-        -22.0f, 0.06f, -59.5f,
-        0.5f, 7.80f, -50.5f,
+        -26.0f, 0.06f, -66.0f,
+        -6.0f, 7.80f, -57.0f,
         topCol = MatArcadeRoofSlate,
         sideCol = MatArcadeCream,
         frontBackCol = MatArcadeSandstone
     )
     addPitchedKeralaRoof(
         faces,
-        -22.6f, 1.1f,
-        -60.1f, -49.9f,
+        -26.6f, -5.4f,
+        -66.6f, -56.4f,
         baseY = 7.70f, ridgeY = 9.50f,
         insetX = 2.5f, insetZ = 3.8f,
         roofColor = MatTerracottaTile
@@ -1159,16 +1153,16 @@ private fun DrawScope.drawSwarajRoundVadakkumnathan3D(
     // 3. CITY CENTRE, DEVAKI DAIRY & ROUND WEST COMMERCIAL ARCADES
     addBoxFaces(
         faces,
-        -67.5f, 0.06f, 15.0f,
-        -57.0f, 8.40f, 38.0f,
+        -70.5f, 0.06f, 15.0f,
+        -60.0f, 8.40f, 38.0f,
         topCol = MatArcadeRoofSlate,
         sideCol = MatArcadeCream,
         frontBackCol = MatArcadeSandstone
     )
     addBoxFaces(
         faces,
-        -57.2f, 0.50f, 16.5f,
-        -56.8f, 3.60f, 36.5f,
+        -60.2f, 0.50f, 16.5f,
+        -59.8f, 3.60f, 36.5f,
         topCol = MatArcadeGlass,
         sideCol = MatArcadeGlass,
         frontBackCol = MatArcadeGlass
@@ -1177,8 +1171,8 @@ private fun DrawScope.drawSwarajRoundVadakkumnathan3D(
     // 4. ROUND NORTH & SHORNUR ROAD JUNCTION HERITAGE BLOCKS
     addBoxFaces(
         faces,
-        18.5f, 0.06f, 62.5f,
-        41.5f, 7.60f, 71.5f,
+        18.5f, 0.06f, 67.5f,
+        41.5f, 7.60f, 76.5f,
         topCol = MatTerracottaRoofDark,
         sideCol = MatKeralaCreamWall,
         frontBackCol = MatKeralaWhitewash
@@ -1186,7 +1180,7 @@ private fun DrawScope.drawSwarajRoundVadakkumnathan3D(
     addPitchedKeralaRoof(
         faces,
         17.8f, 42.2f,
-        61.8f, 72.2f,
+        66.8f, 77.2f,
         baseY = 7.50f, ridgeY = 9.40f,
         insetX = 3.0f, insetZ = 4.0f,
         roofColor = MatTerracottaTile
@@ -1195,7 +1189,7 @@ private fun DrawScope.drawSwarajRoundVadakkumnathan3D(
     if (swarajFrames != null) {
         cachedSwarajRoundFaces = faces
     }
-    renderSortedFaces(rig, path, camEye, faces)
+    outFaces.addAll(faces)
 }
 
 // ============================================================================
@@ -1278,20 +1272,17 @@ private fun DrawScope.drawGuruvayurTempleAndStandGround(
 
 private var cachedGuruvayurFaces: List<QuadFace3D>? = null
 
-private fun DrawScope.drawGuruvayurTempleAndStand3D(
-    rig: CameraRig,
-    path: Path,
+private fun collectGuruvayurFaces(
     camEye: Vec3,
-    titlePaint: Paint,
-    subPaint: Paint
+    outFaces: MutableList<QuadFace3D>
 ) {
     val dx = camEye.x - (-2700f)
     val dz = camEye.z - 1275f
-    if (dx * dx + dz * dz > 280f * 280f) return
+    if (dx * dx + dz * dz > 210f * 210f) return
 
     var faces = cachedGuruvayurFaces
     if (faces == null) {
-        val built = ArrayList<QuadFace3D>(300)
+        val built = ArrayList<QuadFace3D>(320)
 
         // A. GURUVAYUR SREE KRISHNA TEMPLE (EAST NADA) — No text or labels on the temple model
         addBoxFaces(built, -2628.0f, 0.08f, 1236.0f, -2572.0f, 3.6f, 1237.2f, MatTerracottaTile, MatKeralaWhitewash)
@@ -1343,55 +1334,29 @@ private fun DrawScope.drawGuruvayurTempleAndStand3D(
             val col = colors[bIdx % colors.size]
             addBoxFaces(built, bx - 1.2f, 0.4f, 1288.0f, bx + 1.2f, 3.1f, 1299.0f, Color(0xFFE2E8F0), col, col)
         }
+
+        // Strict Stand Text Rule on Guruvayur Stand: Stand name, ENTRY, and EXIT only!
+        addStandBannerQuadFace(
+            built, "BANNER_GURUVAYUR_MAIN",
+            Vec3(-2752.0f, 0f, 1282.85f), Vec3(-2718.0f, 0f, 1282.85f),
+            5.65f, 6.95f, Color(0xFF7C2D12), Color(0xFFFACC15), "GURUVAYUR STAND"
+        )
+        addStandBannerQuadFace(
+            built, "BANNER_GURUVAYUR_ENTRY",
+            Vec3(-2713.5f, 0f, 1267.55f), Vec3(-2702.5f, 0f, 1267.55f),
+            4.65f, 5.85f, Color(0xFF1E3A8A), Color(0xFF38BDF8), "ENTRY"
+        )
+        addStandBannerQuadFace(
+            built, "BANNER_GURUVAYUR_EXIT",
+            Vec3(-2765.5f, 0f, 1267.55f), Vec3(-2754.5f, 0f, 1267.55f),
+            4.65f, 5.85f, Color(0xFF065F46), Color(0xFFFACC15), "EXIT"
+        )
+
         faces = built
         cachedGuruvayurFaces = built
     }
 
-    renderSortedFaces(rig, path, camEye, faces)
-
-    // Strict Stand Text Rule on Guruvayur Stand: Stand name, ENTRY, and EXIT only!
-    drawOriented3DSignboard(
-        rig = rig,
-        path = path,
-        leftVec = Vec3(-2752.0f, 0f, 1282.85f),
-        rightVec = Vec3(-2718.0f, 0f, 1282.85f),
-        bottomY = 5.65f,
-        topY = 6.95f,
-        bgColor = Color(0xFF7C2D12),
-        borderColor = Color(0xFFFACC15),
-        lines = listOf("GURUVAYUR STAND"),
-        textColor = Color(0xFFFEF08A),
-        titlePaint = titlePaint,
-        subPaint = subPaint
-    )
-    drawOriented3DSignboard(
-        rig = rig,
-        path = path,
-        leftVec = Vec3(-2713.5f, 0f, 1267.55f),
-        rightVec = Vec3(-2702.5f, 0f, 1267.55f),
-        bottomY = 4.65f,
-        topY = 5.85f,
-        bgColor = Color(0xFF1E3A8A),
-        borderColor = Color(0xFF38BDF8),
-        lines = listOf("ENTRY"),
-        textColor = Color(0xFFFFFFFF),
-        titlePaint = titlePaint,
-        subPaint = subPaint
-    )
-    drawOriented3DSignboard(
-        rig = rig,
-        path = path,
-        leftVec = Vec3(-2765.5f, 0f, 1267.55f),
-        rightVec = Vec3(-2754.5f, 0f, 1267.55f),
-        bottomY = 4.65f,
-        topY = 5.85f,
-        bgColor = Color(0xFF065F46),
-        borderColor = Color(0xFFFACC15),
-        lines = listOf("EXIT"),
-        textColor = Color(0xFFFFFFFF),
-        titlePaint = titlePaint,
-        subPaint = subPaint
-    )
+    outFaces.addAll(faces)
 }
 
 // ============================================================================
@@ -1488,14 +1453,13 @@ private fun DrawScope.drawChavakkadBeachGround(
 
 private var cachedChavakkadFaces: List<QuadFace3D>? = null
 
-private fun DrawScope.drawChavakkadBeach3D(
-    rig: CameraRig,
-    path: Path,
-    camEye: Vec3
+private fun collectChavakkadFaces(
+    camEye: Vec3,
+    outFaces: MutableList<QuadFace3D>
 ) {
     val dx = camEye.x - (-4500f)
     val dz = camEye.z - 1080f
-    if (dx * dx + dz * dz > 280f * 280f) return
+    if (dx * dx + dz * dz > 210f * 210f) return
 
     var faces = cachedChavakkadFaces
     if (faces == null) {
@@ -1526,7 +1490,7 @@ private fun DrawScope.drawChavakkadBeach3D(
         cachedChavakkadFaces = built
     }
 
-    renderSortedFaces(rig, path, camEye, faces)
+    outFaces.addAll(faces)
 }
 
 // ============================================================================
@@ -1629,20 +1593,17 @@ private fun DrawScope.drawTriprayarBeachGround(
 
 private var cachedTriprayarFaces: List<QuadFace3D>? = null
 
-private fun DrawScope.drawTriprayarBeach3D(
-    rig: CameraRig,
-    path: Path,
+private fun collectTriprayarFaces(
     camEye: Vec3,
-    titlePaint: Paint,
-    subPaint: Paint
+    outFaces: MutableList<QuadFace3D>
 ) {
     val dx = camEye.x - (-2220f)
     val dz = camEye.z - (-2410f)
-    if (dx * dx + dz * dz > 280f * 280f) return
+    if (dx * dx + dz * dz > 210f * 210f) return
 
     var faces = cachedTriprayarFaces
     if (faces == null) {
-        val built = ArrayList<QuadFace3D>(260)
+        val built = ArrayList<QuadFace3D>(280)
 
         addBoxFaces(built, -2229.8f, 0.06f, -2480.0f, -2229.0f, 0.85f, -2418.0f, MatKeralaWhitewash, MatSeawallGranite)
         addBoxFaces(built, -2229.8f, 0.06f, -2402.0f, -2229.0f, 0.85f, -2340.0f, MatKeralaWhitewash, MatSeawallGranite)
@@ -1673,55 +1634,28 @@ private fun DrawScope.drawTriprayarBeach3D(
         addBoxFaces(built, -2203.0f, 0.4f, -2428.0f, -2191.0f, 3.1f, -2425.5f, Color(0xFFE2E8F0), Color(0xFF047857))
         addBoxFaces(built, -2203.0f, 0.4f, -2396.0f, -2191.0f, 3.1f, -2393.5f, Color(0xFFE2E8F0), Color(0xFFC2410C))
 
+        // Strict Stand Text Rule on Triprayar Stand: Stand name, ENTRY, and EXIT only!
+        addStandBannerQuadFace(
+            built, "BANNER_TRIPRAYAR_MAIN",
+            Vec3(-2206.15f, 0f, -2394.0f), Vec3(-2206.15f, 0f, -2426.0f),
+            5.45f, 6.75f, Color(0xFF7C2D12), Color(0xFFFACC15), "TRIPRAYAR STAND"
+        )
+        addStandBannerQuadFace(
+            built, "BANNER_TRIPRAYAR_ENTRY",
+            Vec3(-2211.05f, 0f, -2384.0f), Vec3(-2211.05f, 0f, -2396.0f),
+            4.65f, 5.85f, Color(0xFF1E3A8A), Color(0xFF38BDF8), "ENTRY"
+        )
+        addStandBannerQuadFace(
+            built, "BANNER_TRIPRAYAR_EXIT",
+            Vec3(-2211.05f, 0f, -2424.0f), Vec3(-2211.05f, 0f, -2436.0f),
+            4.65f, 5.85f, Color(0xFF065F46), Color(0xFFFACC15), "EXIT"
+        )
+
         faces = built
         cachedTriprayarFaces = built
     }
 
-    renderSortedFaces(rig, path, camEye, faces)
-
-    // Strict Stand Text Rule on Triprayar Stand: Stand name, ENTRY, and EXIT only!
-    drawOriented3DSignboard(
-        rig = rig,
-        path = path,
-        leftVec = Vec3(-2206.15f, 0f, -2394.0f),
-        rightVec = Vec3(-2206.15f, 0f, -2426.0f),
-        bottomY = 5.45f,
-        topY = 6.75f,
-        bgColor = Color(0xFF7C2D12),
-        borderColor = Color(0xFFFACC15),
-        lines = listOf("TRIPRAYAR STAND"),
-        textColor = Color(0xFFFEF08A),
-        titlePaint = titlePaint,
-        subPaint = subPaint
-    )
-    drawOriented3DSignboard(
-        rig = rig,
-        path = path,
-        leftVec = Vec3(-2211.05f, 0f, -2384.0f),
-        rightVec = Vec3(-2211.05f, 0f, -2396.0f),
-        bottomY = 4.65f,
-        topY = 5.85f,
-        bgColor = Color(0xFF1E3A8A),
-        borderColor = Color(0xFF38BDF8),
-        lines = listOf("ENTRY"),
-        textColor = Color(0xFFFFFFFF),
-        titlePaint = titlePaint,
-        subPaint = subPaint
-    )
-    drawOriented3DSignboard(
-        rig = rig,
-        path = path,
-        leftVec = Vec3(-2211.05f, 0f, -2424.0f),
-        rightVec = Vec3(-2211.05f, 0f, -2436.0f),
-        bottomY = 4.65f,
-        topY = 5.85f,
-        bgColor = Color(0xFF065F46),
-        borderColor = Color(0xFFFACC15),
-        lines = listOf("EXIT"),
-        textColor = Color(0xFFFFFFFF),
-        titlePaint = titlePaint,
-        subPaint = subPaint
-    )
+    outFaces.addAll(faces)
 }
 
 // ============================================================================
@@ -1826,20 +1760,19 @@ private fun DrawScope.drawPaliyekkaraTollPlazaGround(
 
 private var cachedPaliyekkaraTollFaces: List<QuadFace3D>? = null
 
-private fun DrawScope.drawPaliyekkaraTollPlaza3D(
-    rig: CameraRig,
-    path: Path,
-    camEye: Vec3
+private fun collectPaliyekkaraTollFaces(
+    camEye: Vec3,
+    outFaces: MutableList<QuadFace3D>
 ) {
     val tx = 999.5f
     val tz = -1806.0f
     val dx = camEye.x - tx
     val dz = camEye.z - tz
-    if (dx * dx + dz * dz > 280f * 280f) return
+    if (dx * dx + dz * dz > 220f * 220f) return
 
     val existing = cachedPaliyekkaraTollFaces
     if (existing != null) {
-        renderSortedFaces(rig, path, camEye, existing)
+        outFaces.addAll(existing)
         return
     }
 
@@ -2197,7 +2130,7 @@ private fun DrawScope.drawPaliyekkaraTollPlaza3D(
     )
 
     cachedPaliyekkaraTollFaces = faces
-    renderSortedFaces(rig, path, camEye, faces)
+    outFaces.addAll(faces)
 }
 
 // ============================================================================
@@ -2246,20 +2179,17 @@ private fun DrawScope.drawVadakkeBusStandGround(
 
 private var cachedVadakkeStandFaces: List<QuadFace3D>? = null
 
-private fun DrawScope.drawVadakkeBusStand3D(
-    rig: CameraRig,
-    path: Path,
+private fun collectVadakkeBusStandFaces(
     camEye: Vec3,
-    titlePaint: Paint,
-    subPaint: Paint
+    outFaces: MutableList<QuadFace3D>
 ) {
     val dx = camEye.x - (-34f)
     val dz = camEye.z - 220f
-    if (dx * dx + dz * dz > 260f * 260f) return
+    if (dx * dx + dz * dz > 205f * 205f) return
 
     var faces = cachedVadakkeStandFaces
     if (faces == null) {
-        val built = ArrayList<QuadFace3D>(180)
+        val built = ArrayList<QuadFace3D>(200)
 
         // South Perimeter Wall at far outer corners only (X = -62..-46.5 and X = -15.0..-10.0)
         // Leaves the entire 31.5m entrance X = -46.5..-15.0 100% open & obstacle-free for ROAD_SWARAJ_TO_VADAKKE!
@@ -2287,55 +2217,29 @@ private fun DrawScope.drawVadakkeBusStand3D(
             val col = busColors[idx % busColors.size]
             addBoxFaces(built, bx - 1.15f, 0.4f, 218.5f, bx + 1.15f, 3.1f, 229.5f, Color(0xFFE2E8F0), col, col)
         }
+
+        // Strict Stand Text Rule on Vadakke Stand: Stand name, ENTRY, and EXIT only (overhead at Y = 5.2..6.8m)!
+        addStandBannerQuadFace(
+            built, "BANNER_VADAKKE_MAIN",
+            Vec3(-50.0f, 0f, 213.85f), Vec3(-22.0f, 0f, 213.85f),
+            5.55f, 6.85f, Color(0xFF7C2D12), Color(0xFFFACC15), "VADAKKE STAND"
+        )
+        addStandBannerQuadFace(
+            built, "BANNER_VADAKKE_ENTRY",
+            Vec3(-28.5f, 0f, 200.4f), Vec3(-15.5f, 0f, 200.4f),
+            5.15f, 6.25f, Color(0xFF1E3A8A), Color(0xFF38BDF8), "ENTRY"
+        )
+        addStandBannerQuadFace(
+            built, "BANNER_VADAKKE_EXIT",
+            Vec3(-46.0f, 0f, 200.4f), Vec3(-33.0f, 0f, 200.4f),
+            5.15f, 6.25f, Color(0xFF065F46), Color(0xFFFACC15), "EXIT"
+        )
+
         faces = built
         cachedVadakkeStandFaces = built
     }
 
-    renderSortedFaces(rig, path, camEye, faces)
-
-    // Strict Stand Text Rule on Vadakke Stand: Stand name, ENTRY, and EXIT only (overhead at Y = 5.2..6.8m)!
-    drawOriented3DSignboard(
-        rig = rig,
-        path = path,
-        leftVec = Vec3(-50.0f, 0f, 213.85f),
-        rightVec = Vec3(-22.0f, 0f, 213.85f),
-        bottomY = 5.55f,
-        topY = 6.85f,
-        bgColor = Color(0xFF7C2D12),
-        borderColor = Color(0xFFFACC15),
-        lines = listOf("VADAKKE STAND"),
-        textColor = Color(0xFFFEF08A),
-        titlePaint = titlePaint,
-        subPaint = subPaint
-    )
-    drawOriented3DSignboard(
-        rig = rig,
-        path = path,
-        leftVec = Vec3(-28.5f, 0f, 200.4f),
-        rightVec = Vec3(-15.5f, 0f, 200.4f),
-        bottomY = 5.15f,
-        topY = 6.25f,
-        bgColor = Color(0xFF1E3A8A),
-        borderColor = Color(0xFF38BDF8),
-        lines = listOf("ENTRY"),
-        textColor = Color(0xFFFFFFFF),
-        titlePaint = titlePaint,
-        subPaint = subPaint
-    )
-    drawOriented3DSignboard(
-        rig = rig,
-        path = path,
-        leftVec = Vec3(-46.0f, 0f, 200.4f),
-        rightVec = Vec3(-33.0f, 0f, 200.4f),
-        bottomY = 5.15f,
-        topY = 6.25f,
-        bgColor = Color(0xFF065F46),
-        borderColor = Color(0xFFFACC15),
-        lines = listOf("EXIT"),
-        textColor = Color(0xFFFFFFFF),
-        titlePaint = titlePaint,
-        subPaint = subPaint
-    )
+    outFaces.addAll(faces)
 }
 
 // ============================================================================
@@ -2350,9 +2254,35 @@ private class CachedSceneryCluster(
 )
 
 private var cachedRoadsideClusters: List<CachedSceneryCluster>? = null
-private val reusableSceneryFaces = ArrayList<QuadFace3D>(320)
 
-private fun buildRoadsideSceneryCache(roads: List<ThrissurOsmRoad>): List<CachedSceneryCluster> {
+private fun isClearForRoadsideScenery(
+    bx: Float,
+    bz: Float,
+    roads: List<ThrissurOsmRoad>,
+    signPlacements: List<CachedSignRenderItem>
+): Boolean {
+    // Keep strictly clear of Sakthan Stand, Swaraj Round, Vadakke Stand, Guruvayur, Chavakkad, Triprayar & Toll
+    if (bx in -34f..58f && bz in -232f..-118f) return false
+    if (hypot(bx - 3.1f, bz - 9.5f) < 86f) return false
+    if (bx in -74f..2f && bz in 190f..258f) return false
+    if (bx in -2792f..-2560f && bz in 1220f..1342f) return false
+    if (bx in -4760f..-4446f && bz in 950f..1210f) return false
+    if (bx in -2480f..-2166f && bz in -2520f..-2300f) return false
+    if (bx in 945f..1055f && bz in -1870f..-1745f) return false
+
+    if (!isPointClearOfAllRoads(bx, bz, roads, extraMarginM = 9.0f)) return false
+
+    // Stay clear of all NHAI / PWD green direction boards so houses never block or clip signposts
+    for (s in signPlacements) {
+        if (hypot(bx - s.midX, bz - s.midZ) < 13.5f) return false
+    }
+    return true
+}
+
+private fun buildRoadsideSceneryCache(
+    roads: List<ThrissurOsmRoad>,
+    signPlacements: List<CachedSignRenderItem>
+): List<CachedSceneryCluster> {
     val clusters = ArrayList<CachedSceneryCluster>(160)
     for (road in roads) {
         if (road.id == "ROAD_SWARAJ_ROUND" || road.id == "ROAD_SAKTHAN_STAND_ENTRY") continue
@@ -2364,11 +2294,11 @@ private fun buildRoadsideSceneryCache(roads: List<ThrissurOsmRoad>): List<Cached
         while (idx < frames.size - 5) {
             val f = frames[idx]
             for (side in intArrayOf(-1, 1)) {
-                val latOffset = (roadHalfW + 11.5f) * side
+                val latOffset = (roadHalfW + 12.2f) * side
                 val bx = f.pos.x + f.right.x * latOffset
                 val bz = f.pos.z + f.right.z * latOffset
 
-                if (isPointClearOfAllRoads(bx, bz, roads, extraMarginM = 7.5f)) {
+                if (isClearForRoadsideScenery(bx, bz, roads, signPlacements)) {
                     val itemFaces = ArrayList<QuadFace3D>(18)
                     val pattern = (idx + if (side > 0) 1 else 2) % 3
                     if (pattern == 0) {
@@ -2418,21 +2348,20 @@ private fun buildRoadsideSceneryCache(roads: List<ThrissurOsmRoad>): List<Cached
     return clusters
 }
 
-private fun DrawScope.drawRoadsideKeralaScenery3D(
-    rig: CameraRig,
-    path: Path,
+private fun collectRoadsideSceneryFaces(
     camEye: Vec3,
-    roads: List<ThrissurOsmRoad>
+    roads: List<ThrissurOsmRoad>,
+    outFaces: MutableList<QuadFace3D>
 ) {
     if (roads.isEmpty()) return
+    val signPlacements = getOrBuildSignRenderCache(roads)
     var clusters = cachedRoadsideClusters
     if (clusters == null) {
-        clusters = buildRoadsideSceneryCache(roads)
+        clusters = buildRoadsideSceneryCache(roads, signPlacements)
         cachedRoadsideClusters = clusters
     }
 
-    reusableSceneryFaces.clear()
-    val maxDistSq = 210f * 210f
+    val maxDistSq = 155f * 155f
     val eyeX = camEye.x
     val eyeZ = camEye.z
     for (i in 0 until clusters.size) {
@@ -2440,48 +2369,32 @@ private fun DrawScope.drawRoadsideKeralaScenery3D(
         val dx = c.bx - eyeX
         val dz = c.bz - eyeZ
         if (dx * dx + dz * dz <= maxDistSq) {
-            reusableSceneryFaces.addAll(c.faces)
+            outFaces.addAll(c.faces)
         }
-    }
-
-    if (reusableSceneryFaces.isNotEmpty()) {
-        renderSortedFaces(rig, path, camEye, reusableSceneryFaces)
     }
 }
 
 // ============================================================================
 // 8. REFERENCE-ACCURATE KERALA PWD & NHAI GREEN SIGNBOARDS (100% OBSTACLE-FREE)
-//    Matches the 5 Reference Images:
-//    - Style A (ROUNDABOUT_DIAGRAM, ref: images__4__e8d8f20c.jpeg):
-//      Teal-green board with white border, central white circular roundabout/junction
-//      ring with ↑ Straight, ← Left, → Right arrows, and Malayalam + English labels.
-//    - Style B (STACKED_3_PANEL, ref: images_223705b0.jpeg & images__3__51bcd60a.jpeg):
-//      3-panel stacked green board split by 2 white horizontal divider lines; each
-//      panel shows Malayalam + English place name on left, bold white arrow in middle,
-//      and distance in km on right, mounted on black-and-white roadside verge posts.
-//    - Style C (OVERHEAD_HIGHWAY_GANTRY, ref: images__1__0a48787b.jpeg):
-//      Full-span overhead highway gantry (Y = 6.2m..8.3m) with support columns planted
-//      5.5m outside the road shoulders on both sides (zero obstacles on any road!),
-//      split by vertical white lines into 3 destination panels with ↑ arrows & km.
 // ============================================================================
 
-private enum class KeralaSignStyle {
-    ROUNDABOUT_DIAGRAM,      // Ref: images__4__e8d8f20c.jpeg
-    STACKED_3_PANEL,         // Ref: images_223705b0.jpeg & images__3__51bcd60a.jpeg
-    OVERHEAD_HIGHWAY_GANTRY  // Ref: images__1__0a48787b.jpeg
+internal enum class KeralaSignStyle {
+    ROUNDABOUT_DIAGRAM,
+    STACKED_3_PANEL,
+    OVERHEAD_HIGHWAY_GANTRY
 }
 
-private data class KeralaSignDestination(
+internal data class KeralaSignDestination(
     val malName: String,
     val engName: String,
-    val arrowDir: String, // "UP", "LEFT", "RIGHT"
+    val arrowDir: String,
     val distKm: String
 )
 
-private data class KeralaRoadSignSpec(
+internal data class KeralaRoadSignSpec(
     val roadId: String,
     val frameFraction: Float,
-    val side: Int, // -1 = Left verge, +1 = Right verge, 0 = Overhead Gantry
+    val side: Int,
     val style: KeralaSignStyle,
     val headerTitle: String = "",
     val straightDest: KeralaSignDestination,
@@ -2490,14 +2403,14 @@ private data class KeralaRoadSignSpec(
 )
 
 private val ThrissurAuthenticSignSpecs = listOf(
-    // 1. Sakthan Exit Gate -> Before Sakthan South / Ollur Junction (0.429) — Overhead Exit Gantry
+    // 1. M.O. Road mid-corridor -> Before Sakthan South / Ollur Junction — Overhead Exit Gantry (clear of Exit Gate)
     KeralaRoadSignSpec(
         roadId = "ROAD_SAKTHAN_TO_SWARAJ",
-        frameFraction = 0.31f,
+        frameFraction = 0.45f,
         side = 0,
         style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
-        headerTitle = "SAKTHAN STAND EXIT • M.O. ROAD",
-        straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "SWARAJ ROUND", "UP", "0.8 KM"),
+        headerTitle = "M.O. ROAD • THRISSUR CITY CORRIDOR",
+        straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "SWARAJ ROUND", "UP", "0.6 KM"),
         leftDest = KeralaSignDestination("കൊക്കാലെ", "KOKKALA", "UP", "1.2 KM"),
         rightDest = KeralaSignDestination("ഒല്ലൂർ", "OLLUR", "UP", "5.5 KM")
     ),
@@ -2511,46 +2424,46 @@ private val ThrissurAuthenticSignSpecs = listOf(
         leftDest = KeralaSignDestination("ശക്തൻ എൻട്രി", "Sakthan Entry", "LEFT", "0.1"),
         rightDest = KeralaSignDestination("പുത്തൻപള്ളി", "Puthanpalli", "RIGHT", "0.6")
     ),
-    // 3. MO Road -> Before Swaraj Round South Entry (1.000) — Left driving verge
+    // 3. MO Road -> Before Swaraj Round South Entry (1.000) — True Roundabout Approach Board
     KeralaRoadSignSpec(
         roadId = "ROAD_SAKTHAN_TO_SWARAJ",
         frameFraction = 0.82f,
         side = -1,
         style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
-        straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "UP", "0.2"),
-        leftDest = KeralaSignDestination("വെസ്റ്റ് ഫോർട്ട്", "West Fort", "LEFT", "1.8"),
+        headerTitle = "സ്വരാജ് റൗണ്ട് • SWARAJ ROUND",
+        straightDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "UP", "0.9"),
+        leftDest = KeralaSignDestination("വെസ്റ്റ് ഫോർട്ട്", "West Fort", "LEFT", "1.4"),
         rightDest = KeralaSignDestination("മണ്ണുത്തി", "Mannuthy", "RIGHT", "6.5")
     ),
-    // 4. Sakthan Left Entry Slip -> Before Sakthan Stand Entry Gate (1.000) — Overhead Entry Gantry
+    // 4. Sakthan Left Entry Slip -> Roadside verge sign approaching Sakthan Entry Gate (avoids double-gantry clutter)
     KeralaRoadSignSpec(
         roadId = "ROAD_SAKTHAN_STAND_ENTRY",
-        frameFraction = 0.55f,
-        side = 0,
-        style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
-        headerTitle = "SAKTHAN THAMPURAN BUS STAND • ENTRY",
-        straightDest = KeralaSignDestination("ബസ് ബേ", "BUS BAYS 1-20", "UP", "50 M"),
-        leftDest = KeralaSignDestination("അറൈവൽ", "ARRIVAL", "UP", "30 M"),
-        rightDest = KeralaSignDestination("എക്സിറ്റ് ഗേറ്റ്", "EXIT GATE", "UP", "80 M")
+        frameFraction = 0.25f,
+        side = -1,
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("ബസ് ബേ 1-20", "Bus Bays 1-20", "UP", "0.1"),
+        leftDest = KeralaSignDestination("അറൈവൽ ഗേറ്റ്", "Arrival Gate", "UP", "0.1"),
+        rightDest = KeralaSignDestination("എക്സിറ്റ് ഗേറ്റ്", "Exit Gate", "RIGHT", "0.2")
     ),
     // 5. Swaraj Round -> Before M.G. Road / West Fort Exit (0.179) — Left outer driving verge
     KeralaRoadSignSpec(
         roadId = "ROAD_SWARAJ_ROUND",
         frameFraction = 0.105f,
         side = -1,
-        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
+        style = KeralaSignStyle.STACKED_3_PANEL,
         straightDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "UP", "0.9"),
         leftDest = KeralaSignDestination("വെസ്റ്റ് ഫോർട്ട്", "West Fort", "LEFT", "1.4"),
-        rightDest = KeralaSignDestination("ക്ഷേത്രം", "Temple", "RIGHT", "0.2")
+        rightDest = KeralaSignDestination("ഗുരുവായൂർ", "Guruvayur", "LEFT", "28")
     ),
     // 6. Swaraj Round -> Before Shoranur Road / Vadakke Stand Exit (0.468) — Left outer driving verge
     KeralaRoadSignSpec(
         roadId = "ROAD_SWARAJ_ROUND",
         frameFraction = 0.385f,
         side = -1,
-        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
-        straightDest = KeralaSignDestination("മണ്ണുത്തി", "Mannuthy", "UP", "6.5"),
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("ഈസ്റ്റ് ഫോർട്ട്", "East Fort", "UP", "0.5"),
         leftDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "LEFT", "0.4"),
-        rightDest = KeralaSignDestination("ക്ഷേത്രം", "Temple", "RIGHT", "0.2")
+        rightDest = KeralaSignDestination("മണ്ണുത്തി", "Mannuthy", "UP", "6.5")
     ),
     // 7. Swaraj Round -> Before East Fort / Mannuthy Exit (0.757) — Left outer driving verge
     KeralaRoadSignSpec(
@@ -2582,15 +2495,15 @@ private val ThrissurAuthenticSignSpecs = listOf(
         leftDest = KeralaSignDestination("പൂങ്കുന്നം", "Punkunnam", "LEFT", "2.4"),
         rightDest = KeralaSignDestination("വിയ്യൂർ", "Viyyur", "RIGHT", "3.8")
     ),
-    // 10. Puthanpalli Link -> Before East Fort Junction (1.000) — Left driving verge
+    // 10. Puthanpalli Link -> Before East Fort T-Junction (1.000) — Left driving verge
     KeralaRoadSignSpec(
         roadId = "ROAD_PUTHANPALLI_LINK",
         frameFraction = 0.78f,
         side = -1,
-        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
-        straightDest = KeralaSignDestination("ഈസ്റ്റ് ഫോർട്ട്", "East Fort", "UP", "0.2"),
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("ഈസ്റ്റ് ഫോർട്ട്", "East Fort", "RIGHT", "0.2"),
         leftDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "LEFT", "0.5"),
-        rightDest = KeralaSignDestination("മണ്ണുത്തി", "Mannuthy", "RIGHT", "6.0")
+        rightDest = KeralaSignDestination("മണ്ണുത്തി NH 544", "Mannuthy", "RIGHT", "6.0")
     ),
     // 11. Mannuthy Road -> Before East Fort / Puthanpalli Junction (0.091) — Left driving verge
     KeralaRoadSignSpec(
@@ -2611,7 +2524,7 @@ private val ThrissurAuthenticSignSpecs = listOf(
         headerTitle = "NATIONAL HIGHWAY • NH 544 JUNCTION",
         straightDest = KeralaSignDestination("പീച്ചി ഡാം", "PEECHI DAM", "UP", "14 KM"),
         leftDest = KeralaSignDestination("പാലക്കാട്", "PALAKKAD", "UP", "54 KM"),
-        rightDest = KeralaSignDestination("ടോൾ പ്ലാസ", "TOLL PLAZA", "UP", "6 KM")
+        rightDest = KeralaSignDestination("ടോൾ പ്ലാസ", "TOLL PLAZA", "RIGHT", "6 KM")
     ),
     // 13. NH 544 -> Before Ollur / Thrissur City Link Junction (0.543) — Left driving verge
     KeralaRoadSignSpec(
@@ -2620,7 +2533,7 @@ private val ThrissurAuthenticSignSpecs = listOf(
         side = -1,
         style = KeralaSignStyle.STACKED_3_PANEL,
         straightDest = KeralaSignDestination("ടോൾ പ്ലാസ", "Toll Plaza", "UP", "4.5"),
-        leftDest = KeralaSignDestination("ആമ്പല്ലൂർ", "Amballur", "LEFT", "6.0"),
+        leftDest = KeralaSignDestination("ആമ്പല്ലൂർ", "Amballur", "UP", "6.0"),
         rightDest = KeralaSignDestination("ഒല്ലൂർ / തൃശ്ശൂർ", "Ollur", "RIGHT", "1.5")
     ),
     // 14. NH 544 -> Before Paliyekkara Toll Plaza — Overhead Highway Gantry
@@ -2644,14 +2557,14 @@ private val ThrissurAuthenticSignSpecs = listOf(
         leftDest = KeralaSignDestination("തൃശ്ശൂർ", "Thrissur", "LEFT", "1.2"),
         rightDest = KeralaSignDestination("കൂർക്കഞ്ചേരി", "Koorkenchery", "RIGHT", "2.0")
     ),
-    // 16. Ollur Road -> Before NH 544 Junction (1.000) — Left driving verge
+    // 16. Ollur Road -> Before NH 544 T-Junction (1.000) — Left driving verge
     KeralaRoadSignSpec(
         roadId = "ROAD_SAKTHAN_TO_OLLUR",
         frameFraction = 0.955f,
         side = -1,
-        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
-        straightDest = KeralaSignDestination("ആമ്പല്ലൂർ", "Amballur", "UP", "5.0"),
-        leftDest = KeralaSignDestination("മണ്ണുത്തി", "Mannuthy", "LEFT", "8.0"),
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("മണ്ണുത്തി NH 544", "Mannuthy", "LEFT", "8.0"),
+        leftDest = KeralaSignDestination("ആമ്പല്ലൂർ", "Amballur", "RIGHT", "5.0"),
         rightDest = KeralaSignDestination("എറണാകുളം", "Ernakulam", "RIGHT", "60")
     ),
     // 17. Peechi Dam Road -> Before Pattikkad / Peechi Dam Turning — Left driving verge
@@ -2664,15 +2577,15 @@ private val ThrissurAuthenticSignSpecs = listOf(
         leftDest = KeralaSignDestination("പാലക്കാട്", "Palakkad", "LEFT", "45"),
         rightDest = KeralaSignDestination("പട്ടിക്കാട്", "Pattikkad", "RIGHT", "2.5")
     ),
-    // 18. M.G. Road -> Before West Fort Junction (1.000) — Left driving verge
+    // 18. M.G. Road -> Before West Fort / SH 75 Continuation — Left driving verge
     KeralaRoadSignSpec(
         roadId = "ROAD_SWARAJ_TO_WEST_FORT",
         frameFraction = 0.84f,
         side = -1,
-        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
-        straightDest = KeralaSignDestination("കാഞ്ഞാണി", "Kanjani", "UP", "12"),
-        leftDest = KeralaSignDestination("അയ്യന്തോൾ", "Ayyanthole", "LEFT", "2.5"),
-        rightDest = KeralaSignDestination("ഗുരുവായൂർ", "Guruvayur", "RIGHT", "26")
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("കാഞ്ഞാണി SH 75", "Kanjani", "UP", "12"),
+        leftDest = KeralaSignDestination("ഗുരുവായൂർ", "Guruvayur", "UP", "26"),
+        rightDest = KeralaSignDestination("അയ്യന്തോൾ", "Ayyanthole", "RIGHT", "2.5")
     ),
     // 19. SH 75 West Fort -> Before Kanjani Junction (1.000) — Overhead Highway Gantry
     KeralaRoadSignSpec(
@@ -2682,18 +2595,18 @@ private val ThrissurAuthenticSignSpecs = listOf(
         style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
         headerTitle = "STATE HIGHWAY • SH 75 / SH 61",
         straightDest = KeralaSignDestination("ഗുരുവായൂർ", "GURUVAYUR", "UP", "19 KM"),
-        leftDest = KeralaSignDestination("തൃപ്രയാർ", "TRIPRAYAR", "UP", "15 KM"),
+        leftDest = KeralaSignDestination("തൃപ്രയാർ", "TRIPRAYAR", "LEFT", "15 KM"),
         rightDest = KeralaSignDestination("ചാവക്കാട്", "CHAVAKKAD", "UP", "22 KM")
     ),
-    // 20. Kanjani -> Before SH 61 Triprayar Junction (0.028) — Left driving verge
+    // 20. Kanjani -> Before SH 61 Triprayar T-Junction (0.028) — Left driving verge
     KeralaRoadSignSpec(
         roadId = "ROAD_KANJANI_TO_GURUVAYUR_CHAVAKKAD",
         frameFraction = 0.016f,
         side = -1,
-        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
+        style = KeralaSignStyle.STACKED_3_PANEL,
         straightDest = KeralaSignDestination("ഗുരുവായൂർ", "Guruvayur", "UP", "18"),
-        leftDest = KeralaSignDestination("തൃപ്രയാർ", "Triprayar", "LEFT", "14"),
-        rightDest = KeralaSignDestination("ചൂണ്ടൽ", "Choondal", "RIGHT", "10")
+        leftDest = KeralaSignDestination("ചാവക്കാട്", "Chavakkad", "UP", "22"),
+        rightDest = KeralaSignDestination("തൃപ്രയാർ SH 61", "Triprayar", "LEFT", "14")
     ),
     // 21. Kanjani -> Before Guruvayur Temple & Bus Stand Turning (0.406) — Left driving verge
     KeralaRoadSignSpec(
@@ -2712,17 +2625,17 @@ private val ThrissurAuthenticSignSpecs = listOf(
         side = -1,
         style = KeralaSignStyle.STACKED_3_PANEL,
         straightDest = KeralaSignDestination("ചാവക്കാട് ബീച്ച്", "Chavakkad Beach", "UP", "0.8"),
-        leftDest = KeralaSignDestination("തൃപ്രയാർ NH 66", "Triprayar", "LEFT", "18"),
+        leftDest = KeralaSignDestination("തൃപ്രയാർ NH 66", "Triprayar", "UP", "18"),
         rightDest = KeralaSignDestination("പൊന്നാനി", "Ponnani", "RIGHT", "24")
     ),
-    // 23. Chavakkad -> Before NH 66 Junction (1.000) — Left driving verge
+    // 23. Chavakkad -> Before NH 66 Coastal South Curve (1.000) — Left driving verge
     KeralaRoadSignSpec(
         roadId = "ROAD_KANJANI_TO_GURUVAYUR_CHAVAKKAD",
         frameFraction = 0.978f,
         side = -1,
-        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
-        straightDest = KeralaSignDestination("ചാവക്കാട് ബീച്ച്", "Chavakkad Beach", "UP", "0.3"),
-        leftDest = KeralaSignDestination("തൃപ്രയാർ", "Triprayar", "LEFT", "18"),
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("തൃപ്രയാർ NH 66", "Triprayar NH 66", "UP", "18"),
+        leftDest = KeralaSignDestination("ചാവക്കാട് ബീച്ച്", "Chavakkad Beach", "UP", "0.3"),
         rightDest = KeralaSignDestination("പൊന്നാനി", "Ponnani", "RIGHT", "24")
     ),
     // 24. NH 66 -> Before SH 61 Triprayar / Kanjani Junction (0.689) — Overhead Highway Gantry
@@ -2733,7 +2646,7 @@ private val ThrissurAuthenticSignSpecs = listOf(
         style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
         headerTitle = "NATIONAL HIGHWAY • NH 66 / SH 61",
         straightDest = KeralaSignDestination("തൃപ്രയാർ ബീച്ച്", "TRIPRAYAR BEACH", "UP", "2 KM"),
-        leftDest = KeralaSignDestination("കാഞ്ഞാണി", "KANJANI", "UP", "14 KM"),
+        leftDest = KeralaSignDestination("കാഞ്ഞാണി SH 61", "KANJANI", "LEFT", "14 KM"),
         rightDest = KeralaSignDestination("കൊടുങ്ങല്ലൂർ", "KODUNGALLUR", "UP", "25 KM")
     ),
     // 25. NH 66 -> Before Triprayar - Nattika Beach Terminus Turning — Left driving verge
@@ -2746,13 +2659,13 @@ private val ThrissurAuthenticSignSpecs = listOf(
         leftDest = KeralaSignDestination("തൃപ്രയാർ സ്റ്റാൻഡ്", "Triprayar Stand", "LEFT", "0.3"),
         rightDest = KeralaSignDestination("നാട്ടിക ബീച്ച്", "Nattika Beach", "RIGHT", "0.5")
     ),
-    // 26. SH 61 -> Before Kanjani Main Junction (1.000) — Left driving verge
+    // 26. SH 61 -> Before Kanjani Main T-Junction (1.000) — Left driving verge
     KeralaRoadSignSpec(
         roadId = "ROAD_SH61_TRIPRAYAR_TO_KANJANI",
         frameFraction = 0.968f,
         side = -1,
-        style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
-        straightDest = KeralaSignDestination("ഗുരുവായൂർ", "Guruvayur", "UP", "18"),
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        straightDest = KeralaSignDestination("ഗുരുവായൂർ", "Guruvayur", "LEFT", "18"),
         leftDest = KeralaSignDestination("ചാവക്കാട്", "Chavakkad", "LEFT", "22"),
         rightDest = KeralaSignDestination("തൃശ്ശൂർ", "Thrissur", "RIGHT", "12")
     )
@@ -2779,13 +2692,27 @@ private fun isPointClearOfAllRoads(
     return true
 }
 
+private fun isPointClearOfLandmarkBuildings(px: Float, pz: Float): Boolean {
+    // Keep clear of Swaraj Round outer heritage buildings + 4.0m safety setback so signs never intersect walls
+    if (px in 64.0f..78.5f && pz in 8.0f..32.5f) return false      // Paramekkavu Temple
+    if (px in 43.0f..59.5f && pz in -51.5f..-34.5f) return false  // Indian Coffee House
+    if (px in -29.0f..-3.0f && pz in -69.0f..-54.0f) return false // Round South Heritage Arcade
+    if (px in -73.0f..-57.0f && pz in 12.5f..41.0f) return false  // City Centre Arcade
+    if (px in 15.5f..44.5f && pz in 64.5f..79.5f) return false    // Round North Block
+    if (hypot(px - 3.1f, pz - 9.5f) < 42.0f) return false         // Inner Thekkinkadu Maidan
+    if (px in -25.0f..50.0f && pz in -220.0f..-141.0f) return false // Sakthan Stand yard
+    return true
+}
+
 /**
  * Finds a road frame at or strictly BEFORE `targetFraction` along `road` where the left-verge
- * signboard (or overhead highway gantry) sits cleanly outside the asphalt + shoulder envelope.
+ * signboard (or overhead highway gantry) sits cleanly outside the asphalt + shoulder envelope,
+ * clear of all buildings and any previously placed signboards.
  */
 private fun findSafeSignPlacement(
     spec: KeralaRoadSignSpec,
-    roads: List<ThrissurOsmRoad>
+    roads: List<ThrissurOsmRoad>,
+    existing: List<CachedSignRenderItem>
 ): Triple<RoadFrame, Vec3, Vec3>? {
     val road = roads.firstOrNull { it.id == spec.roadId } ?: return null
     val frames = road.frames
@@ -2801,7 +2728,9 @@ private fun findSafeSignPlacement(
             val leftCol = Vec3(f.pos.x - f.right.x * colOffset, 0f, f.pos.z - f.right.z * colOffset)
             val rightCol = Vec3(f.pos.x + f.right.x * colOffset, 0f, f.pos.z + f.right.z * colOffset)
             if (isPointClearOfAllRoads(leftCol.x, leftCol.z, roads, 2.25f) &&
-                isPointClearOfAllRoads(rightCol.x, rightCol.z, roads, 2.25f)
+                isPointClearOfAllRoads(rightCol.x, rightCol.z, roads, 2.25f) &&
+                isPointClearOfLandmarkBuildings(leftCol.x, leftCol.z) &&
+                isPointClearOfLandmarkBuildings(rightCol.x, rightCol.z)
             ) {
                 return Triple(f, leftCol, rightCol)
             }
@@ -2809,15 +2738,12 @@ private fun findSafeSignPlacement(
         return null
     }
 
-    // Roadside Board (Kerala Left-Hand Driving Verge, side = -1):
-    // Inner edge sits cleanly on the left verge/footpath (~2.65m outside asphalt edge)
-    // and never steps forward past the junction turning.
-    val boardW = 4.8f
-    for (extraShift in floatArrayOf(0f, 1.2f, 2.4f)) {
+    val boardW = 4.6f
+    for (extraShift in floatArrayOf(0f, 1.0f, 2.0f)) {
         for (delta in intArrayOf(0, -1, -2, -3, -4, -6, -8, -10, 1)) {
             val idx = (baseIdx + delta).coerceIn(2, frames.size - 3)
             val f = frames[idx]
-            val innerDist = f.halfWidthM + 2.65f + extraShift
+            val innerDist = f.halfWidthM + 2.55f + extraShift
             val outerDist = innerDist + boardW
             val d1 = if (spec.side < 0) -outerDist else innerDist
             val d2 = if (spec.side < 0) -innerDist else outerDist
@@ -2826,7 +2752,10 @@ private fun findSafeSignPlacement(
             val midVec = Vec3((leftVec.x + rightVec.x) * 0.5f, 0f, (leftVec.z + rightVec.z) * 0.5f)
             if (isPointClearOfAllRoads(leftVec.x, leftVec.z, roads, 2.25f) &&
                 isPointClearOfAllRoads(rightVec.x, rightVec.z, roads, 2.25f) &&
-                isPointClearOfAllRoads(midVec.x, midVec.z, roads, 2.25f)
+                isPointClearOfAllRoads(midVec.x, midVec.z, roads, 2.25f) &&
+                isPointClearOfLandmarkBuildings(leftVec.x, leftVec.z) &&
+                isPointClearOfLandmarkBuildings(rightVec.x, rightVec.z) &&
+                existing.none { hypot(midVec.x - it.midX, midVec.z - it.midZ) < 11.5f }
             ) {
                 return Triple(f, leftVec, rightVec)
             }
@@ -2835,46 +2764,28 @@ private fun findSafeSignPlacement(
     return null
 }
 
-private var cachedSignPlacements: List<Pair<KeralaRoadSignSpec, Triple<RoadFrame, Vec3, Vec3>>>? = null
+private class CachedSignRenderItem(
+    val midX: Float,
+    val midZ: Float,
+    val faces: List<QuadFace3D>
+)
 
-private fun DrawScope.drawNhaiGreenJunctionSignboards3D(
-    rig: CameraRig,
-    path: Path,
-    camEye: Vec3,
-    roads: List<ThrissurOsmRoad>,
-    titlePaint: Paint,
-    subPaint: Paint
-) {
-    if (roads.isEmpty()) return
-    var allPlacements = cachedSignPlacements
-    if (allPlacements == null) {
-        val built = ArrayList<Pair<KeralaRoadSignSpec, Triple<RoadFrame, Vec3, Vec3>>>(ThrissurAuthenticSignSpecs.size)
-        for (spec in ThrissurAuthenticSignSpecs) {
-            val placement = findSafeSignPlacement(spec, roads) ?: continue
-            built.add(Pair(spec, placement))
-        }
-        allPlacements = built
-        cachedSignPlacements = built
-    }
+private var cachedSignRenderItems: List<CachedSignRenderItem>? = null
 
-    val postFaces = ArrayList<QuadFace3D>(180)
-    val activePlacements = ArrayList<Pair<KeralaRoadSignSpec, Triple<RoadFrame, Vec3, Vec3>>>(8)
-
-    for (i in 0 until allPlacements.size) {
-        val (spec, placement) = allPlacements[i]
+private fun getOrBuildSignRenderCache(roads: List<ThrissurOsmRoad>): List<CachedSignRenderItem> {
+    cachedSignRenderItems?.let { return it }
+    val built = ArrayList<CachedSignRenderItem>(ThrissurAuthenticSignSpecs.size)
+    for ((specIdx, spec) in ThrissurAuthenticSignSpecs.withIndex()) {
+        val placement = findSafeSignPlacement(spec, roads, built) ?: continue
         val (_, leftPos, rightPos) = placement
         val midX = (leftPos.x + rightPos.x) * 0.5f
         val midZ = (leftPos.z + rightPos.z) * 0.5f
-        val dx = camEye.x - midX
-        val dz = camEye.z - midZ
-        if (dx * dx + dz * dz > 320f * 320f) continue
-        activePlacements.add(Pair(spec, placement))
+        val itemFaces = ArrayList<QuadFace3D>(32)
 
         if (spec.style == KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY) {
-            // Overhead Gantry Steel Columns (planted 5.8m outside road edges) + Overhead Truss Beam
             for (colPos in arrayOf(leftPos, rightPos)) {
                 addBoxFaces(
-                    postFaces,
+                    itemFaces,
                     colPos.x - 0.24f, 0.05f, colPos.z - 0.24f,
                     colPos.x + 0.24f, 8.25f, colPos.z + 0.24f,
                     topCol = MatGraniteLight,
@@ -2883,13 +2794,12 @@ private fun DrawScope.drawNhaiGreenJunctionSignboards3D(
                     stroke = null
                 )
             }
-            // Horizontal overhead steel truss beam (Y = 6.95m..7.35m)
             val minX = minOf(leftPos.x, rightPos.x) - 0.2f
             val maxX = maxOf(leftPos.x, rightPos.x) + 0.2f
             val minZ = minOf(leftPos.z, rightPos.z) - 0.2f
             val maxZ = maxOf(leftPos.z, rightPos.z) + 0.2f
             addBoxFaces(
-                postFaces,
+                itemFaces,
                 minX, 6.95f, minZ,
                 maxX, 7.30f, maxZ,
                 topCol = MatGraniteDark,
@@ -2897,14 +2807,35 @@ private fun DrawScope.drawNhaiGreenJunctionSignboards3D(
                 frontBackCol = MatGraniteDark,
                 stroke = null
             )
+
+            val gLeft = Vec3(
+                leftPos.x + (rightPos.x - leftPos.x) * 0.10f,
+                0f,
+                leftPos.z + (rightPos.z - leftPos.z) * 0.10f
+            )
+            val gRight = Vec3(
+                leftPos.x + (rightPos.x - leftPos.x) * 0.90f,
+                0f,
+                leftPos.z + (rightPos.z - leftPos.z) * 0.90f
+            )
+            itemFaces.add(
+                QuadFace3D(
+                    v0 = Vec3(gLeft.x, 6.15f, gLeft.z),
+                    v1 = Vec3(gRight.x, 6.15f, gRight.z),
+                    v2 = Vec3(gRight.x, 8.25f, gRight.z),
+                    v3 = Vec3(gLeft.x, 8.25f, gLeft.z),
+                    color = Color(0xFF057A55),
+                    strokeColor = null,
+                    biasDist = -0.35f,
+                    signboard = createKeralaRoadSignSpec(spec, specIdx)
+                )
+            )
         } else {
-            // Roadside Board Support Posts (Black-and-white striped / concrete posts in outer verge, Ref: images__3__51bcd60a.jpeg)
             for (t in floatArrayOf(0.18f, 0.82f)) {
                 val px = leftPos.x + (rightPos.x - leftPos.x) * t
                 val pz = leftPos.z + (rightPos.z - leftPos.z) * t
-                // Lower black post band
                 addBoxFaces(
-                    postFaces,
+                    itemFaces,
                     px - 0.13f, 0.05f, pz - 0.13f,
                     px + 0.13f, 1.35f, pz + 0.13f,
                     topCol = MatHazardBlack,
@@ -2912,9 +2843,8 @@ private fun DrawScope.drawNhaiGreenJunctionSignboards3D(
                     frontBackCol = MatHazardBlack,
                     stroke = null
                 )
-                // Upper white post band
                 addBoxFaces(
-                    postFaces,
+                    itemFaces,
                     px - 0.13f, 1.35f, pz - 0.13f,
                     px + 0.13f, 2.75f, pz + 0.13f,
                     topCol = MatRoadMarkingWhite,
@@ -2923,449 +2853,45 @@ private fun DrawScope.drawNhaiGreenJunctionSignboards3D(
                     stroke = null
                 )
             }
+            val topY = 5.65f
+            val bgColor = if (spec.style == KeralaSignStyle.ROUNDABOUT_DIAGRAM) Color(0xFF006D5B) else Color(0xFF046A4E)
+            itemFaces.add(
+                QuadFace3D(
+                    v0 = Vec3(leftPos.x, 2.65f, leftPos.z),
+                    v1 = Vec3(rightPos.x, 2.65f, rightPos.z),
+                    v2 = Vec3(rightPos.x, topY, rightPos.z),
+                    v3 = Vec3(leftPos.x, topY, leftPos.z),
+                    color = bgColor,
+                    strokeColor = null,
+                    biasDist = -0.30f,
+                    signboard = createKeralaRoadSignSpec(spec, specIdx)
+                )
+            )
         }
+        built.add(CachedSignRenderItem(midX, midZ, itemFaces))
     }
-
-    if (postFaces.isNotEmpty()) {
-        renderSortedFaces(rig, path, camEye, postFaces)
-    }
-
-    // Sort active signboards far-to-near so closer boards render cleanly on top
-    activePlacements.sortByDescending { (_, placement) ->
-        val midX = (placement.second.x + placement.third.x) * 0.5f
-        val midZ = (placement.second.z + placement.third.z) * 0.5f
-        hypot(camEye.x - midX, camEye.z - midZ)
-    }
-
-    for ((spec, placement) in activePlacements) {
-        val (_, leftPos, rightPos) = placement
-        when (spec.style) {
-            KeralaSignStyle.ROUNDABOUT_DIAGRAM -> {
-                drawKeralaRoundaboutDiagramBoard3D(
-                    rig = rig,
-                    path = path,
-                    leftVec = leftPos,
-                    rightVec = rightPos,
-                    bottomY = 2.65f,
-                    topY = 5.45f,
-                    spec = spec,
-                    titlePaint = titlePaint,
-                    subPaint = subPaint
-                )
-            }
-            KeralaSignStyle.STACKED_3_PANEL -> {
-                drawKeralaStacked3PanelBoard3D(
-                    rig = rig,
-                    path = path,
-                    leftVec = leftPos,
-                    rightVec = rightPos,
-                    bottomY = 2.65f,
-                    topY = 5.65f,
-                    spec = spec,
-                    titlePaint = titlePaint,
-                    subPaint = subPaint
-                )
-            }
-            KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY -> {
-                // Span board across the roadway portion of the overhead gantry (Y = 6.15m..8.25m)
-                val gLeft = Vec3(
-                    leftPos.x + (rightPos.x - leftPos.x) * 0.10f,
-                    0f,
-                    leftPos.z + (rightPos.z - leftPos.z) * 0.10f
-                )
-                val gRight = Vec3(
-                    leftPos.x + (rightPos.x - leftPos.x) * 0.90f,
-                    0f,
-                    leftPos.z + (rightPos.z - leftPos.z) * 0.90f
-                )
-                drawOverheadHighwayGantryBoard3D(
-                    rig = rig,
-                    path = path,
-                    leftVec = gLeft,
-                    rightVec = gRight,
-                    bottomY = 6.15f,
-                    topY = 8.25f,
-                    spec = spec,
-                    titlePaint = titlePaint,
-                    subPaint = subPaint
-                )
-            }
-        }
-    }
+    cachedSignRenderItems = built
+    return built
 }
 
-/**
- * Style A: Kerala PWD Roundabout / Junction Schematic Diagram Board (Ref: images__4__e8d8f20c.jpeg).
- * Renders the teal-green reflective board, white outer border, central white circular roundabout
- * ring with 3 directional arrows (↑ Straight, ← Left, → Right), and bilingual Malayalam + English names.
- */
-private fun DrawScope.drawKeralaRoundaboutDiagramBoard3D(
-    rig: CameraRig,
-    path: Path,
-    leftVec: Vec3,
-    rightVec: Vec3,
-    bottomY: Float,
-    topY: Float,
-    spec: KeralaRoadSignSpec,
-    titlePaint: Paint,
-    subPaint: Paint
+private fun collectNhaiSignboardFaces(
+    camEye: Vec3,
+    roads: List<ThrissurOsmRoad>,
+    outFaces: MutableList<QuadFace3D>
 ) {
-    val vBL = Vec3(leftVec.x, bottomY, leftVec.z)
-    val vBR = Vec3(rightVec.x, bottomY, rightVec.z)
-    val vTR = Vec3(rightVec.x, topY, rightVec.z)
-    val vTL = Vec3(leftVec.x, topY, leftVec.z)
-
-    if (!rig.buildClippedQuadPath(path, vBL, vBR, vTR, vTL)) return
-    drawPath(path, Color(0xFF006D5B))
-    drawPath(path, MatRoadMarkingWhite, style = Stroke(width = 2.6f))
-
-    val midY = (bottomY + topY) * 0.5f
-    val midX = (leftVec.x + rightVec.x) * 0.5f
-    val midZ = (leftVec.z + rightVec.z) * 0.5f
-    val pLeft = rig.projectPoint(Vec3(leftVec.x, midY, leftVec.z)) ?: return
-    val pRight = rig.projectPoint(Vec3(rightVec.x, midY, rightVec.z)) ?: return
-    val pTop = rig.projectPoint(Vec3(midX, topY, midZ)) ?: return
-    val pBottom = rig.projectPoint(Vec3(midX, bottomY, midZ)) ?: return
-
-    val pixelW = hypot(pRight.x - pLeft.x, pRight.y - pLeft.y)
-    val pixelH = hypot(pBottom.x - pTop.x, pBottom.y - pTop.y)
-    if (pixelW < 34f || pixelH < 18f) return
-
-    val centerX = (pLeft.x + pRight.x) * 0.5f
-    val centerY = (pTop.y + pBottom.y) * 0.5f
-    var angleDeg = Math.toDegrees(atan2((pRight.y - pLeft.y).toDouble(), (pRight.x - pLeft.x).toDouble())).toFloat()
-    if (angleDeg > 90f) angleDeg -= 180f
-    if (angleDeg < -90f) angleDeg += 180f
-
-    val nativeCanvas = drawContext.canvas.nativeCanvas
-    nativeCanvas.save()
-    nativeCanvas.translate(centerX, centerY)
-    nativeCanvas.rotate(angleDeg)
-
-    // 1. Central White Roundabout Ring + Stem + 3 Directional Arrows (Ref: images__4__e8d8f20c.jpeg)
-    val ringR = (min(pixelW, pixelH) * 0.16f).coerceIn(4f, 22f)
-    val strokeW = (ringR * 0.34f).coerceIn(1.8f, 6.5f)
-    val diagramPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.WHITE
-        style = Paint.Style.STROKE
-        strokeWidth = strokeW
-        strokeCap = Paint.Cap.BUTT
-    }
-    val arrowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.WHITE
-        style = Paint.Style.FILL
-    }
-
-    // Roundabout ring (with slight bottom-right break like ref image)
-    nativeCanvas.drawCircle(0f, 0f, ringR, diagramPaint)
-    // Bottom vertical entry stem
-    nativeCanvas.drawLine(0f, ringR, 0f, pixelH * 0.38f, diagramPaint)
-    // Top Straight Arrow (↑)
-    val topTipY = -pixelH * 0.38f
-    val headSz = (strokeW * 1.65f).coerceIn(3.5f, 11f)
-    nativeCanvas.drawLine(0f, -ringR, 0f, topTipY + headSz * 0.7f, diagramPaint)
-    val triPath = android.graphics.Path()
-    triPath.moveTo(0f, topTipY)
-    triPath.lineTo(-headSz, topTipY + headSz * 1.15f)
-    triPath.lineTo(headSz, topTipY + headSz * 1.15f)
-    triPath.close()
-    nativeCanvas.drawPath(triPath, arrowFillPaint)
-
-    // Left Turn Arrow (←)
-    val leftTipX = -pixelW * 0.25f
-    nativeCanvas.drawLine(-ringR, 0f, leftTipX + headSz * 0.7f, 0f, diagramPaint)
-    triPath.reset()
-    triPath.moveTo(leftTipX, 0f)
-    triPath.lineTo(leftTipX + headSz * 1.15f, -headSz)
-    triPath.lineTo(leftTipX + headSz * 1.15f, headSz)
-    triPath.close()
-    nativeCanvas.drawPath(triPath, arrowFillPaint)
-
-    // Right Turn Arrow (→)
-    val rightTipX = pixelW * 0.25f
-    nativeCanvas.drawLine(ringR, 0f, rightTipX - headSz * 0.7f, 0f, diagramPaint)
-    triPath.reset()
-    triPath.moveTo(rightTipX, 0f)
-    triPath.lineTo(rightTipX - headSz * 1.15f, -headSz)
-    triPath.lineTo(rightTipX - headSz * 1.15f, headSz)
-    triPath.close()
-    nativeCanvas.drawPath(triPath, arrowFillPaint)
-
-    // 2. Bilingual Malayalam + English Place Labels around the Diagram (Ref: images__4__e8d8f20c.jpeg)
-    val txtSz = min(pixelH * 0.115f, pixelW * 0.068f).coerceIn(6.5f, 16f)
-    titlePaint.color = android.graphics.Color.WHITE
-    titlePaint.textSize = txtSz
-    subPaint.color = android.graphics.Color.WHITE
-    subPaint.textSize = txtSz * 0.92f
-
-    // Top-left (Malayalam straight) & Top-right (English straight)
-    subPaint.textAlign = Paint.Align.CENTER
-    titlePaint.textAlign = Paint.Align.CENTER
-    nativeCanvas.drawText(spec.straightDest.malName, -pixelW * 0.25f, -pixelH * 0.22f, subPaint)
-    nativeCanvas.drawText(spec.straightDest.engName, pixelW * 0.25f, -pixelH * 0.22f, titlePaint)
-
-    // Bottom-left (Left turn Malayalam + English)
-    nativeCanvas.drawText(spec.leftDest.malName, -pixelW * 0.25f, pixelH * 0.19f, subPaint)
-    nativeCanvas.drawText(spec.leftDest.engName, -pixelW * 0.25f, pixelH * 0.34f, titlePaint)
-
-    // Bottom-right (Right turn Malayalam + English)
-    nativeCanvas.drawText(spec.rightDest.malName, pixelW * 0.25f, pixelH * 0.19f, subPaint)
-    nativeCanvas.drawText(spec.rightDest.engName, pixelW * 0.25f, pixelH * 0.34f, titlePaint)
-
-    nativeCanvas.restore()
-}
-
-/**
- * Style B: 3-Panel Stacked Kerala PWD Direction & Distance Board (Ref: images_223705b0.jpeg & images__3__51bcd60a.jpeg).
- * Divided by 2 horizontal white lines into 3 stacked compartments, each showing Malayalam + English
- * destination on the left, bold white directional arrow in the middle, and km distance on the right.
- */
-private fun DrawScope.drawKeralaStacked3PanelBoard3D(
-    rig: CameraRig,
-    path: Path,
-    leftVec: Vec3,
-    rightVec: Vec3,
-    bottomY: Float,
-    topY: Float,
-    spec: KeralaRoadSignSpec,
-    titlePaint: Paint,
-    subPaint: Paint
-) {
-    val vBL = Vec3(leftVec.x, bottomY, leftVec.z)
-    val vBR = Vec3(rightVec.x, bottomY, rightVec.z)
-    val vTR = Vec3(rightVec.x, topY, rightVec.z)
-    val vTL = Vec3(leftVec.x, topY, leftVec.z)
-
-    if (!rig.buildClippedQuadPath(path, vBL, vBR, vTR, vTL)) return
-    drawPath(path, Color(0xFF046A4E))
-    drawPath(path, MatRoadMarkingWhite, style = Stroke(width = 2.6f))
-
-    // 2 Horizontal White Divider Lines splitting the 3D board into 3 stacked panels (Ref: images_223705b0.jpeg)
-    val h1Y = bottomY + (topY - bottomY) * (1f / 3f)
-    val h2Y = bottomY + (topY - bottomY) * (2f / 3f)
-    rig.projectSegmentClipped(Vec3(leftVec.x, h1Y, leftVec.z), Vec3(rightVec.x, h1Y, rightVec.z))?.let {
-        drawLine(MatRoadMarkingWhite, it.first, it.second, strokeWidth = 2.0f)
-    }
-    rig.projectSegmentClipped(Vec3(leftVec.x, h2Y, leftVec.z), Vec3(rightVec.x, h2Y, rightVec.z))?.let {
-        drawLine(MatRoadMarkingWhite, it.first, it.second, strokeWidth = 2.0f)
-    }
-
-    val midY = (bottomY + topY) * 0.5f
-    val midX = (leftVec.x + rightVec.x) * 0.5f
-    val midZ = (leftVec.z + rightVec.z) * 0.5f
-    val pLeft = rig.projectPoint(Vec3(leftVec.x, midY, leftVec.z)) ?: return
-    val pRight = rig.projectPoint(Vec3(rightVec.x, midY, rightVec.z)) ?: return
-    val pTop = rig.projectPoint(Vec3(midX, topY, midZ)) ?: return
-    val pBottom = rig.projectPoint(Vec3(midX, bottomY, midZ)) ?: return
-
-    val pixelW = hypot(pRight.x - pLeft.x, pRight.y - pLeft.y)
-    val pixelH = hypot(pBottom.x - pTop.x, pBottom.y - pTop.y)
-    if (pixelW < 34f || pixelH < 18f) return
-
-    val centerX = (pLeft.x + pRight.x) * 0.5f
-    val centerY = (pTop.y + pBottom.y) * 0.5f
-    var angleDeg = Math.toDegrees(atan2((pRight.y - pLeft.y).toDouble(), (pRight.x - pLeft.x).toDouble())).toFloat()
-    if (angleDeg > 90f) angleDeg -= 180f
-    if (angleDeg < -90f) angleDeg += 180f
-
-    val nativeCanvas = drawContext.canvas.nativeCanvas
-    nativeCanvas.save()
-    nativeCanvas.translate(centerX, centerY)
-    nativeCanvas.rotate(angleDeg)
-
-    val rows = arrayOf(spec.straightDest, spec.leftDest, spec.rightDest)
-    val rowH = pixelH / 3f
-    val engSz = min(rowH * 0.36f, pixelW * 0.072f).coerceIn(6.5f, 15.5f)
-    val malSz = (engSz * 0.88f).coerceIn(6.0f, 14.0f)
-
-    titlePaint.color = android.graphics.Color.WHITE
-    subPaint.color = android.graphics.Color.WHITE
-
-    for (rIdx in 0..2) {
-        val rowCenterY = -pixelH * 0.5f + (rIdx + 0.5f) * rowH
-        val dest = rows[rIdx]
-
-        // Left: Malayalam on top, English below (left-aligned inside panel, Ref: images_223705b0.jpeg)
-        subPaint.textAlign = Paint.Align.LEFT
-        subPaint.textSize = malSz
-        nativeCanvas.drawText(dest.malName, -pixelW * 0.44f, rowCenterY - rowH * 0.08f, subPaint)
-
-        titlePaint.textAlign = Paint.Align.LEFT
-        titlePaint.textSize = engSz
-        nativeCanvas.drawText(dest.engName, -pixelW * 0.44f, rowCenterY + rowH * 0.32f, titlePaint)
-
-        // Middle-Right: Bold White Arrow Symbol + Far-Right Distance Number (Ref: images_223705b0.jpeg)
-        val arrowGlyph = when (dest.arrowDir) {
-            "LEFT" -> "⬅"
-            "RIGHT" -> "➡"
-            else -> "⬆"
-        }
-        titlePaint.textAlign = Paint.Align.CENTER
-        titlePaint.textSize = (engSz * 1.15f).coerceIn(7.5f, 18f)
-        nativeCanvas.drawText(arrowGlyph, pixelW * 0.16f, rowCenterY + rowH * 0.14f, titlePaint)
-
-        titlePaint.textAlign = Paint.Align.RIGHT
-        titlePaint.textSize = engSz
-        nativeCanvas.drawText(dest.distKm, pixelW * 0.44f, rowCenterY + rowH * 0.14f, titlePaint)
-    }
-
-    titlePaint.textAlign = Paint.Align.CENTER
-    subPaint.textAlign = Paint.Align.CENTER
-    nativeCanvas.restore()
-}
-
-/**
- * Style C: Overhead Multi-Lane National Highway Gantry Board (Ref: images__1__0a48787b.jpeg).
- * Spans high above the highway (Y = 6.15m..8.25m) with support columns 5.8m outside the road edges,
- * divided by vertical white lines into 3 destination panels with ↑ arrows, Malayalam + English names, and KM.
- */
-private fun DrawScope.drawOverheadHighwayGantryBoard3D(
-    rig: CameraRig,
-    path: Path,
-    leftVec: Vec3,
-    rightVec: Vec3,
-    bottomY: Float,
-    topY: Float,
-    spec: KeralaRoadSignSpec,
-    titlePaint: Paint,
-    subPaint: Paint
-) {
-    val vBL = Vec3(leftVec.x, bottomY, leftVec.z)
-    val vBR = Vec3(rightVec.x, bottomY, rightVec.z)
-    val vTR = Vec3(rightVec.x, topY, rightVec.z)
-    val vTL = Vec3(leftVec.x, topY, leftVec.z)
-
-    if (!rig.buildClippedQuadPath(path, vBL, vBR, vTR, vTL)) return
-    drawPath(path, Color(0xFF057A55))
-    drawPath(path, MatRoadMarkingWhite, style = Stroke(width = 2.6f))
-
-    // 2 Vertical White Divider Lines splitting the overhead gantry into 3 compartments (Ref: images__1__0a48787b.jpeg)
-    for (frac in floatArrayOf(1f / 3f, 2f / 3f)) {
-        val vx = leftVec.x + (rightVec.x - leftVec.x) * frac
-        val vz = leftVec.z + (rightVec.z - leftVec.z) * frac
-        rig.projectSegmentClipped(Vec3(vx, bottomY + 0.15f, vz), Vec3(vx, topY - 0.35f, vz))?.let {
-            drawLine(MatRoadMarkingWhite, it.first, it.second, strokeWidth = 2.0f)
+    if (roads.isEmpty()) return
+    val items = getOrBuildSignRenderCache(roads)
+    val maxDistSq = 155f * 155f
+    val eyeX = camEye.x
+    val eyeZ = camEye.z
+    for (i in 0 until items.size) {
+        val item = items[i]
+        val dx = eyeX - item.midX
+        val dz = eyeZ - item.midZ
+        if (dx * dx + dz * dz <= maxDistSq) {
+            outFaces.addAll(item.faces)
         }
     }
-
-    val midY = (bottomY + topY) * 0.5f
-    val midX = (leftVec.x + rightVec.x) * 0.5f
-    val midZ = (leftVec.z + rightVec.z) * 0.5f
-    val pLeft = rig.projectPoint(Vec3(leftVec.x, midY, leftVec.z)) ?: return
-    val pRight = rig.projectPoint(Vec3(rightVec.x, midY, rightVec.z)) ?: return
-    val pTop = rig.projectPoint(Vec3(midX, topY, midZ)) ?: return
-    val pBottom = rig.projectPoint(Vec3(midX, bottomY, midZ)) ?: return
-
-    val pixelW = hypot(pRight.x - pLeft.x, pRight.y - pLeft.y)
-    val pixelH = hypot(pBottom.x - pTop.x, pBottom.y - pTop.y)
-    if (pixelW < 42f || pixelH < 14f) return
-
-    val centerX = (pLeft.x + pRight.x) * 0.5f
-    val centerY = (pTop.y + pBottom.y) * 0.5f
-    var angleDeg = Math.toDegrees(atan2((pRight.y - pLeft.y).toDouble(), (pRight.x - pLeft.x).toDouble())).toFloat()
-    if (angleDeg > 90f) angleDeg -= 180f
-    if (angleDeg < -90f) angleDeg += 180f
-
-    val nativeCanvas = drawContext.canvas.nativeCanvas
-    nativeCanvas.save()
-    nativeCanvas.translate(centerX, centerY)
-    nativeCanvas.rotate(angleDeg)
-
-    titlePaint.color = android.graphics.Color.WHITE
-    subPaint.color = android.graphics.Color.WHITE
-    titlePaint.textAlign = Paint.Align.CENTER
-    subPaint.textAlign = Paint.Align.CENTER
-
-    // Top Header ("NATIONAL HIGHWAY • NH 544", Ref: images__1__0a48787b.jpeg)
-    val hdrSz = min(pixelH * 0.16f, pixelW * 0.032f).coerceIn(6.0f, 12.5f)
-    subPaint.textSize = hdrSz
-    nativeCanvas.drawText(spec.headerTitle, 0f, -pixelH * 0.33f, subPaint)
-
-    // 3 Compartments (Left, Center, Right) each with ↑ Arrow, English, Malayalam, and KM
-    val cols = arrayOf(spec.leftDest, spec.straightDest, spec.rightDest)
-    val colW = pixelW / 3f
-    val mainSz = min(pixelH * 0.22f, colW * 0.11f).coerceIn(6.5f, 15.0f)
-
-    for (cIdx in 0..2) {
-        val colCenterX = (cIdx - 1) * colW
-        val dest = cols[cIdx]
-        titlePaint.textSize = mainSz
-        nativeCanvas.drawText("⬆ ${dest.engName}", colCenterX, -pixelH * 0.02f, titlePaint)
-        subPaint.textSize = (mainSz * 0.88f).coerceIn(6.0f, 13.5f)
-        nativeCanvas.drawText("${dest.malName}  ${dest.distKm}", colCenterX, pixelH * 0.28f, subPaint)
-    }
-
-    nativeCanvas.restore()
-}
-
-private fun DrawScope.drawOriented3DSignboard(
-    rig: CameraRig,
-    path: Path,
-    leftVec: Vec3,
-    rightVec: Vec3,
-    bottomY: Float,
-    topY: Float,
-    bgColor: Color,
-    borderColor: Color,
-    lines: List<String>,
-    textColor: Color,
-    titlePaint: Paint,
-    subPaint: Paint
-) {
-    val vBL = Vec3(leftVec.x, bottomY, leftVec.z)
-    val vBR = Vec3(rightVec.x, bottomY, rightVec.z)
-    val vTR = Vec3(rightVec.x, topY, rightVec.z)
-    val vTL = Vec3(leftVec.x, topY, leftVec.z)
-
-    if (!rig.buildClippedQuadPath(path, vBL, vBR, vTR, vTL)) return
-    drawPath(path, bgColor)
-    drawPath(path, borderColor, style = Stroke(width = 2.2f))
-
-    if (lines.isEmpty()) return
-
-    val midY = (bottomY + topY) * 0.5f
-    val midX = (leftVec.x + rightVec.x) * 0.5f
-    val midZ = (leftVec.z + rightVec.z) * 0.5f
-    val pLeft = rig.projectPoint(Vec3(leftVec.x, midY, leftVec.z)) ?: return
-    val pRight = rig.projectPoint(Vec3(rightVec.x, midY, rightVec.z)) ?: return
-    val pTop = rig.projectPoint(Vec3(midX, topY, midZ)) ?: return
-    val pBottom = rig.projectPoint(Vec3(midX, bottomY, midZ)) ?: return
-
-    val pixelW = hypot(pRight.x - pLeft.x, pRight.y - pLeft.y)
-    val pixelH = hypot(pBottom.x - pTop.x, pBottom.y - pTop.y)
-    if (pixelW < 28f || pixelH < 9f) return
-
-    val centerX = (pLeft.x + pRight.x) * 0.5f
-    val centerY = (pTop.y + pBottom.y) * 0.5f
-    var angleDeg = Math.toDegrees(atan2((pRight.y - pLeft.y).toDouble(), (pRight.x - pLeft.x).toDouble())).toFloat()
-    if (angleDeg > 90f) angleDeg -= 180f
-    if (angleDeg < -90f) angleDeg += 180f
-
-    val maxChars = lines.maxOf { it.length }.coerceAtLeast(6)
-    val nativeCanvas = drawContext.canvas.nativeCanvas
-    nativeCanvas.save()
-    nativeCanvas.translate(centerX, centerY)
-    nativeCanvas.rotate(angleDeg)
-
-    titlePaint.textAlign = Paint.Align.CENTER
-    subPaint.textAlign = Paint.Align.CENTER
-
-    if (lines.size == 1) {
-        val textSizePx = min(pixelH * 0.52f, pixelW / (maxChars * 0.62f)).coerceIn(9f, 26f)
-        titlePaint.color = textColor.toArgb()
-        titlePaint.textSize = textSizePx
-        nativeCanvas.drawText(lines[0], 0f, textSizePx * 0.34f, titlePaint)
-    } else {
-        val lineStep = pixelH / (lines.size + 0.5f)
-        val textSizePx = min(lineStep * 0.72f, pixelW / (maxChars * 0.58f)).coerceIn(7.5f, 18f)
-        subPaint.color = textColor.toArgb()
-        subPaint.textSize = textSizePx
-        val startY = -((lines.size - 1) * 0.5f) * lineStep + textSizePx * 0.32f
-        for (i in lines.indices) {
-            nativeCanvas.drawText(lines[i], 0f, startY + i * lineStep, subPaint)
-        }
-    }
-    nativeCanvas.restore()
 }
 
 

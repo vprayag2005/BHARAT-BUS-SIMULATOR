@@ -85,6 +85,12 @@ namespace BharatBusSim.Vehicles
         [Tooltip("High-speed steer angle limiter (degrees at top speed)")]
         [SerializeField] private float highSpeedSteerAngle = 14f;
 
+        [Tooltip("Hydraulic steering smoothing speed when applying steering input (1/s)")]
+        [SerializeField] private float steerLerpSpeed = 11f;
+
+        [Tooltip("Hydraulic steering return-to-center smoothing speed (1/s)")]
+        [SerializeField] private float steerReturnLerpSpeed = 8.5f;
+
         [Tooltip("Top speed governor in km/h")]
         [SerializeField] private float topSpeedKmh = 75f;
 
@@ -126,6 +132,7 @@ namespace BharatBusSim.Vehicles
         private float _uiThrottle;
         private float _uiBrake;
         private float _uiSteer;
+        private float _targetSteer;
         private bool _uiHandbrake;
 
         public Rigidbody Rigidbody => EnsureRigidbody();
@@ -209,10 +216,10 @@ namespace BharatBusSim.Vehicles
             if (GameInputHelper.IsKeyPressed(Key.D, KeyCode.D) || GameInputHelper.IsKeyPressed(Key.RightArrow, KeyCode.RightArrow)) kbSteer += 1f;
             if (GameInputHelper.IsKeyPressed(Key.Space, KeyCode.Space)) kbHandbrake = true;
 
-            // Combine keyboard and UI touch inputs
+            // Combine keyboard and UI touch inputs; actual currentSteer transitions smoothly in ApplySteering
             currentThrottle = Mathf.Clamp01(Mathf.Max(kbThrottle, _uiThrottle));
             currentBrake = Mathf.Clamp01(Mathf.Max(kbBrake, _uiBrake));
-            currentSteer = Mathf.Clamp(kbSteer + _uiSteer, -1f, 1f);
+            _targetSteer = Mathf.Clamp(kbSteer + _uiSteer, -1f, 1f);
             isHandbrakeActive = kbHandbrake || _uiHandbrake || (gearMode == TransmissionGear.Park);
         }
 
@@ -345,10 +352,27 @@ namespace BharatBusSim.Vehicles
         {
             if (frontLeftCollider == null || frontRightCollider == null) return;
 
-            // Scale steer angle down smoothly at higher speeds to maintain bus stability
+            float dt = Time.inFixedTimeStep
+                ? Time.fixedDeltaTime
+                : (Time.fixedDeltaTime > 0f ? Time.fixedDeltaTime : 0.02f);
+            float rate = Mathf.Abs(_targetSteer) > Mathf.Abs(currentSteer)
+                ? steerLerpSpeed
+                : steerReturnLerpSpeed;
+            float steerT = 1f - Mathf.Exp(-Mathf.Max(0.1f, rate) * dt);
+            currentSteer = Mathf.Lerp(currentSteer, _targetSteer, steerT);
+            if (Mathf.Abs(_targetSteer) < 0.001f && Mathf.Abs(currentSteer) < 0.001f)
+            {
+                currentSteer = 0f;
+            }
+
+            // Progressive power-steering response curve + generous high-speed turning authority
+            float absSteer = Mathf.Clamp01(Mathf.Abs(currentSteer));
+            float curvedMag = Mathf.Clamp01(absSteer * (1.42f - 0.42f * absSteer));
+            float shapedSteer = currentSteer >= 0f ? curvedMag : -curvedMag;
+
             float speedFactor = Mathf.Clamp01(currentSpeedKmh / topSpeedKmh);
-            float effectiveMaxSteer = Mathf.Lerp(maxSteerAngle, highSpeedSteerAngle, speedFactor);
-            float steer = currentSteer * effectiveMaxSteer;
+            float effectiveMaxSteer = Mathf.Lerp(maxSteerAngle, Mathf.Max(highSpeedSteerAngle, 24f), speedFactor * 0.72f);
+            float steer = shapedSteer * effectiveMaxSteer;
 
             frontLeftCollider.steerAngle = steer;
             frontRightCollider.steerAngle = steer;
@@ -671,8 +695,12 @@ namespace BharatBusSim.Vehicles
 
             transform.SetPositionAndRotation(safePos, safeRot);
 
-            if (frontLeftCollider != null) { frontLeftCollider.brakeTorque = 0; frontLeftCollider.motorTorque = 0; }
-            if (frontRightCollider != null) { frontRightCollider.brakeTorque = 0; frontRightCollider.motorTorque = 0; }
+            _uiSteer = 0f;
+            _targetSteer = 0f;
+            currentSteer = 0f;
+
+            if (frontLeftCollider != null) { frontLeftCollider.steerAngle = 0f; frontLeftCollider.brakeTorque = 0; frontLeftCollider.motorTorque = 0; }
+            if (frontRightCollider != null) { frontRightCollider.steerAngle = 0f; frontRightCollider.brakeTorque = 0; frontRightCollider.motorTorque = 0; }
             if (midLeftCollider != null) { midLeftCollider.brakeTorque = 0; midLeftCollider.motorTorque = 0; }
             if (midRightCollider != null) { midRightCollider.brakeTorque = 0; midRightCollider.motorTorque = 0; }
             if (rearLeftCollider != null) { rearLeftCollider.brakeTorque = 0; rearLeftCollider.motorTorque = 0; }

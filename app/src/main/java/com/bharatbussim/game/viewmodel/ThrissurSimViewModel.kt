@@ -8,10 +8,13 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bharatbussim.game.model.CameraViewMode
+import com.bharatbussim.game.model.HeadlightBeamMode
 import com.bharatbussim.game.model.ThrissurOsmRoad
 import com.bharatbussim.game.model.ThrissurRoadRepository
 import com.bharatbussim.game.model.TransmissionGear
 import com.bharatbussim.game.model.Vec3
+import com.bharatbussim.game.model.WiperSpeedMode
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,13 +27,15 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.math.tan
 
-private const val MAX_STEERING_WHEEL_DEG = 420f
+private const val MAX_STEERING_WHEEL_DEG = 300f // Snappy single-thumb lock-to-lock steering range
 private const val CINEMATIC_FOLLOW_FOV_DEG = 58.0f
 private const val CINEMATIC_COCKPIT_FOV_DEG = 80.0f
 private const val MIN_ROAD_CAMERA_CLEARANCE_M = 1.42f
@@ -45,20 +50,26 @@ data class SimUiState(
     val signedSpeedMps: Float = 0f, // Positive = forward, Negative = reverse
     val gear: TransmissionGear = TransmissionGear.Drive,
     val isParkBrakeActive: Boolean = false,
-    val steerInput: Float = 0f, // -1 (full left) to +1 (full right)
-    val steeringWheelAngleDeg: Float = 0f, // -420° to +420° hydraulic power steering
+    val steerInput: Float = 0f, // -1 (full left) to +1 (full right), smoothly interpolated
+    val frontWheelSteerRad: Float = 0f, // Smoothly eased front axle steering angle in radians
+    val steeringWheelAngleDeg: Float = 0f, // -300° to +300° hydraulic power steering
     val isSteeringHeld: Boolean = false,
     val throttleInput: Float = 0f,
     val brakeInput: Float = 0f,
     val autoSteerAssist: Boolean = false,
     val headlightsOn: Boolean = false,
+    val headlightMode: HeadlightBeamMode = HeadlightBeamMode.Off,
     val wipersOn: Boolean = false,
+    val wiperMode: WiperSpeedMode = WiperSpeedMode.Off,
     val wiperPhaseRad: Float = 0f,
     val hazardsOn: Boolean = false,
     val turnLeftOn: Boolean = false,
     val turnRightOn: Boolean = false,
     val blinkerPhase: Boolean = false,
     val hornActive: Boolean = false,
+    val engineRunning: Boolean = false,
+    val isEngineCranking: Boolean = false,
+    val engineStartPromptVisible: Boolean = false,
     val cameraMode: CameraViewMode = CameraViewMode.Chase,
     val rearViewActive: Boolean = false,
     val cameraOrbitYawDeg: Float = 0f,
@@ -66,8 +77,8 @@ data class SimUiState(
     val smoothedOrbitYawDeg: Float = 0f,
     val smoothedOrbitPitchDeg: Float = 0f,
     val camFollowYawRad: Float = 0f,
-    val camFocusPos: Vec3 = Vec3(25.0f, 2.18f, -173.75f),
-    val camEyePos: Vec3 = Vec3(25.0f, 5.48f, -187.55f),
+    val camFocusPos: Vec3 = Vec3(25.0f, 2.08f, -172.80f),
+    val camEyePos: Vec3 = Vec3(25.0f, 3.84f, -185.68f),
     val cameraFovDeg: Float = CINEMATIC_FOLLOW_FOV_DEG,
     val minimapZoom: Float = 1.0f,
     val walletInr: Int = 1250,
@@ -76,11 +87,15 @@ data class SimUiState(
     val hudHidden: Boolean = false,
     val isPaused: Boolean = false,
     val doorsOpen: Boolean = false,
-    val engineRpm: Int = 650,
+    val doorOpenFrac: Float = 0f,
+    val wheelSpinRad: Float = 0f,
+    val bodyPitchRad: Float = 0f,
+    val bodyRollRad: Float = 0f,
+    val engineRpm: Int = 0,
     val displayGearNumber: Int = 1,
     val fuelLiters: Float = 67.0f,
     val showRouteModal: Boolean = false,
-    val statusBanner: String = "Hino RM 2 Coach Parked in Sakthan Stand (Bay 07) • Press GAS to Depart",
+    val statusBanner: String = "Hino RM 2 Coach Parked in Sakthan Stand (Bay 07) • Press ENGINE START to Crank Diesel",
     val vehicleModelName: String = "Hino RM 2 Bus (12m Rear-Engine AC Luxury Coach)",
     val vehicleCreator: String = "asrafullislamsiam (CGTrader)",
     val vehicleSourceUrl: String = "https://www.cgtrader.com/free-3d-models/vehicle/bus/hino-rm-2-bus",
@@ -93,10 +108,20 @@ class ThrissurSimViewModel : ViewModel() {
     val uiState: StateFlow<SimUiState> = _uiState.asStateFlow()
 
     private var blinkAccumulator = 0f
+    private var prevBlinkPhase = false
     private var wiperAccumulator = 0f
+    private var prevWiperHalfCycle = 0
     private var tollPaidInSession = false
     private var smoothedWheelSteerInput = 0f
-    private var smoothedDisplayRpm = 650f
+    private var smoothedFrontWheelRad = 0f
+    private var smoothedYawRate = 0f
+    private var steerReleaseHoldSec = 0f
+    @Volatile private var targetWheelAngleDeg = 0f
+    @Volatile private var displayedWheelAngleDeg = 0f
+    @Volatile private var isSteeringPointerHeld = false
+    private var smoothedThrottle = 0f
+    private var smoothedBrake = 0f
+    private var smoothedDisplayRpm = 0f
     private var wasBrakingInPreviousStep = false
     private var lastRoadScanX = Float.NaN
     private var lastRoadScanZ = Float.NaN
@@ -104,6 +129,10 @@ class ThrissurSimViewModel : ViewModel() {
 
     // Real-time continuous streaming Hino J08E / Ashok Leyland 6-cylinder heavy bus diesel engine state
     private var engineAudioJob: Job? = null
+    private var engineStartJob: Job? = null
+    private var wiperAudioJob: Job? = null
+    private var relayAudioJob: Job? = null
+    private var enginePromptHoldSec = 0f
     private var idleAudioHoldSec = 0f
     private var lastAudioGearIdx = 0
     private var gearShiftCutSec = 0f
@@ -120,6 +149,13 @@ class ThrissurSimViewModel : ViewModel() {
             val startRoad = loaded.getOrNull(startIdx)
             // Spawn parked inside Sakthan Thampuran Bus Stand Bay 07 (X=25.0m, Z=-176.0m, facing straight North along X=25.0m toward Right Exit Gate)
             val pos = Vec3(25.0f, 0.06f, -176.0f)
+            targetWheelAngleDeg = 0f
+            displayedWheelAngleDeg = 0f
+            smoothedWheelSteerInput = 0f
+            smoothedFrontWheelRad = 0f
+            smoothedYawRate = 0f
+            isSteeringPointerHeld = false
+            steerReleaseHoldSec = 0f
 
             _uiState.update { current ->
                 val snapped = current.copy(
@@ -145,25 +181,47 @@ class ThrissurSimViewModel : ViewModel() {
         }
 
         blinkAccumulator += dt
-        val newBlink = if (s.hazardsOn || s.turnLeftOn || s.turnRightOn) {
-            ((blinkAccumulator / 0.4f).toInt() % 2) == 0
+        val anyBlinkerActive = s.hazardsOn || s.turnLeftOn || s.turnRightOn
+        val newBlink = if (anyBlinkerActive) {
+            ((blinkAccumulator / 0.42f).toInt() % 2) == 0
         } else false
+        if (anyBlinkerActive && newBlink != prevBlinkPhase) {
+            prevBlinkPhase = newBlink
+            triggerFlasherRelaySound(isHazard = s.hazardsOn, isTick = newBlink)
+        } else if (!anyBlinkerActive) {
+            prevBlinkPhase = false
+        }
 
-        wiperAccumulator = if (s.wipersOn) {
-            (wiperAccumulator + dt * 3.8f) % (2.0 * PI).toFloat()
+        val wiperPeriodRad = (2.0 * PI).toFloat()
+        wiperAccumulator = if (s.wiperMode != WiperSpeedMode.Off) {
+            (wiperAccumulator + dt * s.wiperMode.speedRadPerSec) % wiperPeriodRad
+        } else if (wiperAccumulator > 0.04f) {
+            val nextWiper = wiperAccumulator + dt * 4.0f
+            if (nextWiper >= wiperPeriodRad) 0f else nextWiper
         } else {
             0f
+        }
+        if (s.wiperMode != WiperSpeedMode.Off) {
+            val curHalfCycle = if (wiperAccumulator < PI.toFloat()) 0 else 1
+            if (curHalfCycle != prevWiperHalfCycle) {
+                prevWiperHalfCycle = curHalfCycle
+                triggerWiperStrokeSound(s.wiperMode)
+            }
+        } else {
+            prevWiperHalfCycle = 0
+        }
+
+        if (enginePromptHoldSec > 0f) {
+            enginePromptHoldSec = (enginePromptHoldSec - dt).coerceAtLeast(0f)
         }
 
         val activeRoad = s.roads.getOrElse(s.activeRoadIndex) { s.roads.first() }
 
-        // 1. Hydraulic Power Steering Self-Centering & Assist
-        var nextWheelDeg = s.steeringWheelAngleDeg
-        var nextSteerInput = s.steerInput
-        var effectiveThrottle = s.throttleInput
+        // 1. Smooth Hydraulic Power Steering & Universal Self-Centering (1.5 Rounds = ±540°)
+        var effectiveThrottle = if (s.engineRunning) s.throttleInput else 0f
 
-        if (s.autoSteerAssist && !s.isParkBrakeActive && s.gear == TransmissionGear.Drive) {
-            effectiveThrottle = max(effectiveThrottle, 0.68f)
+        if (s.autoSteerAssist && s.engineRunning && !s.isParkBrakeActive && s.gear == TransmissionGear.Drive) {
+            effectiveThrottle = max(effectiveThrottle, 0.62f)
             val frames = activeRoad.frames
             if (frames.size >= 2) {
                 var nearestIdx = 0
@@ -187,29 +245,99 @@ class ThrissurSimViewModel : ViewModel() {
                 var diff = desiredYaw - s.busHeadingRad
                 while (diff > PI.toFloat()) diff -= (2.0 * PI).toFloat()
                 while (diff < -PI.toFloat()) diff += (2.0 * PI).toFloat()
-                nextSteerInput = (diff / 0.60f).coerceIn(-1f, 1f)
-                nextWheelDeg = nextSteerInput * MAX_STEERING_WHEEL_DEG
+                val desiredNorm = (diff / 0.55f).coerceIn(-1f, 1f)
+                targetWheelAngleDeg = desiredNorm * MAX_STEERING_WHEEL_DEG
             }
-        } else if (!s.isSteeringHeld) {
-            // Hydraulic power-steering return-to-center: faster unwind when moving, gentle unwind when stationary
-            val speedBonus = (s.speedKmh / 25f).coerceIn(0f, 2.2f)
-            val returnDegPerSec = (190f + speedBonus * 220f) * dt
-            nextWheelDeg = when {
-                nextWheelDeg > returnDegPerSec -> nextWheelDeg - returnDegPerSec
-                nextWheelDeg < -returnDegPerSec -> nextWheelDeg + returnDegPerSec
-                else -> 0f
+        } else if (!isSteeringPointerHeld) {
+            if (steerReleaseHoldSec > 0f) {
+                // Brief hand-off grace so quick thumb repositioning won't fight the driver
+                steerReleaseHoldSec = (steerReleaseHoldSec - dt).coerceAtLeast(0f)
+            } else if (abs(targetWheelAngleDeg) > 0.01f) {
+                // Smooth hydraulic self-centering when wheel is released
+                val rollingKmh = abs(s.signedSpeedMps) * 3.6f
+                val speedFactor = (rollingKmh / 50f).coerceIn(0f, 1f)
+                val maxReturnDegPerSec = 240f + speedFactor * 160f
+                val springRate = 3.2f + speedFactor * 2.4f
+                val springDesired = lerp(targetWheelAngleDeg, 0f, smoothDampAlpha(springRate, dt))
+                val maxStep = maxReturnDegPerSec * dt
+                val step = (springDesired - targetWheelAngleDeg).coerceIn(-maxStep, maxStep)
+                val nextTarget = targetWheelAngleDeg + step
+                targetWheelAngleDeg = if (abs(nextTarget) < 0.7f) 0f else nextTarget
             }
-            nextSteerInput = (nextWheelDeg / MAX_STEERING_WHEEL_DEG).coerceIn(-1f, 1f)
         }
 
-        // Smooth hydraulic steering rack actuator response
-        val rackBlend = (dt * 14f).coerceIn(0f, 1f)
-        smoothedWheelSteerInput += (nextSteerInput - smoothedWheelSteerInput) * rackBlend
+        // Visual steering wheel follows thumb input tightly when held, smoothly when self-centering
+        val wheelFollowRate = when {
+            isSteeringPointerHeld -> 38.0f
+            s.autoSteerAssist -> 10.0f
+            else -> 15.0f
+        }
+        displayedWheelAngleDeg = lerp(
+            start = displayedWheelAngleDeg,
+            end = targetWheelAngleDeg,
+            t = smoothDampAlpha(wheelFollowRate, dt)
+        )
+        if (!isSteeringPointerHeld && abs(targetWheelAngleDeg) < 0.1f && abs(displayedWheelAngleDeg) < 0.35f) {
+            displayedWheelAngleDeg = 0f
+        }
+        val nextWheelDeg = displayedWheelAngleDeg.coerceIn(-MAX_STEERING_WHEEL_DEG, MAX_STEERING_WHEEL_DEG)
+        val targetSteerNorm = (targetWheelAngleDeg / MAX_STEERING_WHEEL_DEG).coerceIn(-1f, 1f)
 
-        // 2. Longitudinal Dynamics (Hino RM 2 10,500 kg 6-wheel coach — Forward & Reverse)
+        // Responsive hydraulic steering-rack with extra cross-center assist during counter-steering
+        val steerDiff = targetSteerNorm - smoothedWheelSteerInput
+        val isReversingSteer = (targetSteerNorm * smoothedWheelSteerInput) < -0.001f
+        val rackRate = when {
+            isReversingSteer -> 28.0f
+            isSteeringPointerHeld -> 22.0f
+            else -> 14.0f
+        }
+        val rackAlpha = smoothDampAlpha(rackRate, dt)
+        val maxRackStep = (when {
+            isReversingSteer -> 11.0f
+            isSteeringPointerHeld -> 8.0f
+            else -> 5.0f
+        }) * dt
+        val rackStep = (steerDiff * rackAlpha).coerceIn(-maxRackStep, maxRackStep)
+        smoothedWheelSteerInput = (smoothedWheelSteerInput + rackStep).coerceIn(-1f, 1f)
+        if (!isSteeringPointerHeld && abs(targetSteerNorm) < 0.002f && abs(smoothedWheelSteerInput) < 0.003f) {
+            smoothedWheelSteerInput = 0f
+        }
+
+        // Speed-adaptive steering curve: linear 1:1 low-speed control, calm yet responsive highway curve
+        val absSteer = abs(smoothedWheelSteerInput).coerceIn(0f, 1f)
+        val curveSpeedMix = ((abs(s.signedSpeedMps) * 3.6f) / 85f).coerceIn(0f, 1f)
+        val lowSpeedCurve = absSteer
+        val highSpeedCurve = absSteer * (0.68f + 0.32f * absSteer)
+        val curvedSteerMag = (lowSpeedCurve + (highSpeedCurve - lowSpeedCurve) * curveSpeedMix).coerceIn(0f, 1f)
+        val shapedSteer = if (smoothedWheelSteerInput >= 0f) curvedSteerMag else -curvedSteerMag
+        val targetVisualWheelRad = (shapedSteer * 0.45f).coerceIn(-0.45f, 0.45f)
+        smoothedFrontWheelRad = lerp(
+            start = smoothedFrontWheelRad,
+            end = targetVisualWheelRad,
+            t = smoothDampAlpha(18.0f, dt)
+        )
+        if (!isSteeringPointerHeld && abs(targetVisualWheelRad) < 0.002f && abs(smoothedFrontWheelRad) < 0.002f) {
+            smoothedFrontWheelRad = 0f
+        }
+
+        // Progressive yet responsive pedal modulation
+        val targetThrottle = if (s.brakeInput < 0.05f) effectiveThrottle else 0f
+        val throttleRate = if (targetThrottle > smoothedThrottle) dt * 4.8f else dt * 9.5f
+        smoothedThrottle = (smoothedThrottle + (targetThrottle - smoothedThrottle) * throttleRate.coerceIn(0f, 1f))
+            .coerceIn(0f, 1f)
+
+        val targetBrake = s.brakeInput
+        if (targetBrake > 0.05f && smoothedBrake < 0.35f) {
+            smoothedBrake = 0.35f // responsive initial air-brake bite
+        }
+        val brakeRate = if (targetBrake > smoothedBrake) dt * 5.2f else dt * 11.0f
+        smoothedBrake = (smoothedBrake + (targetBrake - smoothedBrake) * brakeRate.coerceIn(0f, 1f))
+            .coerceIn(0f, 1f)
+
+        // 2. Longitudinal Dynamics (Balanced 105 km/h governed coach speed + automatic cornering speed scrub)
         var speedMps = s.signedSpeedMps
-        val maxFwdSpeedMps = 180f / 3.6f
-        val maxRevSpeedMps = 28f / 3.6f
+        val maxFwdSpeedMps = 105f / 3.6f
+        val maxRevSpeedMps = 24f / 3.6f
 
         if (s.isParkBrakeActive || s.gear == TransmissionGear.Park) {
             val decel = 12.0f * dt
@@ -219,38 +347,49 @@ class ThrissurSimViewModel : ViewModel() {
                 else -> 0f
             }
         } else {
-            val brakeDecel = s.brakeInput * 12.5f + 0.45f
+            val speedRatio = (abs(speedMps) / maxFwdSpeedMps).coerceIn(0f, 1f)
+            val cornerSpeedFactor = ((abs(speedMps) * 3.6f - 20f) / 65f).coerceIn(0f, 1f)
+            // Gentle lateral tire scrub sheds excess speed during sharp high-speed turns without stalling
+            val cornerScrubDecel = curvedSteerMag * cornerSpeedFactor * 2.4f
+            val coastDrag = 0.92f + 0.0022f * speedMps * speedMps + cornerScrubDecel
+            val rollingDrag = 0.22f + 0.00065f * speedMps * speedMps + cornerScrubDecel * 0.75f
+            val activeBrakeDecel = smoothedBrake * (11.8f + speedRatio * 3.0f)
+            val totalCoastAndBrake = coastDrag + activeBrakeDecel
+
             when (s.gear) {
                 TransmissionGear.Drive -> {
                     if (speedMps < 0f) {
-                        // Quickly arrest any backward roll before accelerating forward
-                        val stopDecel = (14.0f + s.brakeInput * 12.0f) * dt
+                        val stopDecel = (11.0f + smoothedBrake * 11.5f) * dt
                         speedMps = (speedMps + stopDecel).coerceAtMost(0f)
                     } else {
-                        val accel = if (effectiveThrottle > 0.04f && s.brakeInput < 0.05f) {
-                            effectiveThrottle * 8.2f * (1f - (speedMps / maxFwdSpeedMps).coerceIn(0f, 0.88f) * 0.42f)
+                        val cornerTorqueCut = (1f - curvedSteerMag * cornerSpeedFactor * 0.35f).coerceIn(0.60f, 1f)
+                        val torqueCurve = (1f - speedRatio * 0.60f) * cornerTorqueCut
+                        val accel = if (smoothedThrottle > 0.02f && s.brakeInput < 0.05f) {
+                            smoothedThrottle * 3.60f * torqueCurve
                         } else 0f
-                        val decel = if (speedMps > 0f) brakeDecel * dt else 0f
+                        val decel = if (speedMps > 0f) {
+                            (if (accel > 0.05f) rollingDrag else totalCoastAndBrake) * dt
+                        } else 0f
                         speedMps = (speedMps + accel * dt - decel).coerceIn(0f, maxFwdSpeedMps)
                     }
                 }
                 TransmissionGear.Reverse -> {
                     if (speedMps > 0f) {
-                        // Quickly arrest any forward motion when shifted into Reverse
-                        val stopDecel = (14.0f + s.brakeInput * 12.0f + effectiveThrottle * 8.0f) * dt
+                        val stopDecel = (11.5f + smoothedBrake * 11.5f + smoothedThrottle * 5.0f) * dt
                         speedMps = (speedMps - stopDecel).coerceAtLeast(0f)
                     } else {
-                        val revAccel = if (effectiveThrottle > 0.04f && s.brakeInput < 0.05f) {
-                            -effectiveThrottle * 5.2f * (1f - (abs(speedMps) / maxRevSpeedMps).coerceIn(0f, 0.9f) * 0.35f)
+                        val revFrac = (abs(speedMps) / maxRevSpeedMps).coerceIn(0f, 1f)
+                        val revAccel = if (smoothedThrottle > 0.02f && s.brakeInput < 0.05f) {
+                            -smoothedThrottle * 2.85f * (1f - revFrac * 0.50f)
                         } else 0f
-                        val revDrag = if (speedMps < 0f && (effectiveThrottle <= 0.04f || s.brakeInput >= 0.05f)) {
-                            brakeDecel * dt
+                        val revDrag = if (speedMps < 0f && (smoothedThrottle <= 0.02f || s.brakeInput >= 0.05f)) {
+                            totalCoastAndBrake * dt
                         } else 0f
                         speedMps = (speedMps + revAccel * dt + revDrag).coerceIn(-maxRevSpeedMps, 0f)
                     }
                 }
                 TransmissionGear.Neutral, TransmissionGear.Park -> {
-                    val drag = (1.4f + s.brakeInput * 11.0f) * dt
+                    val drag = (0.65f + activeBrakeDecel) * dt
                     speedMps = when {
                         speedMps > drag -> speedMps - drag
                         speedMps < -drag -> speedMps + drag
@@ -262,20 +401,20 @@ class ThrissurSimViewModel : ViewModel() {
 
         // Continuous real-time Heavy Bus 6-Cylinder Diesel Engine (520 - 1,580 RPM heavy torque band, zero whistle)
         val curSpeedKmh = abs(speedMps) * 3.6f
-        val speedNorm = (curSpeedKmh / 180f).coerceIn(0f, 1f)
-        val isDrivingGear = !s.isParkBrakeActive &&
+        val speedNorm = (curSpeedKmh / 105f).coerceIn(0f, 1f)
+        val isDrivingGear = s.engineRunning && !s.isParkBrakeActive &&
             (s.gear == TransmissionGear.Drive || s.gear == TransmissionGear.Reverse)
-        val activeThrottle = if (isDrivingGear && s.brakeInput < 0.05f) effectiveThrottle else 0f
+        val activeThrottle = if (isDrivingGear && s.brakeInput < 0.05f) smoothedThrottle else 0f
 
-        if (activeThrottle > 0.02f || curSpeedKmh > 0.25f) {
+        if (s.engineRunning) {
             idleAudioHoldSec = 3.2f
             ensureEngineAudioStreamStarted()
-        } else if (idleAudioHoldSec > 0f) {
-            idleAudioHoldSec = (idleAudioHoldSec - dt).coerceAtLeast(0f)
+        } else {
+            idleAudioHoldSec = 0f
         }
 
-        // 6-speed Heavy Bus Gearbox across 0 - 180 km/h (1st: 0-24, 2nd: 24-50, 3rd: 50-80, 4th: 80-112, 5th: 112-145, 6th: 145-180 km/h)
-        val gearThresholds = floatArrayOf(0f, 24f, 50f, 80f, 112f, 145f, 185f)
+        // 6-speed Heavy Bus Gearbox across 0 - 105 km/h
+        val gearThresholds = floatArrayOf(0f, 16f, 32f, 50f, 68f, 86f, 110f)
         var gearIdx = 0
         for (g in 0 until 6) {
             if (curSpeedKmh >= gearThresholds[g]) gearIdx = g
@@ -299,12 +438,14 @@ class ThrissurSimViewModel : ViewModel() {
 
         synthTargetRpm = (baseGearRpm + inGearClimbRpm + throttlePullRpm).coerceIn(500f, 1580f)
 
-        // Tachometer display RPM (650 RPM idle -> ~2,550 RPM redline with realistic upshift drops)
+        // Tachometer display RPM (0 OFF, ~260 cranking, 650 RPM idle -> ~2,550 RPM redline)
         val targetDisplayRpm = when {
+            s.isEngineCranking -> 260f
+            !s.engineRunning -> 0f
             s.isParkBrakeActive || s.gear == TransmissionGear.Park -> 650f
             s.gear == TransmissionGear.Neutral -> 650f + effectiveThrottle * 1450f
             s.gear == TransmissionGear.Reverse -> {
-                720f + (curSpeedKmh / 28f).coerceIn(0f, 1f) * 1350f + activeThrottle * 280f
+                720f + (curSpeedKmh / 24f).coerceIn(0f, 1f) * 1350f + activeThrottle * 280f
             }
             else -> {
                 val shiftDip = if (gearShiftCutSec > 0f) -260f else 0f
@@ -324,34 +465,98 @@ class ThrissurSimViewModel : ViewModel() {
         }
         synthTargetSpeedNorm = speedNorm
         synthTargetGain = when {
+            !s.engineRunning -> 0f
             activeThrottle > 0.02f || curSpeedKmh > 0.35f -> {
-                // Heavy bus exhaust & drivetrain roar grows progressively louder as speed and throttle increase
                 (0.28f + speedNorm * 0.44f + activeThrottle * (0.20f + speedNorm * 0.10f)).coerceIn(0.26f, 0.94f)
             }
-            idleAudioHoldSec > 0f -> {
-                0.13f * (idleAudioHoldSec / 3.2f).coerceIn(0f, 1f)
-            }
-            else -> 0f
+            else -> 0.12f // Authentic low diesel idle rumble while parked or waiting at signal
         }
 
-        // 3. Ackermann / Bicycle Power-Steering Kinematics (Hino RM 2 6,000 mm wheelbase, 42° terminal lock)
-        val wheelbase = 6.0f
-        val speedFactor = (abs(speedMps) * 3.6f / 160f).coerceIn(0f, 1f)
-        val maxFrontWheelDeg = 42.0 - 30.0 * speedFactor
-        val frontWheelAngleRad = smoothedWheelSteerInput * Math.toRadians(maxFrontWheelDeg).toFloat()
-        val angularVel = if (abs(speedMps) > 0.03f) {
-            (speedMps / wheelbase) * tan(frontWheelAngleRad)
-        } else 0f
+        // 3. Speed-Calibrated Ackermann Kinematics & Chassis Yaw Response
+        val effectiveWheelbase = 5.25f
+        val steerSpeedRatio = (curSpeedKmh / 105f).coerceIn(0f, 1f)
+        // Smooth linear speed taper: 42° parking lock -> 29° city -> 17.5° highway lock
+        // Keeps full curve-holding & counter-steering authority across compressed 0.20x Thrissur roads.
+        val speedTaper = 1f - steerSpeedRatio
+        val maxFrontWheelDeg = 18.0f + 24.0f * speedTaper
+        val frontWheelAngleRad = shapedSteer * Math.toRadians(maxFrontWheelDeg.toDouble()).toFloat()
 
-        var newHeading = s.busHeadingRad + angularVel * dt
+        // Scale high-speed world displacement to match the 0.20x compressed OSM corridor geometry
+        val absSpeedMps = abs(speedMps)
+        val scaledSpeedMag = if (absSpeedMps <= 7.8f) {
+            absSpeedMps
+        } else {
+            7.8f + (absSpeedMps - 7.8f) * 0.56f
+        }
+        val kinematicSpeedMps = if (speedMps >= 0f) scaledSpeedMag else -scaledSpeedMag
+
+        val rawAngularVel = if (abs(kinematicSpeedMps) > 0.03f) {
+            (kinematicSpeedMps / effectiveWheelbase) * tan(frontWheelAngleRad)
+        } else 0f
+        val lowSpeedYawCap = 1.05f
+        val lateralComfortYawCap = if (abs(kinematicSpeedMps) > 4.5f) {
+            9.8f / abs(kinematicSpeedMps)
+        } else lowSpeedYawCap
+        val maxSafeYawRate = min(lowSpeedYawCap, lateralComfortYawCap).coerceAtLeast(0.56f)
+        val targetAngularVel = rawAngularVel.coerceIn(-maxSafeYawRate, maxSafeYawRate)
+
+        // Responsive chassis yaw follow without sluggish drift-out or sudden snaps
+        val yawInertiaRate = 16.0f - 4.0f * steerSpeedRatio
+        smoothedYawRate += (targetAngularVel - smoothedYawRate) * (dt * yawInertiaRate).coerceIn(0f, 1f)
+        if (abs(kinematicSpeedMps) <= 0.03f) {
+            smoothedYawRate *= (1f - (dt * 16f).coerceIn(0f, 1f))
+        }
+
+        var newHeading = s.busHeadingRad + smoothedYawRate * dt
         while (newHeading > PI.toFloat()) newHeading -= (2.0 * PI).toFloat()
         while (newHeading < -PI.toFloat()) newHeading += (2.0 * PI).toFloat()
 
-        val vx = sin(newHeading) * speedMps
-        val vz = cos(newHeading) * speedMps
+        // Locate closest road frame for HUD street-name & route-progress tracking (with hysteresis at junctions).
+        // Pure manual steering: never yank bus heading automatically when autoSteerAssist is off.
+        var curRoadBestFrameIdx = 0
+        var curRoadMinDistSq = Float.MAX_VALUE
+        val currentRoadFrames = activeRoad.frames
+        for (fIdx in currentRoadFrames.indices) {
+            val fx = currentRoadFrames[fIdx].pos.x - s.busPos.x
+            val fz = currentRoadFrames[fIdx].pos.z - s.busPos.z
+            val dSq = fx * fx + fz * fz
+            if (dSq < curRoadMinDistSq) {
+                curRoadMinDistSq = dSq
+                curRoadBestFrameIdx = fIdx
+            }
+        }
+
+        var otherRoadIdx = s.activeRoadIndex
+        var otherRoadFrameIdx = curRoadBestFrameIdx
+        var otherMinDistSq = Float.MAX_VALUE
+        if (curRoadMinDistSq > 16.0f * 16.0f) {
+            for (rIdx in s.roads.indices) {
+                if (rIdx == s.activeRoadIndex) continue
+                val frames = s.roads[rIdx].frames
+                for (fIdx in frames.indices step 2) {
+                    val fx = frames[fIdx].pos.x - s.busPos.x
+                    val fz = frames[fIdx].pos.z - s.busPos.z
+                    val dSq = fx * fx + fz * fz
+                    if (dSq < otherMinDistSq) {
+                        otherMinDistSq = dSq
+                        otherRoadIdx = rIdx
+                        otherRoadFrameIdx = fIdx
+                    }
+                }
+            }
+        }
+
+        val shouldSwitchRoad = curRoadMinDistSq > 16.0f * 16.0f && otherMinDistSq < curRoadMinDistSq * 0.55f
+        val closestRoadIdx = if (shouldSwitchRoad) otherRoadIdx else s.activeRoadIndex
+        val closestFrameIdx = if (shouldSwitchRoad) otherRoadFrameIdx else curRoadBestFrameIdx
+        val curRoad = s.roads[closestRoadIdx]
+        val curFrames = curRoad.frames
+
+        val vx = sin(newHeading) * kinematicSpeedMps
+        val vz = cos(newHeading) * kinematicSpeedMps
         val newPos = Vec3(s.busPos.x + vx * dt, 0.06f, s.busPos.z + vz * dt)
 
-        // 4. Track closest road & terminal bay / exit gate status (throttled to every 3.5m of movement)
+        // 4. Update street name, remaining distance & toll status
         val moveDx = newPos.x - lastRoadScanX
         val moveDz = newPos.z - lastRoadScanZ
         var streetName = s.currentRoadStreetName
@@ -359,29 +564,10 @@ class ThrissurSimViewModel : ViewModel() {
         var newWallet = s.walletInr
         var newBanner = s.statusBanner
 
-        if (lastRoadScanX.isNaN() || (moveDx * moveDx + moveDz * moveDz) >= 12.25f) {
+        if (lastRoadScanX.isNaN() || (moveDx * moveDx + moveDz * moveDz) >= 9.0f) {
             lastRoadScanX = newPos.x
             lastRoadScanZ = newPos.z
 
-            var closestRoadIdx = s.activeRoadIndex
-            var closestFrameIdx = 0
-            var minDistSq = Float.MAX_VALUE
-            for (rIdx in s.roads.indices) {
-                val frames = s.roads[rIdx].frames
-                for (fIdx in frames.indices step 3) {
-                    val fx = frames[fIdx].pos.x - newPos.x
-                    val fz = frames[fIdx].pos.z - newPos.z
-                    val dSq = fx * fx + fz * fz
-                    if (dSq < minDistSq) {
-                        minDistSq = dSq
-                        closestRoadIdx = rIdx
-                        closestFrameIdx = fIdx
-                    }
-                }
-            }
-
-            val curRoad = s.roads[closestRoadIdx]
-            val curFrames = curRoad.frames
             val totalSplineLen = curFrames.lastOrNull()?.cumulativeDist?.coerceAtLeast(1f) ?: 1f
             val curSplineDist = curFrames.getOrNull(closestFrameIdx)?.cumulativeDist ?: 0f
             val fracRemaining = (1f - (curSplineDist / totalSplineLen)).coerceIn(0f, 1f)
@@ -418,13 +604,14 @@ class ThrissurSimViewModel : ViewModel() {
             }
         }
 
-        // 6. Camera Rig & Road-Mesh Anti-Clipping (Static Chase, Cockpit, or 360 Orbit)
+        // 6. Camera Rig & Road-Mesh Anti-Clipping (Smooth Chase, Static Cockpit, or 360 Orbit)
         val newSpeedKmh = abs(speedMps) * 3.6f
         val yawFollowRate = when (s.cameraMode) {
-            CameraViewMode.Chase, CameraViewMode.Cockpit -> 0f
+            CameraViewMode.Cockpit -> 0f
+            CameraViewMode.Chase -> 9.2f
             CameraViewMode.Orbit -> 10.5f
         }
-        val nextFollowYawRad = if (s.cameraMode == CameraViewMode.Chase || s.cameraMode == CameraViewMode.Cockpit) {
+        val nextFollowYawRad = if (s.cameraMode == CameraViewMode.Cockpit) {
             newHeading
         } else {
             lerpAngleRad(
@@ -452,7 +639,7 @@ class ThrissurSimViewModel : ViewModel() {
             busPos = newPos,
             busHeadingRad = newHeading,
             followYawRad = nextFollowYawRad,
-            steerInput = nextSteerInput,
+            steerInput = smoothedWheelSteerInput,
             speedKmh = newSpeedKmh,
             cameraMode = s.cameraMode,
             rearViewActive = s.rearViewActive,
@@ -495,15 +682,33 @@ class ThrissurSimViewModel : ViewModel() {
         val fuelUsed = abs(speedMps) * dt * 0.00038f
         val nextFuel = (s.fuelLiters - fuelUsed).coerceIn(1f, 100f)
 
+        // Realistic wheel spin, air-suspension pitch/roll, and pneumatic passenger door kinematics
+        val twoPi = (2.0 * PI).toFloat()
+        val nextWheelSpin = ((s.wheelSpinRad + (kinematicSpeedMps / 0.52f) * dt) % twoPi + twoPi) % twoPi
+        val accelMps2 = (speedMps - s.signedSpeedMps) / dt
+        val targetPitch = (-accelMps2 * 0.0026f).coerceIn(-0.022f, 0.022f)
+        val nextBodyPitch = lerp(s.bodyPitchRad, targetPitch, (dt * 7.5f).coerceIn(0f, 1f))
+        val targetRoll = (smoothedWheelSteerInput * (newSpeedKmh / 105f).coerceIn(0f, 1f) * 0.028f)
+            .coerceIn(-0.028f, 0.028f)
+        val nextBodyRoll = lerp(s.bodyRollRad, targetRoll, (dt * 6.5f).coerceIn(0f, 1f))
+        val targetDoorFrac = if (s.doorsOpen) 1f else 0f
+        val nextDoorFrac = lerp(s.doorOpenFrac, targetDoorFrac, (dt * 5.2f).coerceIn(0f, 1f))
+
         _uiState.update {
             it.copy(
+                activeRoadIndex = closestRoadIdx,
                 busPos = newPos,
                 busHeadingRad = newHeading,
                 speedKmh = newSpeedKmh,
                 signedSpeedMps = speedMps,
+                wheelSpinRad = nextWheelSpin,
+                bodyPitchRad = nextBodyPitch,
+                bodyRollRad = nextBodyRoll,
+                doorOpenFrac = nextDoorFrac,
                 engineRpm = smoothedDisplayRpm.toInt(),
                 displayGearNumber = displayGearNumber,
-                steerInput = nextSteerInput,
+                steerInput = smoothedWheelSteerInput,
+                frontWheelSteerRad = smoothedFrontWheelRad,
                 steeringWheelAngleDeg = nextWheelDeg,
                 wiperPhaseRad = wiperAccumulator,
                 blinkerPhase = newBlink,
@@ -517,42 +722,54 @@ class ThrissurSimViewModel : ViewModel() {
                 distanceToRouteEndKm = remKm,
                 walletInr = newWallet,
                 fuelLiters = nextFuel,
+                engineStartPromptVisible = !s.engineRunning && !s.isEngineCranking && enginePromptHoldSec > 0f,
                 statusBanner = newBanner
             )
         }
     }
 
     /**
-     * Incremental rotary + horizontal drag power steering input.
-     * Turning the wheel accumulates angle smoothly up to ±420° without jumping or flipping.
+     * Immediately pauses self-centering on touch-down so the wheel stays locked under the driver's thumb.
+     */
+    fun grabSteeringWheel() {
+        isSteeringPointerHeld = true
+        steerReleaseHoldSec = 0.20f
+        _uiState.update { it.copy(isSteeringHeld = true, autoSteerAssist = false) }
+    }
+
+    /**
+     * Incremental rotary/linear power steering input across ±300°.
+     * Mutates only [targetWheelAngleDeg]; [stepPhysics] renders smoothed motion without StateFlow races.
      */
     fun steerByDeltaDeg(deltaDeg: Float) {
-        _uiState.update { s ->
-            val nextDeg = (s.steeringWheelAngleDeg + deltaDeg).coerceIn(
-                -MAX_STEERING_WHEEL_DEG,
-                MAX_STEERING_WHEEL_DEG
-            )
-            val norm = (nextDeg / MAX_STEERING_WHEEL_DEG).coerceIn(-1f, 1f)
-            s.copy(
-                steeringWheelAngleDeg = nextDeg,
-                steerInput = norm,
-                isSteeringHeld = true,
-                autoSteerAssist = false
-            )
+        val safeDelta = deltaDeg.coerceIn(-220f, 220f)
+        isSteeringPointerHeld = true
+        steerReleaseHoldSec = 0.20f
+        targetWheelAngleDeg = (targetWheelAngleDeg + safeDelta).coerceIn(
+            -MAX_STEERING_WHEEL_DEG,
+            MAX_STEERING_WHEEL_DEG
+        )
+        val cur = _uiState.value
+        if (!cur.isSteeringHeld || cur.autoSteerAssist) {
+            _uiState.update { it.copy(isSteeringHeld = true, autoSteerAssist = false) }
         }
     }
 
     fun releaseSteeringWheel() {
+        isSteeringPointerHeld = false
+        steerReleaseHoldSec = 0.20f
         _uiState.update { it.copy(isSteeringHeld = false) }
     }
 
     fun setSteer(value: Float) {
         val clamped = value.coerceIn(-1f, 1f)
+        val deg = clamped * MAX_STEERING_WHEEL_DEG
+        isSteeringPointerHeld = abs(clamped) > 0.001f
+        steerReleaseHoldSec = 0.09f
+        targetWheelAngleDeg = deg
         _uiState.update {
             it.copy(
-                steerInput = clamped,
-                steeringWheelAngleDeg = clamped * MAX_STEERING_WHEEL_DEG,
-                isSteeringHeld = abs(clamped) > 0.001f,
+                isSteeringHeld = isSteeringPointerHeld,
                 autoSteerAssist = false
             )
         }
@@ -560,6 +777,21 @@ class ThrissurSimViewModel : ViewModel() {
 
     fun setThrottle(pressed: Boolean) {
         val prev = _uiState.value
+        if (pressed && !prev.engineRunning) {
+            enginePromptHoldSec = 2.6f
+            _uiState.update {
+                it.copy(
+                    throttleInput = 0f,
+                    engineStartPromptVisible = !it.isEngineCranking,
+                    statusBanner = if (it.isEngineCranking) {
+                        "Cranking Hino J08E Diesel Engine..."
+                    } else {
+                        "Engine OFF • Press ENGINE START Button"
+                    }
+                )
+            }
+            return
+        }
         if (pressed) {
             idleAudioHoldSec = 3.2f
             ensureEngineAudioStreamStarted()
@@ -578,8 +810,63 @@ class ThrissurSimViewModel : ViewModel() {
                 throttleInput = if (pressed) 1f else 0f,
                 isParkBrakeActive = autoReleasePark,
                 gear = autoGear,
+                engineStartPromptVisible = false,
                 statusBanner = banner
             )
+        }
+    }
+
+    fun toggleEngineStart() {
+        val current = _uiState.value
+        if (current.isEngineCranking) return
+
+        if (current.engineRunning) {
+            engineStartJob?.cancel()
+            smoothedThrottle = 0f
+            synthTargetGain = 0f
+            _uiState.update {
+                it.copy(
+                    engineRunning = false,
+                    isEngineCranking = false,
+                    throttleInput = 0f,
+                    autoSteerAssist = false,
+                    engineStartPromptVisible = false,
+                    statusBanner = "Hino J08E Diesel Engine Stopped"
+                )
+            }
+            viewModelScope.launch(Dispatchers.Default) {
+                playEngineStopSound()
+            }
+            return
+        }
+
+        engineStartJob?.cancel()
+        enginePromptHoldSec = 0f
+        _uiState.update {
+            it.copy(
+                isEngineCranking = true,
+                engineStartPromptVisible = false,
+                statusBanner = "Cranking Hino J08E 6-Cyl Diesel..."
+            )
+        }
+        engineStartJob = viewModelScope.launch {
+            launch(Dispatchers.Default) {
+                playEngineStartSound()
+            }
+            // Wait ~780ms across starter solenoid + compression cranking until diesel ignition catch
+            delay(780L)
+            synthTargetRpm = 620f
+            synthTargetLoad = 0.14f
+            synthTargetGain = 0.16f
+            ensureEngineAudioStreamStarted()
+            _uiState.update {
+                it.copy(
+                    isEngineCranking = false,
+                    engineRunning = true,
+                    engineStartPromptVisible = false,
+                    statusBanner = "Engine Running (650 RPM Idle) • Ready to Drive"
+                )
+            }
         }
     }
 
@@ -596,6 +883,9 @@ class ThrissurSimViewModel : ViewModel() {
     }
 
     fun selectGear(target: TransmissionGear) {
+        if (target == TransmissionGear.Park || target == TransmissionGear.Neutral) {
+            smoothedThrottle = 0f
+        }
         _uiState.update { s ->
             val newParkBrake = target == TransmissionGear.Park
             val newAutoAssist = if (target != TransmissionGear.Drive) false else s.autoSteerAssist
@@ -616,6 +906,7 @@ class ThrissurSimViewModel : ViewModel() {
         if (prev.isParkBrakeActive) {
             triggerAirBrakeReleaseSound()
         } else {
+            smoothedThrottle = 0f
             triggerBrakeApplySound(prev.speedKmh)
         }
         _uiState.update { s ->
@@ -631,6 +922,10 @@ class ThrissurSimViewModel : ViewModel() {
     }
 
     fun toggleAutoPilot() {
+        val current = _uiState.value
+        if (!current.autoSteerAssist && !current.engineRunning && !current.isEngineCranking) {
+            toggleEngineStart()
+        }
         _uiState.update { s ->
             val next = !s.autoSteerAssist
             s.copy(
@@ -647,33 +942,93 @@ class ThrissurSimViewModel : ViewModel() {
     }
 
     fun toggleHeadlights() {
-        _uiState.update { it.copy(headlightsOn = !it.headlightsOn) }
+        _uiState.update { s ->
+            val nextMode = when (s.headlightMode) {
+                HeadlightBeamMode.Off -> HeadlightBeamMode.Low
+                HeadlightBeamMode.Low -> HeadlightBeamMode.High
+                HeadlightBeamMode.High -> HeadlightBeamMode.Off
+            }
+            val banner = when (nextMode) {
+                HeadlightBeamMode.Off -> "Headlights: OFF"
+                HeadlightBeamMode.Low -> "Headlights: Low Beam (Dipped)"
+                HeadlightBeamMode.High -> "Headlights: High Beam (Full Range)"
+            }
+            s.copy(
+                headlightMode = nextMode,
+                headlightsOn = nextMode != HeadlightBeamMode.Off,
+                statusBanner = banner
+            )
+        }
     }
 
     fun toggleWipers() {
-        _uiState.update { it.copy(wipersOn = !it.wipersOn) }
+        val nextMode = when (_uiState.value.wiperMode) {
+            WiperSpeedMode.Off -> WiperSpeedMode.Low
+            WiperSpeedMode.Low -> WiperSpeedMode.Mid
+            WiperSpeedMode.Mid -> WiperSpeedMode.High
+            WiperSpeedMode.High -> WiperSpeedMode.Off
+        }
+        if (nextMode != WiperSpeedMode.Off) {
+            val curHalf = if (wiperAccumulator < PI.toFloat()) 0 else 1
+            prevWiperHalfCycle = curHalf
+            triggerWiperStrokeSound(nextMode)
+        } else {
+            wiperAudioJob?.cancel()
+            prevWiperHalfCycle = 0
+        }
+        _uiState.update { s ->
+            val banner = when (nextMode) {
+                WiperSpeedMode.Off -> "Windshield Wipers: OFF"
+                WiperSpeedMode.Low -> "Windshield Wipers: Low Speed"
+                WiperSpeedMode.Mid -> "Windshield Wipers: Mid Speed"
+                WiperSpeedMode.High -> "Windshield Wipers: High Speed"
+            }
+            s.copy(
+                wiperMode = nextMode,
+                wipersOn = nextMode != WiperSpeedMode.Off,
+                statusBanner = banner
+            )
+        }
     }
 
     fun toggleHazards() {
         blinkAccumulator = 0f
+        val next = !_uiState.value.hazardsOn
+        prevBlinkPhase = next
+        if (next) {
+            triggerFlasherRelaySound(isHazard = true, isTick = true)
+        } else {
+            relayAudioJob?.cancel()
+        }
         _uiState.update {
-            val next = !it.hazardsOn
             it.copy(hazardsOn = next, turnLeftOn = false, turnRightOn = false, blinkerPhase = next)
         }
     }
 
     fun toggleTurnLeft() {
         blinkAccumulator = 0f
+        val next = !_uiState.value.turnLeftOn
+        prevBlinkPhase = next
+        if (next) {
+            triggerFlasherRelaySound(isHazard = false, isTick = true)
+        } else {
+            relayAudioJob?.cancel()
+        }
         _uiState.update {
-            val next = !it.turnLeftOn
             it.copy(turnLeftOn = next, turnRightOn = false, hazardsOn = false, blinkerPhase = next)
         }
     }
 
     fun toggleTurnRight() {
         blinkAccumulator = 0f
+        val next = !_uiState.value.turnRightOn
+        prevBlinkPhase = next
+        if (next) {
+            triggerFlasherRelaySound(isHazard = false, isTick = true)
+        } else {
+            relayAudioJob?.cancel()
+        }
         _uiState.update {
-            val next = !it.turnRightOn
             it.copy(turnRightOn = next, turnLeftOn = false, hazardsOn = false, blinkerPhase = next)
         }
     }
@@ -754,7 +1109,7 @@ class ThrissurSimViewModel : ViewModel() {
             while (nextYaw < -180f) nextYaw += 360f
             it.copy(
                 cameraOrbitYawDeg = nextYaw,
-                cameraOrbitPitchDeg = (it.cameraOrbitPitchDeg + deltaPitchDeg).coerceIn(-6f, 38f)
+                cameraOrbitPitchDeg = (it.cameraOrbitPitchDeg + deltaPitchDeg).coerceIn(-5f, 22f)
             )
         }
     }
@@ -777,8 +1132,16 @@ class ThrissurSimViewModel : ViewModel() {
             road.frames.firstOrNull { it.cumulativeDist >= 18f } ?: road.frames.firstOrNull()
         } ?: return
         val heading = if (isSakthanStart) 0f else atan2(spawnFrame.tangent.x, spawnFrame.tangent.z)
+        targetWheelAngleDeg = 0f
+        displayedWheelAngleDeg = 0f
+        smoothedYawRate = 0f
+        isSteeringPointerHeld = false
+        steerReleaseHoldSec = 0f
         smoothedWheelSteerInput = 0f
-        smoothedDisplayRpm = 650f
+        smoothedFrontWheelRad = 0f
+        smoothedThrottle = 0f
+        smoothedBrake = 0f
+        smoothedDisplayRpm = if (s.engineRunning) 650f else 0f
         _uiState.update { current ->
             val updated = current.copy(
                 activeRoadIndex = index,
@@ -786,9 +1149,10 @@ class ThrissurSimViewModel : ViewModel() {
                 busHeadingRad = heading,
                 speedKmh = 0f,
                 signedSpeedMps = 0f,
-                engineRpm = 650,
+                engineRpm = if (current.engineRunning) 650 else 0,
                 displayGearNumber = 1,
                 steerInput = 0f,
+                frontWheelSteerRad = 0f,
                 steeringWheelAngleDeg = 0f,
                 isSteeringHeld = false,
                 gear = TransmissionGear.Drive,
@@ -890,8 +1254,16 @@ class ThrissurSimViewModel : ViewModel() {
         }
 
         val roadIdx = s.roads.indexOfFirst { it.id == spec.roadId }.coerceAtLeast(0)
+        targetWheelAngleDeg = 0f
+        displayedWheelAngleDeg = 0f
+        smoothedYawRate = 0f
+        isSteeringPointerHeld = false
+        steerReleaseHoldSec = 0f
         smoothedWheelSteerInput = 0f
-        smoothedDisplayRpm = 650f
+        smoothedFrontWheelRad = 0f
+        smoothedThrottle = 0f
+        smoothedBrake = 0f
+        smoothedDisplayRpm = if (s.engineRunning) 650f else 0f
         _uiState.update { current ->
             val updated = current.copy(
                 activeRoadIndex = roadIdx,
@@ -899,9 +1271,10 @@ class ThrissurSimViewModel : ViewModel() {
                 busHeadingRad = spec.headingRad,
                 speedKmh = 0f,
                 signedSpeedMps = 0f,
-                engineRpm = 650,
+                engineRpm = if (current.engineRunning) 650 else 0,
                 displayGearNumber = 1,
                 steerInput = 0f,
+                frontWheelSteerRad = 0f,
                 steeringWheelAngleDeg = 0f,
                 isSteeringHeld = false,
                 gear = TransmissionGear.Drive,
@@ -960,19 +1333,19 @@ class ThrissurSimViewModel : ViewModel() {
         )
 
         val rearYawOffset = if (rearViewActive) PI.toFloat() else 0f
-        val speedNorm = (speedKmh / 180f).coerceIn(0f, 1f)
 
         return when (cameraMode) {
             CameraViewMode.Chase -> {
-                // Strictly static rear follow view locked rigidly to bus heading (zero touch orbit, zero sway)
+                // Balanced elevated rear follow view looking forward down the road ahead of the bus
+                // Keeps camera eye (~3.84m) cleanly above the 3.22m bus roof while well below 5.45m–6.20m terminal canopies
                 val orbitYawRad = followYawRad + rearYawOffset
                 val targetLocalX = 0f
-                val targetLocalY = 1.55f
-                val targetLocalZ = if (rearViewActive) -2.10f else 0.80f
+                val targetLocalY = 2.02f
+                val targetLocalZ = if (rearViewActive) -2.40f else 3.20f
                 val focusPos = busLocalToWorld(targetLocalX, targetLocalY, targetLocalZ)
 
-                val orbitDist = 9.8f
-                val elevDeg = 3.2f
+                val orbitDist = 13.0f
+                val elevDeg = 7.8f
                 val pitchRad = Math.toRadians(elevDeg.toDouble()).toFloat()
                 val cosP = cos(pitchRad)
                 val sinP = sin(pitchRad)
@@ -998,7 +1371,7 @@ class ThrissurSimViewModel : ViewModel() {
                 // Strictly static driver eye position looking forward through windshield and mirrors
                 val eyePos = busLocalToWorld(0.62f, 2.28f, 4.05f)
                 val lookYaw = busHeadingRad + rearYawOffset
-                val elevDeg = 4.2f
+                val elevDeg = 3.6f
                 val pitchRad = Math.toRadians(elevDeg.toDouble()).toFloat()
                 val cosP = cos(pitchRad)
                 val sinP = sin(pitchRad)
@@ -1010,12 +1383,12 @@ class ThrissurSimViewModel : ViewModel() {
                 Triple(focusPos, eyePos, CINEMATIC_COCKPIT_FOV_DEG)
             }
             CameraViewMode.Orbit -> {
-                // 360-degree free exterior orbit mode with touch drag
+                // 360-degree free exterior orbit mode with canopy-safe pitch range
                 val orbitYawRad = followYawRad + rearYawOffset +
                     Math.toRadians(orbitYawDeg.toDouble()).toFloat()
-                val focusPos = busLocalToWorld(0f, 1.65f, 0.20f)
-                val orbitDist = 12.0f
-                val elevDeg = (12.0f + orbitPitchDeg).coerceIn(-4.0f, 65f)
+                val focusPos = busLocalToWorld(0f, 1.72f, 0.60f)
+                val orbitDist = 11.8f
+                val elevDeg = (9.5f + orbitPitchDeg).coerceIn(2.0f, 31.5f)
                 val pitchRad = Math.toRadians(elevDeg.toDouble()).toFloat()
                 val cosP = cos(pitchRad)
                 val sinP = sin(pitchRad)
@@ -1038,6 +1411,11 @@ class ThrissurSimViewModel : ViewModel() {
                 Triple(focusPos, safeEye, CINEMATIC_FOLLOW_FOV_DEG)
             }
         }
+    }
+
+    private fun smoothDampAlpha(ratePerSec: Float, dt: Float): Float {
+        if (ratePerSec <= 0f || dt <= 0f) return 0f
+        return (1f - exp(-ratePerSec * dt)).coerceIn(0f, 1f)
     }
 
     private fun lerp(start: Float, end: Float, t: Float): Float {
@@ -1105,8 +1483,37 @@ class ThrissurSimViewModel : ViewModel() {
         }
 
         /**
+         * Returns the lowest overhead canopy / gantry ceiling height at (x, z) so the camera
+         * never rises into or above terminal roofs (which previously caused canopies to vanish
+         * and pillars to slice across the screen in Orbit/Chase views).
+         */
+        private fun computeCanopyCeilingHeight(x: Float, z: Float): Float {
+            // Sakthan Thampuran Stand canopies & entry/exit gantry
+            if (x in -25f..53f && z in -221f..-137f) {
+                return 5.20f
+            }
+            // Vadakke Stand shelter & gantry
+            if (x in -68f..0f && z in 196f..252f) {
+                return 5.05f
+            }
+            // Guruvayur Stand shelter & gantry
+            if (x in -2782f..-2688f && z in 1265f..1318f) {
+                return 5.05f
+            }
+            // Triprayar Stand shelter & gantry
+            if (x in -2214f..-2178f && z in -2446f..-2374f) {
+                return 5.05f
+            }
+            // Paliyekkara Toll Plaza canopy
+            if (x in 966f..1033f && z in -1816f..-1796f) {
+                return 5.05f
+            }
+            return 1000f
+        }
+
+        /**
          * Prevents camera eye and sightline ray from clipping through road meshes, raised platforms,
-         * or the 12m Hino RM 2 coach hull during Lerp transitions and tight cornering.
+         * overhead terminal canopies, or the 12m Hino RM 2 coach hull.
          */
         fun preventRoadMeshCameraClip(
             focusPos: Vec3,
@@ -1120,9 +1527,13 @@ class ThrissurSimViewModel : ViewModel() {
             var eyeZ = candidateEye.z
 
             if (cameraMode == CameraViewMode.Chase || cameraMode == CameraViewMode.Orbit) {
-                // 1. Sample 5 points along the sightline ray from focusPos to candidateEye
-                // to guarantee neither the camera nor its near-clip frustum slices road/platform meshes.
+                // 1. Sample points along the sightline ray from focusPos to candidateEye
+                // to guarantee neither the camera nor its near-clip frustum slices road/platform or roof meshes.
                 var maxRoadFloorAlongRay = computeRoadSurfaceFloorHeight(eyeX, eyeZ)
+                var minCanopyCeilingAlongRay = min(
+                    computeCanopyCeilingHeight(eyeX, eyeZ),
+                    computeCanopyCeilingHeight(busPos.x, busPos.z)
+                )
                 val raySamples = 4
                 for (i in 1..raySamples) {
                     val frac = i.toFloat() / raySamples.toFloat()
@@ -1132,11 +1543,14 @@ class ThrissurSimViewModel : ViewModel() {
                     if (h > maxRoadFloorAlongRay) {
                         maxRoadFloorAlongRay = h
                     }
+                    val c = computeCanopyCeilingHeight(sx, sz)
+                    if (c < minCanopyCeilingAlongRay) {
+                        minCanopyCeilingAlongRay = c
+                    }
                 }
                 val minAllowedY = maxRoadFloorAlongRay + MIN_ROAD_CAMERA_CLEARANCE_M
-                if (eyeY < minAllowedY) {
-                    eyeY = minAllowedY
-                }
+                val maxAllowedY = (minCanopyCeilingAlongRay - 0.65f).coerceAtLeast(minAllowedY + 0.5f)
+                eyeY = eyeY.coerceIn(minAllowedY, maxAllowedY)
 
                 // 2. Prevent camera from clipping inside the 12m Hino RM 2 coach hull during rapid yaw Lerp
                 val dx = eyeX - busPos.x
@@ -1195,6 +1609,39 @@ class ThrissurSimViewModel : ViewModel() {
     private fun triggerAirBrakeReleaseSound() {
         viewModelScope.launch(Dispatchers.Default) {
             playPneumaticBrakeReleaseDump()
+        }
+    }
+
+    private fun triggerFlasherRelaySound(isHazard: Boolean, isTick: Boolean) {
+        relayAudioJob?.cancel()
+        relayAudioJob = viewModelScope.launch(Dispatchers.Default) {
+            try {
+                val pcm = when {
+                    isHazard && isTick -> cachedHazardTickPcm
+                    isHazard && !isTick -> cachedHazardTockPcm
+                    !isHazard && isTick -> cachedIndicatorTickPcm
+                    else -> cachedIndicatorTockPcm
+                }
+                playStaticPcmTrack(pcm, 22050, if (isHazard) 70L else 55L)
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private fun triggerWiperStrokeSound(mode: WiperSpeedMode) {
+        if (mode == WiperSpeedMode.Off) return
+        wiperAudioJob?.cancel()
+        wiperAudioJob = viewModelScope.launch(Dispatchers.Default) {
+            try {
+                val (pcm, durMs) = when (mode) {
+                    WiperSpeedMode.Low -> cachedWiperLowStrokePcm to 440L
+                    WiperSpeedMode.Mid -> cachedWiperMidStrokePcm to 310L
+                    WiperSpeedMode.High -> cachedWiperHighStrokePcm to 220L
+                    WiperSpeedMode.Off -> return@launch
+                }
+                playStaticPcmTrack(pcm, 22050, durMs)
+            } catch (_: Throwable) {
+            }
         }
     }
 
@@ -1369,7 +1816,10 @@ class ThrissurSimViewModel : ViewModel() {
     }
 
     override fun onCleared() {
+        engineStartJob?.cancel()
         engineAudioJob?.cancel()
+        wiperAudioJob?.cancel()
+        relayAudioJob?.cancel()
         super.onCleared()
     }
 
@@ -1377,6 +1827,15 @@ class ThrissurSimViewModel : ViewModel() {
     private val cachedBrakeReleasePcm: ShortArray by lazy { buildBrakeReleasePcm() }
     private val cachedHornPcm: ShortArray by lazy { buildHornPcm() }
     private val cachedLongBusHornPcm: ShortArray by lazy { buildLongBusHornPcm() }
+    private val cachedEngineStartPcm: ShortArray by lazy { buildEngineStartPcm() }
+    private val cachedEngineStopPcm: ShortArray by lazy { buildEngineStopPcm() }
+    private val cachedIndicatorTickPcm: ShortArray by lazy { buildRelayClickPcm(isHazard = false, isTick = true) }
+    private val cachedIndicatorTockPcm: ShortArray by lazy { buildRelayClickPcm(isHazard = false, isTick = false) }
+    private val cachedHazardTickPcm: ShortArray by lazy { buildRelayClickPcm(isHazard = true, isTick = true) }
+    private val cachedHazardTockPcm: ShortArray by lazy { buildRelayClickPcm(isHazard = true, isTick = false) }
+    private val cachedWiperLowStrokePcm: ShortArray by lazy { buildWiperStrokePcm(durationSec = 0.42, motorBaseHz = 92.0, sweepGain = 0.44, motorGain = 0.34) }
+    private val cachedWiperMidStrokePcm: ShortArray by lazy { buildWiperStrokePcm(durationSec = 0.29, motorBaseHz = 124.0, sweepGain = 0.54, motorGain = 0.44) }
+    private val cachedWiperHighStrokePcm: ShortArray by lazy { buildWiperStrokePcm(durationSec = 0.20, motorBaseHz = 162.0, sweepGain = 0.66, motorGain = 0.56) }
 
     private fun buildBrakeApplyPcm(): ShortArray {
         val sampleRate = 22050
@@ -1539,6 +1998,240 @@ class ThrissurSimViewModel : ViewModel() {
             playStaticPcmTrack(cachedLongBusHornPcm, 22050, 1360L)
         } catch (_: Throwable) {
         }
+    }
+
+    private fun playEngineStartSound() {
+        try {
+            playStaticPcmTrack(cachedEngineStartPcm, 22050, 1260L)
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun playEngineStopSound() {
+        try {
+            playStaticPcmTrack(cachedEngineStopPcm, 22050, 520L)
+        } catch (_: Throwable) {
+        }
+    }
+
+    /**
+     * Synthesizes a heavy 24V Hino J08E 6-cylinder diesel starter sequence:
+     * 0.00-0.06s: Starter solenoid pinion clack engaging flywheel ring gear
+     * 0.06-0.78s: 3.5 heavy compression cranking strokes (24V starter motor + cylinder TDC compression chugs)
+     * 0.78-1.25s: Direct-injection diesel ignition bark, surge to ~1050 RPM, and settle into 650 RPM idle
+     */
+    private fun buildEngineStartPcm(): ShortArray {
+        val sampleRate = 22050
+        val durationSec = 1.25
+        val numSamples = (sampleRate * durationSec).toInt()
+        val pcm = ShortArray(numSamples)
+
+        var seed = 0x517CC1B7u
+        var cylCycle = 0.0
+        var starterPhase = 0.0
+        var lowLp = 0.0
+        var throatLp = 0.0
+        var throatHp = 0.0
+        var gearLp = 0.0
+        var gearHp = 0.0
+
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            seed = seed * 1664525u + 1013904223u
+            val white = ((seed shr 16).toInt() / 32768.0) - 1.0
+
+            var mix = 0.0
+
+            // 1. Starter Solenoid Engagement Clack (0.00 .. 0.07s)
+            if (t < 0.085) {
+                val clickDecay = kotlin.math.exp(-t * 95.0)
+                val heavyClack = (sin(2.0 * PI * 285.0 * t) * 0.55 +
+                    sin(2.0 * PI * 890.0 * t) * 0.35 +
+                    white * 0.45) * clickDecay
+                mix += heavyClack * 0.68
+            }
+
+            // 2. Heavy 24V Starter Motor & Compression Cranking (0.04 .. 0.80s)
+            if (t in 0.04..0.82) {
+                val crankFadeOut = if (t > 0.72) ((0.82 - t) / 0.10).coerceIn(0.0, 1.0) else 1.0
+                val crankFadeIn = ((t - 0.04) / 0.025).coerceIn(0.0, 1.0)
+                val crankEnv = crankFadeIn * crankFadeOut
+
+                // Rhythmic compression strokes (~4.45 Hz TDC resistance cycles: chug - chug - chug)
+                val strokePhase = (t - 0.05) * 4.45
+                val frac = strokePhase - kotlin.math.floor(strokePhase)
+                val compressionLoad = kotlin.math.exp(-((frac - 0.35) * (frac - 0.35)) / 0.055)
+
+                // Starter pitch drops slightly as each cylinder reaches TDC compression
+                val starterHz = 365.0 - compressionLoad * 72.0 + t * 55.0
+                starterPhase += starterHz / sampleRate
+                val gearSaw = 2.0 * (starterPhase - kotlin.math.floor(starterPhase)) - 1.0
+                val starterWhineRaw = gearSaw * 0.65 + sin(2.0 * PI * starterPhase * 2.0) * 0.25
+                gearLp += (starterWhineRaw - gearLp) * 0.22
+                gearHp += (gearLp - gearHp) * 0.09
+                val planetaryGear = (gearLp - gearHp) * (0.28 + 0.18 * (1.0 - compressionLoad))
+
+                // Compressed air + heavy cast-iron crankshaft thump per cylinder stroke
+                val chugPulse = kotlin.math.exp(-frac * 6.5) * 0.90 +
+                    (white * kotlin.math.exp(-frac * 8.0) * 0.42)
+                mix += (planetaryGear + chugPulse * 0.55) * crankEnv * 0.72
+            }
+
+            // 3. Diesel Ignition Catch & Flare (0.72 .. 1.25s)
+            if (t >= 0.72) {
+                val postIgn = t - 0.72
+                val flareEnv = (postIgn / 0.06).coerceIn(0.0, 1.0)
+                val settleRpm = 620.0 + 430.0 * kotlin.math.exp(-postIgn * 4.2)
+                val fireHz = (settleRpm / 60.0) * 3.0
+                cylCycle += fireHz / sampleRate
+                if (cylCycle >= 6.0) cylCycle -= 6.0
+                val u = cylCycle - cylCycle.toInt().toDouble()
+
+                val blowdown = ((1.0 - 2.0 * u) * 0.8 + (u / 0.09).coerceIn(0.0, 1.0) * kotlin.math.exp(-u * 4.4) * 1.35)
+                val shaped = blowdown * 1.9 / (1.0 + abs(blowdown * 1.9) * 0.65)
+                val ignitionBark = white * kotlin.math.exp(-u * 13.0) * (0.55 + 0.45 * kotlin.math.exp(-postIgn * 5.0))
+
+                lowLp += ((shaped + ignitionBark * 0.35) - lowLp) * 0.095
+                throatLp += ((shaped * 0.75 + ignitionBark) - throatLp) * 0.19
+                throatHp += (throatLp - throatHp) * 0.055
+                val flareMix = (lowLp * 0.78 + (throatLp - throatHp) * 0.72) * flareEnv
+
+                // Smooth fade out at 1.10-1.25s so continuous engine loop takes over seamlessly
+                val handoff = if (t > 1.05) ((1.25 - t) / 0.20).coerceIn(0.0, 1.0) else 1.0
+                mix += flareMix * handoff * 0.85
+            }
+
+            val limited = mix / (1.0 + abs(mix) * 0.35)
+            pcm[i] = (limited.coerceIn(-0.98, 0.98) * Short.MAX_VALUE * 0.82).toInt().toShort()
+        }
+        return pcm
+    }
+
+    /**
+     * Synthesizes heavy diesel fuel shut-off: solenoid click + 2 compression shudders + fan spin-down.
+     */
+    private fun buildEngineStopPcm(): ShortArray {
+        val sampleRate = 22050
+        val durationSec = 0.50
+        val numSamples = (sampleRate * durationSec).toInt()
+        val pcm = ShortArray(numSamples)
+        var seed = 0x91E10DA5u
+        var lp = 0.0
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            seed = seed * 1664525u + 1013904223u
+            val white = ((seed shr 16).toInt() / 32768.0) - 1.0
+
+            // Fuel rack cut-off solenoid click at t=0
+            val solClick = sin(2.0 * PI * 420.0 * t) * kotlin.math.exp(-t * 95.0) * 0.45
+            // Two decelerating compression shudder thumps at ~0.07s and ~0.22s
+            val shudder1 = sin(2.0 * PI * 68.0 * t) * kotlin.math.exp(-((t - 0.08) * (t - 0.08)) / 0.0022)
+            val shudder2 = sin(2.0 * PI * 54.0 * t) * kotlin.math.exp(-((t - 0.23) * (t - 0.23)) / 0.0032) * 0.75
+            // Radiator fan / air spin-down
+            lp += (white - lp) * (0.09 - t * 0.12).coerceIn(0.02, 0.09)
+            val spinDown = lp * kotlin.math.exp(-t * 4.5) * 0.42
+            val tailFade = ((durationSec - t) / 0.07).coerceIn(0.0, 1.0)
+            val sample = (solClick + (shudder1 + shudder2) * 0.62 + spinDown) * tailFade
+            pcm[i] = (sample.coerceIn(-0.98, 0.98) * Short.MAX_VALUE * 0.74).toInt().toShort()
+        }
+        return pcm
+    }
+
+    /**
+     * Synthesizes authentic commercial bus electromechanical flasher relay clicks:
+     * - Indicator stalk relay: crisp, tight steering-column tick/tock
+     * - Dual-circuit hazard relay: heavier, deeper dashboard 4-way flasher clack
+     */
+    private fun buildRelayClickPcm(isHazard: Boolean, isTick: Boolean): ShortArray {
+        val sampleRate = 22050
+        val durationSec = if (isHazard) 0.058 else 0.044
+        val numSamples = (sampleRate * durationSec).toInt()
+        val pcm = ShortArray(numSamples)
+        var seed = if (isTick) 0x243F6A88u else 0x85A308D3u
+
+        val primaryHz = when {
+            isHazard && isTick -> 760.0
+            isHazard && !isTick -> 540.0
+            !isHazard && isTick -> 1240.0
+            else -> 890.0
+        }
+        val secondaryHz = primaryHz * 2.08
+        val thudHz = if (isHazard) 165.0 else 225.0
+        val gain = if (isHazard) 0.74 else 0.60
+
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            seed = seed * 1664525u + 1013904223u
+            val white = ((seed shr 16).toInt() / 32768.0) - 1.0
+
+            // Short contact snap transient (< 3 ms)
+            val snap = white * kotlin.math.exp(-t * 780.0) * 0.65
+            // Relay armature & plastic switch housing damped resonance
+            val armature = (sin(2.0 * PI * primaryHz * t) * 0.62 +
+                sin(2.0 * PI * secondaryHz * t) * 0.30) * kotlin.math.exp(-t * 155.0)
+            // Dash mount thud (stronger on heavy hazard switch)
+            val thud = sin(2.0 * PI * thudHz * t) * kotlin.math.exp(-t * 105.0) * (if (isHazard) 0.58 else 0.34)
+
+            val tailFade = ((durationSec - t) / 0.008).coerceIn(0.0, 1.0)
+            val sample = (snap + armature + thud) * tailFade
+            pcm[i] = (sample.coerceIn(-0.98, 0.98) * Short.MAX_VALUE * gain).toInt().toShort()
+        }
+        return pcm
+    }
+
+    /**
+     * Synthesizes one pantograph bus wiper sweep stroke:
+     * 1. Mechanical reversal linkage thump at blade reversal
+     * 2. 24V DC worm-gear wiper motor purr (distinct pitch per Low / Mid / High speed)
+     * 3. Band-limited rubber squeegee sweep across wet laminated windshield
+     */
+    private fun buildWiperStrokePcm(
+        durationSec: Double,
+        motorBaseHz: Double,
+        sweepGain: Double,
+        motorGain: Double
+    ): ShortArray {
+        val sampleRate = 22050
+        val numSamples = (sampleRate * durationSec).toInt()
+        val pcm = ShortArray(numSamples)
+        var seed = 0x6A09E667u
+        var motorPhase = 0.0
+        var glassLp = 0.0
+        var glassHp = 0.0
+        var motorLp = 0.0
+
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            val prog = (t / durationSec).coerceIn(0.0, 1.0)
+
+            seed = seed * 1664525u + 1013904223u
+            val white = ((seed shr 16).toInt() / 32768.0) - 1.0
+
+            // Velocity envelope peaks in middle of glass sweep, tapers smoothly at pivot reversal
+            val velEnv = Math.pow(sin(PI * prog).coerceIn(0.0, 1.0), 1.25)
+
+            // 1. Pantograph linkage pivot reversal thump at t = 0..0.04s
+            val pivotThump = sin(2.0 * PI * 112.0 * t) * kotlin.math.exp(-t * 72.0) * 0.42
+
+            // 2. 24V DC worm-gear motor purr (ramps slightly as blade accelerates)
+            val motorFreq = motorBaseHz * (0.88 + 0.24 * velEnv)
+            motorPhase += motorFreq / sampleRate
+            val sawTooth = 2.0 * (motorPhase - kotlin.math.floor(motorPhase)) - 1.0
+            val rawMotor = sawTooth * 0.55 + sin(2.0 * PI * motorPhase * 2.0) * 0.35
+            motorLp += (rawMotor - motorLp) * 0.085
+            val motorBody = motorLp * (0.35 + 0.65 * velEnv) * motorGain
+
+            // 3. Wet windshield squeegee friction swish (warm bandpass around 450-900 Hz, zero harsh white static)
+            glassLp += (white - glassLp) * (0.16 + 0.08 * velEnv)
+            glassHp += (glassLp - glassHp) * 0.055
+            val squeegeeSwish = (glassLp - glassHp) * velEnv * sweepGain * 1.45
+
+            val endFade = ((durationSec - t) / 0.028).coerceIn(0.0, 1.0)
+            val startFade = (t / 0.014).coerceIn(0.0, 1.0)
+            val sample = (pivotThump + motorBody + squeegeeSwish) * startFade * endFade
+            pcm[i] = (sample.coerceIn(-0.98, 0.98) * Short.MAX_VALUE * 0.70).toInt().toShort()
+        }
+        return pcm
     }
 
     private fun playStaticPcmTrack(pcm: ShortArray, sampleRate: Int, sleepMs: Long) {

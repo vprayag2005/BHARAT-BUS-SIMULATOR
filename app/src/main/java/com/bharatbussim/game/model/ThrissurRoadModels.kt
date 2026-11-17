@@ -89,6 +89,19 @@ enum class CameraViewMode(val label: String) {
     Orbit("CAM 3/3 • 360 ORBIT")
 }
 
+enum class WiperSpeedMode(val label: String, val speedRadPerSec: Float) {
+    Off("OFF", 0f),
+    Low("LO", 2.0f),
+    Mid("MID", 3.5f),
+    High("HI", 5.4f)
+}
+
+enum class HeadlightBeamMode(val label: String) {
+    Off("OFF"),
+    Low("LO"),
+    High("HI")
+}
+
 object ThrissurRoadRepository {
 
     // End-to-end highway continuation pairs (Road A end welds directly into Road B start)

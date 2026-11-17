@@ -26,10 +26,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -44,8 +44,8 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -57,7 +57,6 @@ import com.bharatbussim.game.model.TransmissionGear
 import com.bharatbussim.game.viewmodel.SimUiState
 import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.roundToInt
@@ -77,6 +76,7 @@ internal fun HudGlassSquareButton(
     cornerRadius: Dp = 10.dp,
     active: Boolean = false,
     activeTint: Color = ActiveOrangeStart,
+    badgeText: String? = null,
     contentDesc: String,
     testTag: String,
     onClick: () -> Unit,
@@ -107,8 +107,29 @@ internal fun HudGlassSquareButton(
             .testTag(testTag),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize().padding(6.dp)) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    start = 6.dp,
+                    end = 6.dp,
+                    top = if (badgeText != null) 4.dp else 6.dp,
+                    bottom = if (badgeText != null) 9.dp else 6.dp
+                )
+        ) {
             iconDraw(iconColor)
+        }
+        if (badgeText != null) {
+            Text(
+                text = badgeText,
+                color = iconColor,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.ExtraBold,
+                lineHeight = 8.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 1.5.dp)
+            )
         }
     }
 }
@@ -284,6 +305,42 @@ internal fun DrawScope.drawHighBeamIcon(tint: Color) {
             color = tint,
             start = Offset(beamStartX, h * yf),
             end = Offset(beamEndX, h * yf),
+            strokeWidth = w * 0.072f,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+internal fun DrawScope.drawLowBeamIcon(tint: Color) {
+    val w = size.width
+    val h = size.height
+    val domeLeft = w * 0.46f
+    val domeRight = w * 0.88f
+    val domeTop = h * 0.20f
+    val domeBottom = h * 0.76f
+    val domePath = Path().apply {
+        moveTo(domeLeft, domeTop)
+        lineTo(domeLeft + (domeRight - domeLeft) * 0.30f, domeTop)
+        cubicTo(
+            domeRight, domeTop,
+            domeRight, domeBottom,
+            domeLeft + (domeRight - domeLeft) * 0.30f, domeBottom
+        )
+        lineTo(domeLeft, domeBottom)
+        quadraticTo(domeLeft - w * 0.05f, h * 0.48f, domeLeft, domeTop)
+        close()
+    }
+    drawPath(domePath, color = tint, style = Stroke(width = w * 0.075f, join = StrokeJoin.Round))
+
+    // Three downward-angled dipped beam rays on the left
+    val beamStartX = w * 0.37f
+    val beamEndX = w * 0.10f
+    val yLevels = floatArrayOf(0.28f, 0.48f, 0.68f)
+    for (yf in yLevels) {
+        drawLine(
+            color = tint,
+            start = Offset(beamStartX, h * yf),
+            end = Offset(beamEndX, h * (yf + 0.14f)),
             strokeWidth = w * 0.072f,
             cap = StrokeCap.Round
         )
@@ -477,6 +534,30 @@ internal fun DrawScope.drawParkBrakeSymbol(tint: Color) {
     drawPath(pLoop, color = tint, style = Stroke(width = pStroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
 }
 
+internal fun DrawScope.drawEngineStartIcon(tint: Color) {
+    val d = size.minDimension
+    val cx = size.width * 0.5f
+    val cy = size.height * 0.52f
+    val r = d * 0.34f
+    val strokeW = d * 0.088f
+    drawArc(
+        color = tint,
+        startAngle = -52f,
+        sweepAngle = 284f,
+        useCenter = false,
+        topLeft = Offset(cx - r, cy - r),
+        size = Size(r * 2f, r * 2f),
+        style = Stroke(width = strokeW, cap = StrokeCap.Round)
+    )
+    drawLine(
+        color = tint,
+        start = Offset(cx, cy - r * 1.18f),
+        end = Offset(cx, cy - r * 0.12f),
+        strokeWidth = strokeW,
+        cap = StrokeCap.Round
+    )
+}
+
 internal fun DrawScope.drawSpeedometerDialIcon(tint: Color) {
     val w = size.width
     val h = size.height
@@ -549,12 +630,18 @@ internal fun DrawScope.drawFuelPumpIcon(tint: Color) {
 
 @Composable
 internal fun RealisticSteeringWheel(
-    wheelAngleDeg: Float,
+    wheelAngleProvider: () -> Float,
     sizeDp: Dp,
+    onSteerGrab: () -> Unit,
     onSteerDeltaDeg: (Float) -> Unit,
     onSteerRelease: () -> Unit,
     onHornClick: () -> Unit
 ) {
+    val latestOnGrab by rememberUpdatedState(onSteerGrab)
+    val latestOnDelta by rememberUpdatedState(onSteerDeltaDeg)
+    val latestOnRelease by rememberUpdatedState(onSteerRelease)
+    val latestOnHorn by rememberUpdatedState(onHornClick)
+
     Box(
         modifier = Modifier
             .size(sizeDp)
@@ -562,52 +649,57 @@ internal fun RealisticSteeringWheel(
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     down.consume()
-                    val cx = size.width * 0.5f
+                    latestOnGrab()
+                    val w = size.width.toFloat().coerceAtLeast(1f)
+                    val cx = w * 0.5f
                     val cy = size.height * 0.5f
                     var prevPos = down.position
                     var totalTravel = 0f
 
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (!change.pressed) {
-                            change.consume()
-                            break
-                        }
-                        val currPos = change.position
-                        val drag = change.positionChange()
-                        if (drag != Offset.Zero) {
-                            change.consume()
-                            totalTravel += hypot(drag.x, drag.y)
-                            val distFromHub = hypot(currPos.x - cx, currPos.y - cy)
-
-                            val a0 = atan2(prevPos.y - cy, prevPos.x - cx)
-                            val a1 = atan2(currPos.y - cy, currPos.x - cx)
-                            var dRad = a1 - a0
-                            while (dRad > PI.toFloat()) dRad -= (2.0 * PI).toFloat()
-                            while (dRad < -PI.toFloat()) dRad += (2.0 * PI).toFloat()
-                            val rotaryDeg = Math.toDegrees(dRad.toDouble()).toFloat() * 1.45f
-
-                            val horizDeg = (drag.x / (size.width * 0.36f)) * 150f
-
-                            val deltaDeg = if (distFromHub > size.width * 0.22f && currPos.y > cy + size.height * 0.14f) {
-                                rotaryDeg
-                            } else if (abs(horizDeg) > abs(rotaryDeg)) {
-                                horizDeg
-                            } else {
-                                rotaryDeg
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                change.consume()
+                                break
                             }
-                            onSteerDeltaDeg(deltaDeg)
-                            prevPos = currPos
-                        }
-                    }
+                            val currPos = change.position
+                            val dx = currPos.x - prevPos.x
+                            val dy = currPos.y - prevPos.y
+                            val stepDist = hypot(dx, dy)
+                            if (stepDist > 0.25f) {
+                                change.consume()
+                                totalTravel += stepDist
 
-                    // Tap near center hub triggers pneumatic air horn
-                    val tapDistFromHub = hypot(prevPos.x - cx, prevPos.y - cy)
-                    if (totalTravel < 14f && tapDistFromHub < size.width * 0.24f) {
-                        onHornClick()
+                                val rx = (prevPos.x + currPos.x) * 0.5f - cx
+
+                                // High-gain, sign-consistent steering so full left lock (-300°) is
+                                // effortlessly reached within a single short thumb sweep before hitting the left edge.
+                                val absDx = abs(dx)
+                                val absDy = abs(dy)
+                                val vertMoveWeight = (((absDy / (absDx + absDy + 1e-3f)) - 0.35f) / 0.45f)
+                                    .coerceIn(0f, 1f)
+                                val sideRimWeight = ((abs(rx) - w * 0.20f) / (w * 0.18f)).coerceIn(0f, 1f)
+                                val rxSign = if (rx >= 0f) 1f else -1f
+
+                                val horizDeg = (dx / w) * 900f
+                                val vertRimDeg = sideRimWeight * vertMoveWeight * rxSign * (dy / w) * 820f
+                                val rawDelta = (horizDeg + vertRimDeg).coerceIn(-220f, 220f)
+
+                                latestOnDelta(rawDelta)
+                                prevPos = currPos
+                            }
+                        }
+
+                        // Tap near center hub triggers pneumatic air horn
+                        val tapDistFromHub = hypot(prevPos.x - cx, prevPos.y - cy)
+                        if (totalTravel < 14f && tapDistFromHub < size.width * 0.24f) {
+                            latestOnHorn()
+                        }
+                    } finally {
+                        latestOnRelease()
                     }
-                    onSteerRelease()
                 }
             }
             .semantics { contentDescription = "Bus Steering Wheel" }
@@ -617,13 +709,13 @@ internal fun RealisticSteeringWheel(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .rotate(wheelAngleDeg)
+                .graphicsLayer { rotationZ = wheelAngleProvider() }
         ) {
             val w = size.width
             val h = size.height
             val c = Offset(w * 0.5f, h * 0.5f)
-            val rimRadius = w * 0.42f
-            val rimStroke = w * 0.115f
+            val rimRadius = w * 0.442f
+            val rimStroke = w * 0.086f
 
             // Drop shadow behind steering wheel
             drawCircle(
@@ -633,10 +725,10 @@ internal fun RealisticSteeringWheel(
                 style = Stroke(width = rimStroke * 1.15f)
             )
 
-            // Outer dark leather wheel rim with metallic sheen gradient
+            // Outer dark leather coach wheel rim with metallic sheen gradient
             drawCircle(
                 brush = Brush.linearGradient(
-                    colors = listOf(Color(0xFF3E4550), Color(0xFF15181E), Color(0xFF2B313B), Color(0xFF12151A)),
+                    colors = listOf(Color(0xFF424A56), Color(0xFF15181E), Color(0xFF2D343F), Color(0xFF111419)),
                     start = Offset(0f, 0f),
                     end = Offset(w, h)
                 ),
@@ -645,36 +737,66 @@ internal fun RealisticSteeringWheel(
                 style = Stroke(width = rimStroke)
             )
 
-            // Sculpted specular top highlight arc & inner rim bevel
+            // Ergonomic 10-and-2 thumb bolster wraps on rim
+            for (startAng in floatArrayOf(196f, 294f)) {
+                drawArc(
+                    color = Color(0xFF222730),
+                    startAngle = startAng,
+                    sweepAngle = 50f,
+                    useCenter = false,
+                    topLeft = Offset(c.x - rimRadius, c.y - rimRadius),
+                    size = Size(rimRadius * 2f, rimRadius * 2f),
+                    style = Stroke(width = rimStroke * 1.12f, cap = StrokeCap.Round)
+                )
+            }
+
+            // 12-o'clock amber leather center-alignment band for tracking 1.5-round (540°) rotation
             drawArc(
-                color = Color(0x38FFFFFF),
-                startAngle = 205f,
-                sweepAngle = 120f,
+                color = ActiveOrangeStart,
+                startAngle = 265f,
+                sweepAngle = 10f,
                 useCenter = false,
-                topLeft = Offset(c.x - rimRadius - rimStroke * 0.22f, c.y - rimRadius - rimStroke * 0.22f),
-                size = Size((rimRadius + rimStroke * 0.22f) * 2f, (rimRadius + rimStroke * 0.22f) * 2f),
-                style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
-            )
-            drawCircle(
-                color = Color(0xFF0B0D11),
-                radius = rimRadius - rimStroke * 0.46f,
-                center = c,
-                style = Stroke(width = 1.6.dp.toPx())
+                topLeft = Offset(c.x - rimRadius, c.y - rimRadius),
+                size = Size(rimRadius * 2f, rimRadius * 2f),
+                style = Stroke(width = rimStroke * 1.04f, cap = StrokeCap.Butt)
             )
 
-            // Left & Right horizontal spokes + thumb bolster pads
+            // Sculpted specular top highlight arc, leather stitch seam & inner rim bevel
+            drawArc(
+                color = Color(0x3CFFFFFF),
+                startAngle = 205f,
+                sweepAngle = 130f,
+                useCenter = false,
+                topLeft = Offset(c.x - rimRadius - rimStroke * 0.20f, c.y - rimRadius - rimStroke * 0.20f),
+                size = Size((rimRadius + rimStroke * 0.20f) * 2f, (rimRadius + rimStroke * 0.20f) * 2f),
+                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+            )
+            drawCircle(
+                color = Color(0x3094A3B8),
+                radius = rimRadius,
+                center = c,
+                style = Stroke(width = 0.8.dp.toPx())
+            )
+            drawCircle(
+                color = Color(0xFF0A0C10),
+                radius = rimRadius - rimStroke * 0.48f,
+                center = c,
+                style = Stroke(width = 1.5.dp.toPx())
+            )
+
+            // Sleek coach horizontal spokes (leaving wide open inside view)
             val leftSpoke = Path().apply {
-                moveTo(c.x - rimRadius + rimStroke * 0.2f, c.y - w * 0.08f)
-                lineTo(c.x - w * 0.12f, c.y - w * 0.075f)
-                lineTo(c.x - w * 0.12f, c.y + w * 0.085f)
-                lineTo(c.x - rimRadius + rimStroke * 0.2f, c.y + w * 0.055f)
+                moveTo(c.x - rimRadius + rimStroke * 0.22f, c.y - w * 0.045f)
+                lineTo(c.x - w * 0.10f, c.y - w * 0.052f)
+                lineTo(c.x - w * 0.10f, c.y + w * 0.062f)
+                lineTo(c.x - rimRadius + rimStroke * 0.22f, c.y + w * 0.042f)
                 close()
             }
             val rightSpoke = Path().apply {
-                moveTo(c.x + rimRadius - rimStroke * 0.2f, c.y - w * 0.08f)
-                lineTo(c.x + w * 0.12f, c.y - w * 0.075f)
-                lineTo(c.x + w * 0.12f, c.y + w * 0.085f)
-                lineTo(c.x + rimRadius - rimStroke * 0.2f, c.y + w * 0.055f)
+                moveTo(c.x + rimRadius - rimStroke * 0.22f, c.y - w * 0.045f)
+                lineTo(c.x + w * 0.10f, c.y - w * 0.052f)
+                lineTo(c.x + w * 0.10f, c.y + w * 0.062f)
+                lineTo(c.x + rimRadius - rimStroke * 0.22f, c.y + w * 0.042f)
                 close()
             }
             val spokeBrush = Brush.verticalGradient(listOf(Color(0xFF2D333D), Color(0xFF171B21)))
@@ -683,33 +805,33 @@ internal fun RealisticSteeringWheel(
 
             // Brushed silver V-bezel wrapping the bottom spoke
             val silverBezel = Path().apply {
-                moveTo(c.x - w * 0.17f, c.y + w * 0.06f)
-                lineTo(c.x - w * 0.09f, c.y + rimRadius - rimStroke * 0.25f)
-                lineTo(c.x + w * 0.09f, c.y + rimRadius - rimStroke * 0.25f)
-                lineTo(c.x + w * 0.17f, c.y + w * 0.06f)
-                lineTo(c.x + w * 0.11f, c.y + w * 0.05f)
-                lineTo(c.x + w * 0.055f, c.y + rimRadius - rimStroke * 0.42f)
-                lineTo(c.x - w * 0.055f, c.y + rimRadius - rimStroke * 0.42f)
-                lineTo(c.x - w * 0.11f, c.y + w * 0.05f)
+                moveTo(c.x - w * 0.125f, c.y + w * 0.05f)
+                lineTo(c.x - w * 0.065f, c.y + rimRadius - rimStroke * 0.28f)
+                lineTo(c.x + w * 0.065f, c.y + rimRadius - rimStroke * 0.28f)
+                lineTo(c.x + w * 0.125f, c.y + w * 0.05f)
+                lineTo(c.x + w * 0.075f, c.y + w * 0.042f)
+                lineTo(c.x + w * 0.036f, c.y + rimRadius - rimStroke * 0.44f)
+                lineTo(c.x - w * 0.036f, c.y + rimRadius - rimStroke * 0.44f)
+                lineTo(c.x - w * 0.075f, c.y + w * 0.042f)
                 close()
             }
             drawPath(
                 silverBezel,
                 brush = Brush.linearGradient(
                     colors = listOf(Color(0xFF94A3B8), Color(0xFFE2E8F0), Color(0xFF64748B)),
-                    start = Offset(c.x - w * 0.17f, c.y),
-                    end = Offset(c.x + w * 0.17f, c.y + rimRadius)
+                    start = Offset(c.x - w * 0.13f, c.y),
+                    end = Offset(c.x + w * 0.13f, c.y + rimRadius)
                 )
             )
 
-            // Sculpted center airbag pad
+            // Compact sculpted center horn pad (maximizing open interior wheel space)
             val hubPath = Path().apply {
-                moveTo(c.x - w * 0.16f, c.y - w * 0.11f)
-                quadraticTo(c.x, c.y - w * 0.145f, c.x + w * 0.16f, c.y - w * 0.11f)
-                lineTo(c.x + w * 0.18f, c.y + w * 0.05f)
-                lineTo(c.x + w * 0.10f, c.y + w * 0.165f)
-                quadraticTo(c.x, c.y + w * 0.19f, c.x - w * 0.10f, c.y + w * 0.165f)
-                lineTo(c.x - w * 0.18f, c.y + w * 0.05f)
+                moveTo(c.x - w * 0.125f, c.y - w * 0.088f)
+                quadraticTo(c.x, c.y - w * 0.115f, c.x + w * 0.125f, c.y - w * 0.088f)
+                lineTo(c.x + w * 0.142f, c.y + w * 0.040f)
+                lineTo(c.x + w * 0.080f, c.y + w * 0.130f)
+                quadraticTo(c.x, c.y + w * 0.150f, c.x - w * 0.080f, c.y + w * 0.130f)
+                lineTo(c.x - w * 0.142f, c.y + w * 0.040f)
                 close()
             }
             drawPath(
@@ -718,23 +840,29 @@ internal fun RealisticSteeringWheel(
             )
             drawPath(hubPath, color = Color(0x40FFFFFF), style = Stroke(width = 1.dp.toPx()))
 
-            // Spoke cruise/media button accents (left & right)
+            // Subtle horn emblem bar & spoke control pods
+            drawLine(
+                color = Color(0x55CBD5E1),
+                start = Offset(c.x - w * 0.055f, c.y + w * 0.01f),
+                end = Offset(c.x + w * 0.055f, c.y + w * 0.01f),
+                strokeWidth = 1.6.dp.toPx(),
+                cap = StrokeCap.Round
+            )
             drawRoundRect(
                 color = Color(0xFF111419),
-                topLeft = Offset(c.x - w * 0.28f, c.y - w * 0.045f),
-                size = Size(w * 0.095f, w * 0.09f),
+                topLeft = Offset(c.x - w * 0.24f, c.y - w * 0.032f),
+                size = Size(w * 0.085f, w * 0.070f),
                 cornerRadius = CornerRadius(4f, 4f)
             )
             drawRoundRect(
                 color = Color(0xFF111419),
-                topLeft = Offset(c.x + w * 0.185f, c.y - w * 0.045f),
-                size = Size(w * 0.095f, w * 0.09f),
+                topLeft = Offset(c.x + w * 0.155f, c.y - w * 0.032f),
+                size = Size(w * 0.085f, w * 0.070f),
                 cornerRadius = CornerRadius(4f, 4f)
             )
-            // Tiny white markings on spoke control pods
-            for (dy in floatArrayOf(-0.02f, 0.02f)) {
-                drawCircle(Color(0x99FFFFFF), radius = 1.2.dp.toPx(), center = Offset(c.x - w * 0.232f, c.y + w * dy))
-                drawCircle(Color(0x99FFFFFF), radius = 1.2.dp.toPx(), center = Offset(c.x + w * 0.232f, c.y + w * dy))
+            for (dy in floatArrayOf(-0.014f, 0.014f)) {
+                drawCircle(Color(0x99FFFFFF), radius = 1.1.dp.toPx(), center = Offset(c.x - w * 0.198f, c.y + w * dy))
+                drawCircle(Color(0x99FFFFFF), radius = 1.1.dp.toPx(), center = Offset(c.x + w * 0.198f, c.y + w * dy))
             }
         }
     }
@@ -970,7 +1098,7 @@ private fun GearCell(
 
 @Composable
 internal fun KeralaGpsMinimap(
-    state: SimUiState,
+    stateProvider: () -> SimUiState,
     width: Dp,
     height: Dp,
     onZoomIn: () -> Unit,
@@ -1030,6 +1158,7 @@ internal fun KeralaGpsMinimap(
                 .clickable(onClick = onTapMap)
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
+                val state = stateProvider()
                 val w = size.width
                 val h = size.height
                 val cx = w * 0.50f
@@ -1166,127 +1295,111 @@ internal fun BottomSpeedFuelBar(
         else -> "GEAR ${displayGearNumber.coerceIn(1, 6)}"
     }
 
-    Column(
+    Row(
         modifier = modifier
-            .width(342.dp)
-            .shadow(4.dp, RoundedCornerShape(12.dp), clip = false)
-            .clip(RoundedCornerShape(12.dp))
+            .shadow(4.dp, RoundedCornerShape(10.dp), clip = false)
+            .clip(RoundedCornerShape(10.dp))
             .background(Brush.verticalGradient(listOf(GlassTopColor, GlassBottomColor)))
-            .border(1.1.dp, GlassBorderColor, RoundedCornerShape(12.dp))
-            .padding(horizontal = 14.dp, vertical = 7.dp)
+            .border(1.0.dp, GlassBorderColor, RoundedCornerShape(10.dp))
+            .padding(horizontal = 11.dp, vertical = 5.dp)
             .testTag("speedometer_cluster"),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Top row: Speedometer dial + RPM | Digital Speed "0 km/h" | Gear Indicator "GEAR 1"
+        // Speed (km/h) first
         Row(
-            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                Canvas(modifier = Modifier.size(20.dp)) {
-                    drawSpeedometerDialIcon(Color.White)
-                }
-                Column(horizontalAlignment = Alignment.Start) {
-                    Text(
-                        text = rpm.toString(),
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.testTag("rpm_value_text")
-                    )
-                    Text(
-                        text = "RPM",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+            Canvas(modifier = Modifier.size(15.dp)) {
+                drawSpeedometerDialIcon(Color.White)
             }
-
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = speedInt.toString(),
                     color = Color.White,
-                    fontSize = 27.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.testTag("speed_value_text")
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(3.dp))
                 Text(
                     text = "km/h",
                     color = Color(0xFFE2E8F0),
-                    fontSize = 13.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0x660F172A))
-                    .border(0.9.dp, ActiveOrangeStart.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                    .testTag("gear_indication_text"),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = gearText,
-                    color = ActiveOrangeStart,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold
+                    modifier = Modifier.padding(bottom = 2.dp)
                 )
             }
         }
 
-        // Bottom row: Fuel icon + orange fuel progress bar + Fuel icon + "67 L"
+        // Then RPM
         Row(
-            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Text(
+                text = "$rpm",
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.testTag("rpm_value_text")
+            )
+            Text(
+                text = "RPM",
+                color = Color(0xFF94A3B8),
+                fontSize = 8.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        // Compact Gear Pill
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(5.dp))
+                .background(Color(0x660F172A))
+                .border(0.8.dp, ActiveOrangeStart.copy(alpha = 0.65f), RoundedCornerShape(5.dp))
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+                .testTag("gear_indication_text"),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = gearText,
+                color = ActiveOrangeStart,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+        }
+
+        // Compact Fuel Bar + Liters
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Canvas(modifier = Modifier.size(13.dp)) {
+                drawFuelPumpIcon(Color.White)
+            }
+            Box(
+                modifier = Modifier
+                    .width(44.dp)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0xFF4B5563))
             ) {
-                Canvas(modifier = Modifier.size(16.dp)) {
-                    drawFuelPumpIcon(Color.White)
-                }
                 Box(
                     modifier = Modifier
-                        .width(142.dp)
-                        .height(9.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFF4B5563))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(fuelFrac)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFFD97B18))
-                    )
-                }
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Canvas(modifier = Modifier.size(16.dp)) {
-                    drawFuelPumpIcon(Color.White)
-                }
-                Text(
-                    text = "${fuelLiters.roundToInt()} L",
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium
+                        .fillMaxWidth(fuelFrac)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color(0xFFD97B18))
                 )
             }
+            Text(
+                text = "${fuelLiters.roundToInt()} L",
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }

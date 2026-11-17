@@ -28,6 +28,9 @@ import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -40,7 +43,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bharatbussim.game.model.CameraViewMode
+import com.bharatbussim.game.model.HeadlightBeamMode
 import com.bharatbussim.game.model.TransmissionGear
+import com.bharatbussim.game.model.WiperSpeedMode
 import com.bharatbussim.game.ui.theme.HudAmber
 import com.bharatbussim.game.ui.theme.HudCyan
 import com.bharatbussim.game.ui.theme.HudEmerald
@@ -51,18 +57,44 @@ import com.bharatbussim.game.viewmodel.SimUiState
 import com.bharatbussim.game.viewmodel.ThrissurSimViewModel
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @Composable
 fun BusDashboardHudOverlay(
-    state: SimUiState,
+    stateProvider: () -> SimUiState,
     viewModel: ThrissurSimViewModel,
     modifier: Modifier = Modifier
 ) {
-    if (state.showRouteModal) {
+    val showRouteModal by remember { derivedStateOf { stateProvider().showRouteModal } }
+    val isPaused by remember { derivedStateOf { stateProvider().isPaused } }
+    val hudHidden by remember { derivedStateOf { stateProvider().hudHidden } }
+    val cameraMode by remember { derivedStateOf { stateProvider().cameraMode } }
+    val hornActive by remember { derivedStateOf { stateProvider().hornActive } }
+    val hazardsOn by remember { derivedStateOf { stateProvider().hazardsOn } }
+    val turnLeftOn by remember { derivedStateOf { stateProvider().turnLeftOn } }
+    val turnRightOn by remember { derivedStateOf { stateProvider().turnRightOn } }
+    val blinkerPhase by remember { derivedStateOf { stateProvider().blinkerPhase } }
+    val wiperMode by remember { derivedStateOf { stateProvider().wiperMode } }
+    val headlightMode by remember { derivedStateOf { stateProvider().headlightMode } }
+    val doorsOpen by remember { derivedStateOf { stateProvider().doorsOpen } }
+    val isEngineCranking by remember { derivedStateOf { stateProvider().isEngineCranking } }
+    val engineRunning by remember { derivedStateOf { stateProvider().engineRunning } }
+    val isParkBrakeActive by remember { derivedStateOf { stateProvider().isParkBrakeActive } }
+    val gear by remember { derivedStateOf { stateProvider().gear } }
+    val brakeActive by remember { derivedStateOf { stateProvider().brakeInput > 0.05f } }
+    val throttleActive by remember { derivedStateOf { stateProvider().throttleInput > 0.05f } }
+    val engineStartPromptVisible by remember { derivedStateOf { stateProvider().engineStartPromptVisible } }
+
+    val speedInt by remember { derivedStateOf { stateProvider().speedKmh.roundToInt().coerceIn(0, 180) } }
+    val rpmBucket by remember { derivedStateOf { (stateProvider().engineRpm / 25) * 25 } }
+    val displayGearNumber by remember { derivedStateOf { stateProvider().displayGearNumber } }
+    val fuelInt by remember { derivedStateOf { stateProvider().fuelLiters.roundToInt() } }
+
+    if (showRouteModal) {
         BackHandler {
             viewModel.setRouteModalVisible(false)
         }
-    } else if (state.isPaused) {
+    } else if (isPaused) {
         BackHandler {
             viewModel.setPaused(false)
         }
@@ -72,36 +104,38 @@ fun BusDashboardHudOverlay(
         modifier = modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         // Adaptive vertical scale so everything fits crisply from 340dp phones to large tablets
+        val availW = maxWidth
         val availH = maxHeight
         val scale = (availH / 410.dp).coerceIn(0.80f, 1.15f)
+        val isCockpit = cameraMode == CameraViewMode.Cockpit
 
-        val topBtnSize = (46.dp * scale)
-        val gridBtnW = (54.dp * scale)
-        val gridBtnH = (44.dp * scale)
-        val gridGap = (6.dp * scale)
-        val wheelSize = (156.dp * scale)
+        val topBtnSize = (42.dp * scale)
+        val gridBtnW = (46.dp * scale)
+        val gridBtnH = (36.dp * scale)
+        val gridGap = (4.5.dp * scale)
+        val wheelSize = (196.dp * scale)
 
-        val mapW = (182.dp * scale)
-        val mapH = (100.dp * scale)
+        val mapW = (176.dp * scale)
+        val mapH = (98.dp * scale)
 
-        val parkBtnW = (56.dp * scale)
-        val parkBtnH = (48.dp * scale)
-        val shifterW = (56.dp * scale)
-        val shifterH = (96.dp * scale)
+        val parkBtnW = (54.dp * scale)
+        val parkBtnH = (46.dp * scale)
+        val shifterW = (54.dp * scale)
+        val shifterH = (92.dp * scale)
 
         val brakeW = (76.dp * scale)
         val brakeH = (86.dp * scale)
         val gasW = (62.dp * scale)
         val gasH = (122.dp * scale)
 
-        if (state.hudHidden) {
-            // Minimal restore button in top-left when HUD is hidden
+        if (hudHidden) {
+            // Minimal restore button in top-right when HUD is hidden
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopStart)
+                    .align(Alignment.TopEnd)
                     .alpha(0.55f)
             ) {
                 HudGlassSquareButton(
@@ -116,150 +150,96 @@ fun BusDashboardHudOverlay(
             }
         } else {
             // ==========================================
-            // LEFT COLUMN: PAUSE + EYE | 3-ROW ICON GRID | STEERING WHEEL
+            // LEFT SIDE: NARROW EDGE STRIP (PAUSE, HORN, CAMERA, HAZARD + INDICATORS)
+            // Leaves the Left Exterior Mirror (0.088w .. 0.168w) 100% Clear!
             // ==========================================
             Column(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .fillMaxHeight(),
-                verticalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.align(Alignment.TopStart),
+                verticalArrangement = Arrangement.spacedBy(gridGap),
                 horizontalAlignment = Alignment.Start
             ) {
-                // Top-Left: Pause + Eye-Slash
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                // Single narrow vertical column on far-left edge: Pause, Horn, Camera, Hazard
+                HudGlassSquareButton(
+                    width = gridBtnW,
+                    height = gridBtnH,
+                    cornerRadius = 10.dp,
+                    active = isPaused,
+                    contentDesc = "Pause Menu",
+                    testTag = "pause_button",
+                    onClick = { viewModel.togglePause() }
+                ) { tint -> drawPauseIcon(tint) }
+
+                HudGlassSquareButton(
+                    width = gridBtnW,
+                    height = gridBtnH,
+                    cornerRadius = 10.dp,
+                    active = hornActive,
+                    activeTint = ActiveOrangeStart,
+                    contentDesc = "Air Horn",
+                    testTag = "horn_button",
+                    onClick = { viewModel.triggerAirHorn() }
+                ) { tint -> drawBugleHornIcon(tint) }
+
+                HudGlassSquareButton(
+                    width = gridBtnW,
+                    height = gridBtnH,
+                    cornerRadius = 10.dp,
+                    active = false,
+                    contentDesc = "Switch Camera",
+                    testTag = "camera_cycle_button",
+                    onClick = { viewModel.cycleCameraMode() }
+                ) { tint -> drawCameraIcon(tint) }
+
+                val hazardLit = hazardsOn && blinkerPhase
+                HudGlassSquareButton(
+                    width = gridBtnW,
+                    height = gridBtnH,
+                    cornerRadius = 10.dp,
+                    active = hazardsOn,
+                    activeTint = if (hazardLit) ActiveRedGlow else ActiveOrangeStart,
+                    contentDesc = "Hazard Lights",
+                    testTag = "hazard_toggle_button",
+                    onClick = { viewModel.toggleHazards() }
+                ) { tint -> drawHazardTriangleIcon(tint) }
+
+                // Left & Right Turn Indicators positioned below the Left Mirror height (just above Steering Wheel)
+                Row(horizontalArrangement = Arrangement.spacedBy(gridGap)) {
+                    val leftLit = (turnLeftOn || hazardsOn) && blinkerPhase
                     HudGlassSquareButton(
-                        width = topBtnSize,
-                        height = topBtnSize,
-                        cornerRadius = 11.dp,
-                        active = state.isPaused,
-                        contentDesc = "Pause Menu",
-                        testTag = "pause_button",
-                        onClick = { viewModel.togglePause() }
-                    ) { tint -> drawPauseIcon(tint) }
+                        width = gridBtnW,
+                        height = gridBtnH,
+                        cornerRadius = 10.dp,
+                        active = leftLit,
+                        activeTint = ActiveOrangeStart,
+                        contentDesc = "Left Indicator",
+                        testTag = "turn_left_button",
+                        onClick = { viewModel.toggleTurnLeft() }
+                    ) { tint -> drawIndicatorArrowIcon(tint, isLeft = true) }
 
+                    val rightLit = (turnRightOn || hazardsOn) && blinkerPhase
                     HudGlassSquareButton(
-                        width = topBtnSize,
-                        height = topBtnSize,
-                        cornerRadius = 11.dp,
-                        active = false,
-                        contentDesc = "Hide Controls",
-                        testTag = "toggle_hud_button",
-                        onClick = { viewModel.toggleHudHidden() }
-                    ) { tint -> drawEyeSlashIcon(tint) }
+                        width = gridBtnW,
+                        height = gridBtnH,
+                        cornerRadius = 10.dp,
+                        active = rightLit,
+                        activeTint = ActiveOrangeStart,
+                        contentDesc = "Right Indicator",
+                        testTag = "turn_right_button",
+                        onClick = { viewModel.toggleTurnRight() }
+                    ) { tint -> drawIndicatorArrowIcon(tint, isLeft = false) }
                 }
+            }
 
-                // Mid-Left 8-Button Cluster (3 + 3 + 2)
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(gridGap),
-                    horizontalAlignment = Alignment.Start
-                ) {
-                    // Row 1: Camera, Wiper, High Beam
-                    Row(horizontalArrangement = Arrangement.spacedBy(gridGap)) {
-                        HudGlassSquareButton(
-                            width = gridBtnW,
-                            height = gridBtnH,
-                            cornerRadius = 10.dp,
-                            active = false,
-                            contentDesc = "Switch Camera",
-                            testTag = "camera_cycle_button",
-                            onClick = { viewModel.cycleCameraMode() }
-                        ) { tint -> drawCameraIcon(tint) }
-
-                        HudGlassSquareButton(
-                            width = gridBtnW,
-                            height = gridBtnH,
-                            cornerRadius = 10.dp,
-                            active = state.wipersOn,
-                            activeTint = ActiveOrangeStart,
-                            contentDesc = "Windshield Wipers",
-                            testTag = "wiper_toggle_button",
-                            onClick = { viewModel.toggleWipers() }
-                        ) { tint -> drawWiperIcon(tint) }
-
-                        HudGlassSquareButton(
-                            width = gridBtnW,
-                            height = gridBtnH,
-                            cornerRadius = 10.dp,
-                            active = state.headlightsOn,
-                            activeTint = ActiveOrangeStart,
-                            contentDesc = "Headlights",
-                            testTag = "beam_toggle_button",
-                            onClick = { viewModel.toggleHeadlights() }
-                        ) { tint -> drawHighBeamIcon(tint) }
-                    }
-
-                    // Row 2: Hazard Warning, Air Horn, Single Door
-                    Row(horizontalArrangement = Arrangement.spacedBy(gridGap)) {
-                        val hazardLit = state.hazardsOn && state.blinkerPhase
-                        HudGlassSquareButton(
-                            width = gridBtnW,
-                            height = gridBtnH,
-                            cornerRadius = 10.dp,
-                            active = state.hazardsOn,
-                            activeTint = if (hazardLit) ActiveRedGlow else ActiveOrangeStart,
-                            contentDesc = "Hazard Lights",
-                            testTag = "hazard_toggle_button",
-                            onClick = { viewModel.toggleHazards() }
-                        ) { tint -> drawHazardTriangleIcon(tint) }
-
-                        HudGlassSquareButton(
-                            width = gridBtnW,
-                            height = gridBtnH,
-                            cornerRadius = 10.dp,
-                            active = state.hornActive,
-                            activeTint = ActiveOrangeStart,
-                            contentDesc = "Air Horn",
-                            testTag = "horn_button",
-                            onClick = { viewModel.triggerAirHorn() }
-                        ) { tint -> drawBugleHornIcon(tint) }
-
-                        HudGlassSquareButton(
-                            width = gridBtnW,
-                            height = gridBtnH,
-                            cornerRadius = 10.dp,
-                            active = state.doorsOpen,
-                            activeTint = ActiveOrangeStart,
-                            contentDesc = "Passenger Door",
-                            testTag = "door_toggle_button",
-                            onClick = { viewModel.toggleDoors() }
-                        ) { tint -> drawSingleDoorIcon(tint) }
-                    }
-
-                    // Row 3: Left Indicator, Right Indicator
-                    Row(horizontalArrangement = Arrangement.spacedBy(gridGap)) {
-                        val leftLit = (state.turnLeftOn || state.hazardsOn) && state.blinkerPhase
-                        HudGlassSquareButton(
-                            width = gridBtnW,
-                            height = gridBtnH,
-                            cornerRadius = 10.dp,
-                            active = leftLit,
-                            activeTint = ActiveOrangeStart,
-                            contentDesc = "Left Indicator",
-                            testTag = "turn_left_button",
-                            onClick = { viewModel.toggleTurnLeft() }
-                        ) { tint -> drawIndicatorArrowIcon(tint, isLeft = true) }
-
-                        val rightLit = (state.turnRightOn || state.hazardsOn) && state.blinkerPhase
-                        HudGlassSquareButton(
-                            width = gridBtnW,
-                            height = gridBtnH,
-                            cornerRadius = 10.dp,
-                            active = rightLit,
-                            activeTint = ActiveOrangeStart,
-                            contentDesc = "Right Indicator",
-                            testTag = "turn_right_button",
-                            onClick = { viewModel.toggleTurnRight() }
-                        ) { tint -> drawIndicatorArrowIcon(tint, isLeft = false) }
-                    }
-                }
-
-                // Bottom-Left: Realistic 3D-Styled Steering Wheel
+            // Bottom-Left: Large Full-Proportion Realistic Bus Steering Wheel
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 2.dp)
+            ) {
                 RealisticSteeringWheel(
-                    wheelAngleDeg = state.steeringWheelAngleDeg,
+                    wheelAngleProvider = { stateProvider().steeringWheelAngleDeg },
                     sizeDp = wheelSize,
+                    onSteerGrab = { viewModel.grabSteeringWheel() },
                     onSteerDeltaDeg = { viewModel.steerByDeltaDeg(it) },
                     onSteerRelease = { viewModel.releaseSteeringWheel() },
                     onHornClick = { viewModel.triggerSteeringHorn() }
@@ -267,22 +247,34 @@ fun BusDashboardHudOverlay(
             }
 
             // ==========================================
-            // BOTTOM-CENTER: SPEEDOMETER, RPM, GEAR & FUEL PILL
+            // BOTTOM-CENTER: SPEEDOMETER, RPM, GEAR & FUEL PILL (ONLY IN EXTERIOR VIEWS)
+            // In Cockpit view, Speed & Fuel are integrated directly inside the 3D Instrument Cluster!
             // ==========================================
-            BottomSpeedFuelBar(
-                speedKmh = state.speedKmh,
-                rpm = state.engineRpm,
-                gear = state.gear,
-                isParkBrakeActive = state.isParkBrakeActive,
-                displayGearNumber = state.displayGearNumber,
-                fuelLiters = state.fuelLiters,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 2.dp)
-            )
+            if (!isCockpit) {
+                BottomSpeedFuelBar(
+                    speedKmh = speedInt.toFloat(),
+                    rpm = rpmBucket,
+                    gear = gear,
+                    isParkBrakeActive = isParkBrakeActive,
+                    displayGearNumber = displayGearNumber,
+                    fuelLiters = fuelInt.toFloat(),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 2.dp)
+                )
+            } else {
+                // Clickable hotspot over the Cockpit Dashboard's built-in GPS Navigation screen (0.284w..0.402w, 0.708h..0.854h)
+                Box(
+                    modifier = Modifier
+                        .padding(start = availW * 0.280f, top = availH * 0.704f)
+                        .size(width = availW * 0.124f, height = availH * 0.152f)
+                        .clickable { viewModel.setRouteModalVisible(true) }
+                        .testTag("radar_minimap_box")
+                )
+            }
 
             // ==========================================
-            // RIGHT COLUMN: KERALA MINIMAP | ((P)) + D/R | BRAKE & GAS PEDALS
+            // RIGHT COLUMN: MAP-SIDE AUXILIARY BUTTONS + MINIMAP (EXTERIOR ONLY) | ((P)) + D/R | PEDALS
             // ==========================================
             Column(
                 modifier = Modifier
@@ -291,34 +283,142 @@ fun BusDashboardHudOverlay(
                 verticalArrangement = Arrangement.SpaceBetween,
                 horizontalAlignment = Alignment.End
             ) {
-                // Top-Right: "Kerala" GPS Minimap
-                KeralaGpsMinimap(
-                    state = state,
-                    width = mapW,
-                    height = mapH,
-                    onZoomIn = { viewModel.adjustMinimapZoom(0.35f) },
-                    onZoomOut = { viewModel.adjustMinimapZoom(-0.35f) },
-                    onTapMap = { viewModel.setRouteModalVisible(true) }
-                )
+                // Top-Right: Remaining Auxiliary Buttons (Wiper, Headlights, Door, Hide HUD) + Minimap (when not in Cockpit)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp * scale),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    // 2x2 Compact Cluster of Remaining Controls moved to the Map's side
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(gridGap),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(gridGap)) {
+                            val wiperTint = when (wiperMode) {
+                                WiperSpeedMode.Low -> Color(0xFFFBBF24)
+                                WiperSpeedMode.Mid -> ActiveOrangeStart
+                                WiperSpeedMode.High -> Color(0xFFFB7185)
+                                WiperSpeedMode.Off -> ActiveOrangeStart
+                            }
+                            HudGlassSquareButton(
+                                width = gridBtnW,
+                                height = gridBtnH,
+                                cornerRadius = 10.dp,
+                                active = wiperMode != WiperSpeedMode.Off,
+                                activeTint = wiperTint,
+                                badgeText = if (wiperMode != WiperSpeedMode.Off) wiperMode.label else null,
+                                contentDesc = "Windshield Wipers (${wiperMode.label})",
+                                testTag = "wiper_toggle_button",
+                                onClick = { viewModel.toggleWipers() }
+                            ) { tint -> drawWiperIcon(tint) }
 
-                // Mid-Right: Parking Brake ((P)) + D/R Gear Shifter
+                            val beamTint = when (headlightMode) {
+                                HeadlightBeamMode.Low -> Color(0xFF22C55E)
+                                HeadlightBeamMode.High -> Color(0xFF38BDF8)
+                                HeadlightBeamMode.Off -> ActiveOrangeStart
+                            }
+                            HudGlassSquareButton(
+                                width = gridBtnW,
+                                height = gridBtnH,
+                                cornerRadius = 10.dp,
+                                active = headlightMode != HeadlightBeamMode.Off,
+                                activeTint = beamTint,
+                                badgeText = if (headlightMode != HeadlightBeamMode.Off) headlightMode.label else null,
+                                contentDesc = "Headlights (${headlightMode.label})",
+                                testTag = "beam_toggle_button",
+                                onClick = { viewModel.toggleHeadlights() }
+                            ) { tint ->
+                                if (headlightMode == HeadlightBeamMode.High) {
+                                    drawHighBeamIcon(tint)
+                                } else {
+                                    drawLowBeamIcon(tint)
+                                }
+                            }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(gridGap)) {
+                            HudGlassSquareButton(
+                                width = gridBtnW,
+                                height = gridBtnH,
+                                cornerRadius = 10.dp,
+                                active = doorsOpen,
+                                activeTint = ActiveOrangeStart,
+                                contentDesc = "Passenger Door",
+                                testTag = "door_toggle_button",
+                                onClick = { viewModel.toggleDoors() }
+                            ) { tint -> drawSingleDoorIcon(tint) }
+
+                            HudGlassSquareButton(
+                                width = gridBtnW,
+                                height = gridBtnH,
+                                cornerRadius = 10.dp,
+                                active = false,
+                                contentDesc = "Hide Controls",
+                                testTag = "toggle_hud_button",
+                                onClick = { viewModel.toggleHudHidden() }
+                            ) { tint -> drawEyeSlashIcon(tint) }
+                        }
+                    }
+
+                    // Floating GPS Minimap is only shown in Exterior (Chase / Orbit) views;
+                    // in Cockpit view, the live map is inside the 3D Cockpit Instrument Cluster / Dashboard!
+                    if (!isCockpit) {
+                        KeralaGpsMinimap(
+                            stateProvider = stateProvider,
+                            width = mapW,
+                            height = mapH,
+                            onZoomIn = { viewModel.adjustMinimapZoom(0.35f) },
+                            onZoomOut = { viewModel.adjustMinimapZoom(-0.35f) },
+                            onTapMap = { viewModel.setRouteModalVisible(true) }
+                        )
+                    }
+                }
+
+                // Mid-Right: Engine Start/Stop + Parking Brake ((P)) + D/R Gear Shifter
                 Column(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(8.dp * scale)
                 ) {
-                    HudGlassSquareButton(
-                        width = parkBtnW,
-                        height = parkBtnH,
-                        cornerRadius = 11.dp,
-                        active = state.isParkBrakeActive,
-                        activeTint = ActiveRedGlow,
-                        contentDesc = "Parking Brake",
-                        testTag = "park_brake_button",
-                        onClick = { viewModel.toggleParkBrake() }
-                    ) { tint -> drawParkBrakeSymbol(tint) }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(gridGap),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val engineTint = when {
+                            isEngineCranking -> ActiveOrangeStart
+                            engineRunning -> Color(0xFF22C55E)
+                            else -> ActiveOrangeStart
+                        }
+                        val engineBadge = when {
+                            isEngineCranking -> "CRANK"
+                            engineRunning -> "ON"
+                            else -> "START"
+                        }
+                        HudGlassSquareButton(
+                            width = parkBtnW,
+                            height = parkBtnH,
+                            cornerRadius = 11.dp,
+                            active = engineRunning || isEngineCranking,
+                            activeTint = engineTint,
+                            badgeText = engineBadge,
+                            contentDesc = if (engineRunning) "Stop Engine" else "Start Engine",
+                            testTag = "engine_start_button",
+                            onClick = { viewModel.toggleEngineStart() }
+                        ) { tint -> drawEngineStartIcon(tint) }
+
+                        HudGlassSquareButton(
+                            width = parkBtnW,
+                            height = parkBtnH,
+                            cornerRadius = 11.dp,
+                            active = isParkBrakeActive,
+                            activeTint = ActiveRedGlow,
+                            contentDesc = "Parking Brake",
+                            testTag = "park_brake_button",
+                            onClick = { viewModel.toggleParkBrake() }
+                        ) { tint -> drawParkBrakeSymbol(tint) }
+                    }
 
                     RightGearShifterPill(
-                        selectedGear = state.gear,
+                        selectedGear = gear,
                         width = shifterW,
                         height = shifterH,
                         onSelectGear = { viewModel.selectGear(it) }
@@ -332,7 +432,7 @@ fun BusDashboardHudOverlay(
                 ) {
                     RealisticMetalPedal(
                         isGasPedal = false,
-                        active = state.brakeInput > 0.05f,
+                        active = brakeActive,
                         width = brakeW,
                         height = brakeH,
                         testTag = "brake_pedal_button",
@@ -341,11 +441,33 @@ fun BusDashboardHudOverlay(
 
                     RealisticMetalPedal(
                         isGasPedal = true,
-                        active = state.throttleInput > 0.05f,
+                        active = throttleActive,
                         width = gasW,
                         height = gasH,
                         testTag = "gas_pedal_button",
                         onPressChanged = { viewModel.setThrottle(it) }
+                    )
+                }
+            }
+
+            if (engineStartPromptVisible) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 6.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xDF181E29))
+                        .border(1.2.dp, ActiveOrangeStart, RoundedCornerShape(999.dp))
+                        .clickable { viewModel.toggleEngineStart() }
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                        .testTag("engine_start_prompt_pill")
+                ) {
+                    Text(
+                        text = "ENGINE OFF • TAP START BUTTON",
+                        color = ActiveOrangeStart,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.6.sp
                     )
                 }
             }
@@ -354,9 +476,9 @@ fun BusDashboardHudOverlay(
         // ==========================================
         // MODAL: PAUSE & QUICK ACTIONS MENU
         // ==========================================
-        if (state.isPaused && !state.showRouteModal) {
+        if (isPaused && !showRouteModal) {
             PauseMenuModal(
-                state = state,
+                state = stateProvider(),
                 onResume = { viewModel.setPaused(false) },
                 onOpenRoutes = {
                     viewModel.setPaused(false)
@@ -374,9 +496,9 @@ fun BusDashboardHudOverlay(
         // ==========================================
         // MODAL: THRISSUR REALISTIC OSM & BLENDER ROUTES INSPECTOR
         // ==========================================
-        if (state.showRouteModal) {
+        if (showRouteModal) {
             ThrissurRoutesInspectorModal(
-                state = state,
+                state = stateProvider(),
                 onSelectRoute = { viewModel.teleportToRoad(it) },
                 onSelectLandmark = { viewModel.teleportToLandmark(it) },
                 onClose = { viewModel.setRouteModalVisible(false) }

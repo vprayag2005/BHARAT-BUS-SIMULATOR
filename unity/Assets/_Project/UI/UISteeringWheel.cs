@@ -12,11 +12,17 @@ namespace BharatBusSim.UI
         [Tooltip("Wheel visual RectTransform that rotates")]
         public RectTransform wheelGraphic;
 
-        [Tooltip("Maximum steering rotation angle in degrees (e.g. 450° for 1.25 turns, or 180° for direct steering)")]
-        [SerializeField] private float maxSteerAngle = 450f;
+        [Tooltip("Maximum steering rotation angle in degrees (540° for 1.5 turns each way, 3.0 turns lock-to-lock)")]
+        [SerializeField] private float maxSteerAngle = 540f;
 
         [Tooltip("Speed in degrees per second at which wheel auto-centers when released")]
-        [SerializeField] private float centerReturnSpeed = 600f;
+        [SerializeField] private float centerReturnSpeed = 540f;
+
+        [Tooltip("Smoothing speed when tracking touch drag rotation (1/s)")]
+        [SerializeField] private float dragLerpSpeed = 18f;
+
+        [Tooltip("Easing rate when auto-centering after release (1/s)")]
+        [SerializeField] private float centerReturnEaseSpeed = 6f;
 
         [Tooltip("Deadzone radius around center in screen pixels to avoid erratic jumps")]
         [SerializeField] private float deadzoneRadius = 15f;
@@ -29,6 +35,7 @@ namespace BharatBusSim.UI
         private Camera _uiCamera;
         private Vector2 _wheelCenterScreen;
         private float _previousDragAngle;
+        private float _targetAngle;
         private int _activePointerId = -1;
 
         private void Awake()
@@ -43,20 +50,27 @@ namespace BharatBusSim.UI
 
         private void Update()
         {
+            float dt = Time.unscaledDeltaTime;
             if (!IsBeingControlled)
             {
-                // Auto-center spring
-                if (Mathf.Abs(CurrentAngle) > 0.01f)
+                // Smooth hydraulic ease-out auto-center toward 0°
+                float easeT = 1f - Mathf.Exp(-centerReturnEaseSpeed * dt);
+                float easedTarget = Mathf.Lerp(_targetAngle, 0f, easeT);
+                _targetAngle = Mathf.MoveTowards(_targetAngle, easedTarget, centerReturnSpeed * dt);
+                if (Mathf.Abs(_targetAngle) < 0.05f)
                 {
-                    CurrentAngle = Mathf.MoveTowards(CurrentAngle, 0f, centerReturnSpeed * Time.unscaledDeltaTime);
-                    ApplyWheelAngle(CurrentAngle);
-                }
-                else
-                {
-                    CurrentAngle = 0f;
-                    ApplyWheelAngle(0f);
+                    _targetAngle = 0f;
                 }
             }
+
+            float lerpRate = IsBeingControlled ? dragLerpSpeed : centerReturnEaseSpeed * 1.8f;
+            float t = 1f - Mathf.Exp(-lerpRate * dt);
+            CurrentAngle = Mathf.Lerp(CurrentAngle, _targetAngle, t);
+            if (!IsBeingControlled && Mathf.Abs(_targetAngle) < 0.01f && Mathf.Abs(CurrentAngle) < 0.05f)
+            {
+                CurrentAngle = 0f;
+            }
+            ApplyWheelAngle(CurrentAngle);
         }
 
         public void OnPointerDown(PointerEventData eventData)
@@ -65,6 +79,7 @@ namespace BharatBusSim.UI
 
             _activePointerId = eventData.pointerId;
             IsBeingControlled = true;
+            _targetAngle = CurrentAngle;
             CalculateWheelCenter();
 
             Vector2 dir = eventData.position - _wheelCenterScreen;
@@ -85,10 +100,8 @@ namespace BharatBusSim.UI
             float deltaAngle = Mathf.DeltaAngle(_previousDragAngle, currentTouchAngle);
 
             // Invert delta because clockwise touch drag rotates wheel to the right (+Angle in our coord)
-            CurrentAngle = Mathf.Clamp(CurrentAngle - deltaAngle, -maxSteerAngle, maxSteerAngle);
+            _targetAngle = Mathf.Clamp(_targetAngle - deltaAngle, -maxSteerAngle, maxSteerAngle);
             _previousDragAngle = currentTouchAngle;
-
-            ApplyWheelAngle(CurrentAngle);
         }
 
         public void OnPointerUp(PointerEventData eventData)
@@ -138,6 +151,7 @@ namespace BharatBusSim.UI
         {
             _activePointerId = -1;
             IsBeingControlled = false;
+            _targetAngle = 0f;
             CurrentAngle = 0f;
             ApplyWheelAngle(0f);
         }

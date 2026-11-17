@@ -28,25 +28,31 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             BharatBusSimTheme {
-                val uiState by simViewModel.uiState.collectAsState()
+                val uiStateState = simViewModel.uiState.collectAsState()
 
                 LaunchedEffect(Unit) {
                     var lastNanos = withFrameNanos { it }
                     while (true) {
                         val now = withFrameNanos { it }
-                        val dt = ((now - lastNanos) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+                        val dt = ((now - lastNanos) / 1_000_000_000f).coerceIn(0.001f, 0.08f)
                         lastNanos = now
-                        simViewModel.stepPhysics(dt)
+                        if (dt > 0.036f) {
+                            val halfDt = dt * 0.5f
+                            simViewModel.stepPhysics(halfDt)
+                            simViewModel.stepPhysics(halfDt)
+                        } else {
+                            simViewModel.stepPhysics(dt)
+                        }
                     }
                 }
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     Thrissur3DRoadViewport(
-                        state = uiState,
+                        stateProvider = { uiStateState.value },
                         onOrbitDrag = { dYaw, dPitch -> simViewModel.orbitCamera(dYaw, dPitch) }
                     )
                     BusDashboardHudOverlay(
-                        state = uiState,
+                        stateProvider = { uiStateState.value },
                         viewModel = simViewModel
                     )
                 }
