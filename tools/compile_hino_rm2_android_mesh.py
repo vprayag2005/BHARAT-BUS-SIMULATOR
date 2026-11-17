@@ -20,9 +20,9 @@ from collections import Counter, defaultdict, deque
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 USER_DOWNLOAD_OBJ = r"C:\Users\praya\Downloads\Hino+rm+2 (1).obj"
-OBJ_PATH = os.path.join(REPO_ROOT, "unity/Assets/_Project/Vehicles/Models/Hino/HINO_RM2.obj")
+OBJ_PATH = os.path.join(REPO_ROOT, "art_src/vehicles/hino_rm2/models/HINO_RM2.obj")
 TMP_OBJ_PATH = "/tmp/HINO_RM2_real.obj"
-WHEEL_DIR = os.path.join(REPO_ROOT, "unity/Assets/_Project/Vehicles/Models/Hino")
+WHEEL_DIR = os.path.join(REPO_ROOT, "art_src/vehicles/hino_rm2/models")
 OUT_BIN_PATH = os.path.join(REPO_ROOT, "app/src/main/assets/hino_rm2_real_mesh.bin")
 
 

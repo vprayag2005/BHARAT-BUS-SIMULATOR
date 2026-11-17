@@ -11,16 +11,12 @@ A realistic 3D Android bus simulator inspired by BUSSID, featuring real-world ro
 
 ---
 
-## Toolchain & Versions (Phase 0 Baseline)
-* **Game Engine:** Unity 6 LTS (`6000.3.27f1`)
-* **Render Pipeline:** Universal Render Pipeline (URP 17.3.0)
-* **Target Platform:** Android (ARM64 `arm64-v8a`, IL2CPP)
-* **Graphics API:** Vulkan (primary), OpenGL ES 3.2 (fallback)
-* **Target Android SDK:** API Level 34 / 35+ (Google Play compliant)
-* **Bundled OpenJDK:** Temurin-17.0.18+8 (OpenJDK 17 64-bit)
-* **Bundled Android NDK:** NDK Revision 27.2.12479018 (r27b)
-* **Bundled Android SDK:** Build-Tools 36.0.0, API platforms 34–37
-* **Geospatial Preprocessing:** Python 3.14 (`geopandas`, `shapely`, `pyproj`, `networkx`, `pandas`)
+## Toolchain & Versions
+* **Target Platform:** Android (minSdk 26, targetSdk 35, compileSdk 36)
+* **Framework:** Native Android (Kotlin 2.0+, Jetpack Compose)
+* **Graphics / 3D Pipeline:** Custom Low-Latency 3D Road Viewport & Projection Rasterizer
+* **Build System:** Gradle 8.11+ / AGP 8.8+ / Java 21
+* **Geospatial & Asset Tooling:** Python 3.12+ / Blender 4+
 * **Application Identifier:** `com.bharatbussim.game`
 
 ---
@@ -28,47 +24,38 @@ A realistic 3D Android bus simulator inspired by BUSSID, featuring real-world ro
 ## Repository Structure
 ```
 BHARAT BUS SIMULATOR/
-├── .gitignore                      # Safe ignore rules for Unity, Python & raw GIS
+├── .gitignore                      # Safe ignore rules for Android, Python & raw GIS
 ├── .gitattributes                  # LFS candidacy & line ending normalization
 ├── README.md                       # Project overview and build guide
-├── docs/
-│   ├── ARCHITECTURE.md             # Coordinate policy, quality gates, tile streaming
-│   ├── DATA_PROVENANCE.md          # GIS source/license register (ODbL, DEM terms)
-│   └── PHASES.md                   # PRD phase tracking and quality gates
-├── tools/                          # Python GIS tooling & data preprocessing
-│   ├── requirements.txt            # Documented Python dependencies
-│   └── osm_processor/              # Phase 1 & 2 boundary/road graph extraction
+├── app/                            # Native Android Application (Kotlin + Jetpack Compose)
+│   ├── src/main/java/com/bharatbussim/game/
+│   │   ├── MainActivity.kt         # Entry Activity & frame-synchronized physics loop
+│   │   ├── model/                  # Data classes, OSM geometry & bus telemetry models
+│   │   ├── ui/                     # 3D Viewport, HUD overlay, signboards, landmarks
+│   │   └── viewmodel/              # ThrissurSimViewModel physics & simulation state
+│   ├── src/main/assets/            # Compiled 3D binary mesh & OSM road JSON
+│   └── src/main/res/               # SFX audio, strings, themes
+├── art_src/                        # 3D source assets (Blender, OBJ, FBX, textures)
+│   ├── vehicles/                   # Hino RM 2 & Kerala bus 3D models & textures
+│   ├── roads/                      # Thrissur road network and junction models
+│   └── audio/                      # Raw sound effects (engine, air brakes, wipers)
+├── docs/                           # Architecture specifications & quality gates
 ├── data/                           # Manifests & GIS data schemas
-│   ├── raw/                        # Excluded from git (raw OSM/DEM downloads)
-│   ├── processed/                  # Normalized datasets
-│   └── manifests/
-│       └── kerala/                 # District manifests (pilot: Thrissur)
-└── unity/                          # Unity 6.3 LTS Client Project
-    ├── Assets/
-    │   ├── _Project/               # Custom project code, scenes, and assets
-    │   │   ├── Core/               # Foundation managers
-    │   │   ├── Diagnostics/        # DeviceDiagnosticsOverlay (FPS, memory, device info)
-    │   │   ├── Editor/             # BuildScript & Editor tooling
-    │   │   └── Scenes/
-    │   │       └── 01_Phase0_SmokeTest.unity
-    │   └── Settings/               # Official Mobile & PC URP renderers
-    ├── Packages/
-    │   └── manifest.json           # URP, Input System, Test Framework
-    └── ProjectSettings/            # ProjectSettings.asset, IL2CPP, ARM64
+└── tools/                          # Python GIS & 3D mesh compilation tooling
+    └── compile_hino_rm2_android_mesh.py # Compiles raw 3D models into Android binary mesh
 ```
 
 ---
 
-## How to Build the Android Smoke Test APK
-1. Open the project in Unity 6.3 LTS (`6000.3.27f1`).
-2. Run via Unity Editor menu: **BharatBusSim > Build > Build Android Smoke Test APK**.
-3. Or build via command line:
+## How to Build the Android APK
+1. Open the project in Android Studio or build via Gradle command line:
    ```powershell
-   & "C:\Program Files\Unity\Hub\Editor\6000.3.27f1\Editor\Unity.exe" -batchmode -quit -projectPath "C:\Project\BHARAT BUS SIMULATOR\unity" -executeMethod BuildScript.BuildAndroidSmokeTest -logFile "builds/Android/build.log"
+   .\gradlew.bat assembleDebug
    ```
-4. Output APK location: `builds/Android/Phase0_SmokeTest.apk`.
-5. Deploy to connected phone via ADB:
+2. Output APK location:
+   `app/build/outputs/apk/debug/app-debug.apk`
+3. Deploy to connected phone via ADB:
    ```powershell
-   adb install -r builds/Android/Phase0_SmokeTest.apk
-   adb shell am start -n com.bharatbussim.game/com.unity3d.player.UnityPlayerGameActivity
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
+   adb shell am start -n com.bharatbussim.game/.MainActivity
    ```

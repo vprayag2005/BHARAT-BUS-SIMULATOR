@@ -17,7 +17,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 ROADS_JSON = os.path.join(PROJECT_ROOT, "data", "processed", "thrissur_osm_roads.json")
 OUT_BLEND = os.path.join(PROJECT_ROOT, "art_src", "roads", "thrissur_roads", "Thrissur_Roads.blend")
-OUT_FBX = os.path.join(PROJECT_ROOT, "unity", "Assets", "_Project", "Models", "ThrissurRoads", "Thrissur_Roads.fbx")
+OUT_FBX = os.path.join(PROJECT_ROOT, "art_src", "roads", "thrissur_roads", "Thrissur_Roads.fbx")
 
 MATERIALS_SPEC = [
     ("MAT_Road_Asphalt", (0.14, 0.14, 0.15), 0.85),

@@ -33,8 +33,8 @@ except ImportError:
 
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-HINO_MODEL_DIR = os.path.join(REPO_ROOT, "unity", "Assets", "_Project", "Vehicles", "Models", "Hino")
-HINO_TEX_DIR = os.path.join(REPO_ROOT, "unity", "Assets", "_Project", "Vehicles", "Textures", "Hino")
+HINO_MODEL_DIR = os.path.join(REPO_ROOT, "art_src", "vehicles", "hino_rm2", "models")
+HINO_TEX_DIR = os.path.join(REPO_ROOT, "art_src", "vehicles", "hino_rm2", "textures")
 ART_SRC_HINO_DIR = os.path.join(REPO_ROOT, "art_src", "vehicles", "hino_rm2")
 
 
@@ -521,7 +521,7 @@ def main():
     blend_path = os.path.join(HINO_MODEL_DIR, "HINO_RM2.blend")
     art_blend_path = os.path.join(ART_SRC_HINO_DIR, "HINO_RM2.blend")
     fbx_path = os.path.join(HINO_MODEL_DIR, "HINO_RM2.fbx")
-    kerala_fbx_path = os.path.join(REPO_ROOT, "unity", "Assets", "_Project", "Vehicles", "Models", "KeralaBus12m.fbx")
+    kerala_fbx_path = os.path.join(REPO_ROOT, "art_src", "vehicles", "kerala_bus", "KeralaBus12m.fbx")
 
     export_blend_container(mesh_specs, blend_path)
     export_blend_container(mesh_specs, art_blend_path)

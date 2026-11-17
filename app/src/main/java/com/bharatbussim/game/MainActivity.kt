@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     Thrissur3DRoadViewport(
-                        stateProvider = { uiStateState.value },
+                        state = uiStateState.value,
                         onOrbitDrag = { dYaw, dPitch -> simViewModel.orbitCamera(dYaw, dPitch) }
                     )
                     BusDashboardHudOverlay(

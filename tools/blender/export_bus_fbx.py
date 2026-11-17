@@ -3,7 +3,7 @@ import os
 
 def export_kerala_bus():
     blend_path = r"C:\Project\BHARAT BUS SIMULATOR\art_src\vehicles\kerala_bus\kerala_bus_exterior_blockout.blend"
-    fbx_path = r"C:\Project\BHARAT BUS SIMULATOR\unity\Assets\_Project\Vehicles\Models\KeralaBus12m.fbx"
+    fbx_path = r"C:\Project\BHARAT BUS SIMULATOR\art_src\vehicles\kerala_bus\KeralaBus12m.fbx"
 
     print(f"Opening blend: {blend_path}")
     bpy.ops.wm.open_mainfile(filepath=blend_path)
