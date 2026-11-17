@@ -6,25 +6,131 @@
   "coordinate_system": {
     "geographic_crs": "EPSG:4326",
     "projected_crs": "EPSG:32643",
+    "corridor_scale": 0.20,
+    "cross_section_scale": 1.00,
     "unity_origin": {
-      "name": "Thrissur Swaraj Round",
+      "name": "Thrissur Swaraj Round (Thekkinkadu Maidan Center)",
       "latitude": 10.5244,
       "longitude": 76.2144,
-      "utm_x": 632850.0,
-      "utm_y": 1163900.0,
-      "elevation_m": 12.0
+      "utm_x": 632883.20,
+      "utm_y": 1163650.18,
+      "elevation_m": 12.00
+    }
+  },
+  "zone_1_specification": {
+    "zone_id": "ZONE_1_THRISSUR_HEART_AND_CITY_HUBS",
+    "name": "Zone 1: Thrissur Heart & City Transit Hubs (High-Realism Sculpted 3D Architecture)",
+    "road_cross_sections": {
+      "swaraj_round": {
+        "lanes": 4,
+        "flow": "one_way_clockwise",
+        "carriageway_width_m": 14.0,
+        "outer_sidewalk_width_m": 2.0,
+        "inner_laterite_wall_height_m": 1.2,
+        "inner_laterite_color": "#8B3A22",
+        "curb_pitch_mm": 500,
+        "zebra_crossings_count": 8,
+        "zebra_crossings": [
+          "Manikandanal (South)",
+          "Kuruppam Road",
+          "Bini Tourist Home",
+          "Round West (M.G. Road)",
+          "Shoranur Road (North)",
+          "Round North",
+          "Palace Road (East)",
+          "High Road"
+        ]
+      },
+      "mo_road": {
+        "lanes": 4,
+        "flow": "two_way",
+        "carriageway_width_m": 12.0
+      },
+      "shoranur_mg_road": {
+        "lanes": 2,
+        "flow": "two_way",
+        "carriageway_width_m": 11.0
+      }
+    },
+    "thekkinkadu_maidan_and_vadakkumnathan_temple": {
+      "road_elevation_m": 12.0,
+      "temple_base_elevation_m": 16.5,
+      "grass_palette": ["#4F6239", "#586E40"],
+      "banyan_aalthara_height_m": 1.0,
+      "nehru_park_flank": "south_east",
+      "gopurams": ["North", "South", "East", "West"],
+      "vatta_sreekovil_diameter_m": 18.0,
+      "kodimaram_height_m": 21.0,
+      "deepastambham_height_m": 9.0,
+      "deepastambham_tiers": 7,
+      "foliage_mesh": "8-sided tapered trunk with flared root buttresses and 4 multi-band polyhedral foliage domes"
+    },
+    "sakthan_thampuran_bus_stand": {
+      "apron_dimensions_m": [180.0, 120.0],
+      "apron_color": "#2B3037",
+      "expansion_joint_grid_m": 6.0,
+      "parallel_boarding_bays": 3,
+      "boarding_bay_length_m": 110.0,
+      "total_docking_bays": 10,
+      "platform_curb_height_m": 0.25,
+      "pillar_geometry": "8-sided cylindrical steel columns with concrete pedestals and flared Y-branch structural capitals",
+      "pillar_color": "#A83E28",
+      "roof_geometry": "10 arched barrel-vault corrugated steel bays with translucent polycarbonate skylight strips",
+      "roof_color": "#1E3A8A",
+      "skylight_interval_m": 15.0,
+      "clock_tower_height_m": 12.0,
+      "high_mast_floodlight_height_m": 25.0,
+      "high_mast_led_count": 12,
+      "player_spawn_bay": "BAY_1",
+      "floating_terminal_text": false,
+      "dummy_box_vehicles": false
+    },
+    "thrissur_central_railway_station": {
+      "station_code": "TCR",
+      "name_trilingual": "തൃശ്ശൂർ / THRISSUR / त्रिशूर",
+      "facade_color": "#EAE4D7",
+      "rail_profile": "UIC-60",
+      "ballast_depth_mm": 450,
+      "track_bed_length_m": 245.0,
+      "catenary_voltage_kv": 25,
+      "mast_spacing_m": 35.0,
+      "rolling_stock": "Sculpted Southern Railway WAP-7 Electric Locomotive + 10 Full-Scale Coupled Express Coaches (4 AC + 6 Blue ICF/LHB Coaches with Bogies, Recessed Glass Windows, Rooftop AC Pods & Gangway Bellows)"
+    },
+    "manikandanal_traffic_signal": {
+      "mast_arm_height_m": 6.5,
+      "signal_head_aspect_mm": 300,
+      "border_width_mm": 50,
+      "cycle_red_s": 30,
+      "cycle_green_s": 25,
+      "cycle_amber_s": 4
+    },
+    "direction_signboards": {
+      "total_signboards": 27,
+      "all_approach_coverage": true,
+      "data_source": "thrissur_osm_roads.json"
     }
   },
   "destinations": [
     {
       "id": "DEST_SAKTHAN_STAND",
-      "name": "Sakthan Thampuran Bus Stand",
+      "name": "Sakthan Thampuran Bus Stand (Bay 1 Spawn)",
       "name_ml": "ശക്തൻ തമ്പുരാൻ ബസ് സ്റ്റാൻഡ്",
       "type": "terminal_hub",
       "latitude": 10.5165,
       "longitude": 76.2150,
       "elevation_m": 11.5,
       "is_player_spawn": true
+    },
+    {
+      "id": "DEST_THRISSUR_RAILWAY_STATION",
+      "name": "Thrissur Central Railway Station (TCR)",
+      "name_ml": "തൃശ്ശൂർ സെൻട്രൽ റെയിൽവേ സ്റ്റേഷൻ",
+      "name_hi": "त्रिशूर",
+      "type": "railway_hub",
+      "latitude": 10.5152,
+      "longitude": 76.2082,
+      "elevation_m": 12.0,
+      "is_player_spawn": false
     },
     {
       "id": "DEST_VADAKKE_STAND",
@@ -38,12 +144,13 @@
     },
     {
       "id": "DEST_SWARAJ_ROUND",
-      "name": "Swaraj Round (Thrissur Round)",
-      "name_ml": "സ്വരാജ് റൗണ്ട്",
+      "name": "Swaraj Round & Sree Vadakkumnathan Temple",
+      "name_ml": "സ്വരാജ് റൗണ്ട് • വടക്കുന്നാഥൻ ക്ഷേത്രം",
       "type": "city_center_roundabout",
       "latitude": 10.5244,
       "longitude": 76.2144,
-      "elevation_m": 12.0
+      "elevation_m": 12.0,
+      "temple_base_elevation_m": 16.5
     },
     {
       "id": "DEST_PUTHANPALLI",
@@ -103,6 +210,30 @@
     }
   ],
   "highway_corridors": [
+    {
+      "corridor_id": "SWARAJ_ROUND",
+      "name": "Swaraj Round (4-Lane 1-Way Clockwise Ring)",
+      "classification": "city_roundabout",
+      "lanes": 4,
+      "width_m": 14.0,
+      "speed_limit_kmh": 40
+    },
+    {
+      "corridor_id": "MO_ROAD",
+      "name": "Municipal Office Road (M.O. Road • 4-Lane 2-Way)",
+      "classification": "city_arterial",
+      "lanes": 4,
+      "width_m": 12.0,
+      "speed_limit_kmh": 45
+    },
+    {
+      "corridor_id": "SHORANUR_MG_ROAD",
+      "name": "Shoranur Road & M.G. Road (2-Lane City Arterials)",
+      "classification": "city_arterial",
+      "lanes": 2,
+      "width_m": 11.0,
+      "speed_limit_kmh": 45
+    },
     {
       "corridor_id": "NH_544",
       "name": "NH 544 (Salem - Kochi Highway)",

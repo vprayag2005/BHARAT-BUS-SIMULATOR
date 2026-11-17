@@ -13,9 +13,11 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import com.bharatbussim.game.model.Vec3
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 
 /**
  * Metadata and lazy high-resolution bitmap generator attached to any 3D signboard or terminal
@@ -33,7 +35,7 @@ internal class SignboardQuadSpec(
 )
 
 internal object SignboardTextureCache {
-    private val cache = HashMap<String, Bitmap>(64)
+    private val cache = HashMap<String, Bitmap>(96)
 
     fun getOrCreate(spec: SignboardQuadSpec): Bitmap {
         cache[spec.cacheKey]?.let { return it }
@@ -74,15 +76,6 @@ private val signClippedVerts = ArrayList<SignClipVertex>(8)
  * Renders a 3D signboard quad using true perspective homography (`Matrix.setPolyToPoly`) when all
  * 4 corners are in front of `nearZ`, or Sutherland-Hodgman near-plane UV-clipped triangle warping
  * when partially behind the camera plane.
- *
- * Orientation test:
- * Computes `det = dot(c0, (c1 - c0) x (c3 - c0))` in CameraSpace where `v0=BL, v1=BR, v2=TR, v3=TL`.
- * - `det >= 0` means the camera is in front of the signboard.
- * - `det < 0` means the camera is behind the signboard:
- *   - For double-sided stand banners (`ENTRY`, `EXIT`, terminal names), flips `BL<->BR` and `TL<->TR`
- *     so the text stays legible and non-mirrored from behind.
- *   - For one-sided highway/PWD directional boards, renders a clean aluminum backplate instead of
- *     backward/transparent text.
  */
 internal fun DrawScope.drawProjectiveSignboardQuad(
     rig: CameraRig,
@@ -103,7 +96,6 @@ internal fun DrawScope.drawProjectiveSignboardQuad(
         return
     }
 
-    // Check facing direction via signed determinant in right-handed camera space
     val e1x = c1.cx - c0.cx
     val e1y = c1.cy - c0.cy
     val e1z = c1.cz - c0.cz
@@ -118,14 +110,12 @@ internal fun DrawScope.drawProjectiveSignboardQuad(
     val isBack = det < 0f
     if (isBack) {
         if (!spec.isDoubleSided) {
-            // One-sided highway sign viewed from the rear -> clean aluminum backplate
             if (rig.buildClippedQuadPath(path, vBL, vBR, vTR, vTL)) {
                 drawPath(path, spec.backplateColor)
                 drawPath(path, spec.backplateBorderColor, style = Stroke(width = 1.6f))
             }
             return
         }
-        // Double-sided banner -> flip horizontally so text reads forward from the back side too
         val tmp0 = c0; c0 = c1; c1 = tmp0
         val tmp3 = c3; c3 = c2; c2 = tmp3
     }
@@ -133,7 +123,6 @@ internal fun DrawScope.drawProjectiveSignboardQuad(
     val bmpW = spec.bmpWidth.toFloat()
     val bmpH = spec.bmpHeight.toFloat()
 
-    // Fast exact 4-corner perspective homography when completely in front of the near clip plane
     if (c0.cz >= nearZ && c1.cz >= nearZ && c2.cz >= nearZ && c3.cz >= nearZ) {
         val inv0 = rig.fovScale / c0.cz
         val sx0 = rig.screenCenterX + c0.cx * inv0
@@ -188,7 +177,6 @@ internal fun DrawScope.drawProjectiveSignboardQuad(
         }
     }
 
-    // Partial near-plane clipping fallback (keeps text aligned cleanly when driving under gantries)
     signRawVerts[0] = SignClipVertex(c0.cx, c0.cy, c0.cz, 0f, bmpH)
     signRawVerts[1] = SignClipVertex(c1.cx, c1.cy, c1.cz, bmpW, bmpH)
     signRawVerts[2] = SignClipVertex(c2.cx, c2.cy, c2.cz, bmpW, 0f)
@@ -274,9 +262,7 @@ internal fun DrawScope.drawProjectiveSignboardQuad(
 }
 
 // ============================================================================
-// BAKED HIGH-RESOLUTION SIGNBOARD & BANNER TEXTURE FACTORIES
-// Uses clean measured SANS_SERIF typography + crisp vector highway arrows so
-// letters stay sharp, balanced, and locked inside the board at every distance.
+// BAKED HIGH-RESOLUTION SIGNBOARD, CLOCK DIAL & BANNER TEXTURE FACTORIES
 // ============================================================================
 
 private fun createSignTitlePaint(colorInt: Int = android.graphics.Color.WHITE): Paint =
@@ -312,8 +298,84 @@ private fun drawFittedText(
 }
 
 /**
- * Draws a crisp IRC / NHAI white directional arrow vector (never using inconsistent emoji fonts).
+ * Creates a classic analog Clock Tower dial with black Roman numerals (XII, III, VI, IX),
+ * brass rim, and clock hands for the 12-meter Sakthan Stand Clock Tower and TCR Station Clock Tower.
  */
+internal fun createClockDialSignSpec(
+    cacheKey: String,
+    wallBgColorInt: Int = 0xFF991B1B.toInt()
+): SignboardQuadSpec = SignboardQuadSpec(
+    cacheKey = cacheKey,
+    bmpWidth = 256,
+    bmpHeight = 256,
+    isDoubleSided = true
+) {
+    val sz = 256
+    val bmp = Bitmap.createBitmap(sz, sz, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val cx = sz * 0.5f
+    val cy = sz * 0.5f
+    val r = sz * 0.42f
+
+    canvas.drawColor(wallBgColorInt)
+
+    val facePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFAF8F5.toInt()
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(cx, cy, r, facePaint)
+
+    val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFD97706.toInt()
+        style = Paint.Style.STROKE
+        strokeWidth = 10f
+    }
+    canvas.drawCircle(cx, cy, r, rimPaint)
+
+    val tickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF111827.toInt()
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+    }
+    for (h in 0 until 12) {
+        val ang = Math.toRadians((h * 30).toDouble()).toFloat()
+        val r0 = if (h % 3 == 0) r * 0.78f else r * 0.85f
+        val r1 = r * 0.93f
+        canvas.drawLine(
+            cx + sin(ang) * r0,
+            cy - cos(ang) * r0,
+            cx + sin(ang) * r1,
+            cy - cos(ang) * r1,
+            tickPaint
+        )
+    }
+
+    val numPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF0F172A.toInt()
+        typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+        textAlign = Paint.Align.CENTER
+        textSize = 26f
+    }
+    canvas.drawText("XII", cx, cy - r * 0.52f, numPaint)
+    canvas.drawText("VI", cx, cy + r * 0.68f, numPaint)
+    canvas.drawText("IX", cx - r * 0.58f, cy + 9f, numPaint)
+    canvas.drawText("III", cx + r * 0.58f, cy + 9f, numPaint)
+
+    // Hour & Minute Hands (10:10)
+    val handPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF0F172A.toInt()
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeWidth = 7f
+    }
+    canvas.drawLine(cx, cy, cx - r * 0.38f, cy - r * 0.24f, handPaint)
+    handPaint.strokeWidth = 5f
+    canvas.drawLine(cx, cy, cx + r * 0.48f, cy - r * 0.32f, handPaint)
+    facePaint.color = 0xFFB45309.toInt()
+    canvas.drawCircle(cx, cy, 7f, facePaint)
+    bmp
+}
+
 private fun drawVectorHighwayArrow(
     canvas: Canvas,
     cx: Float,
@@ -458,7 +520,6 @@ private fun bakeRoundaboutDiagramBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSign
     val w = wPx.toFloat()
     val h = hPx.toFloat()
 
-    // Emerald-teal Kerala PWD reflective background + crisp white inset border
     canvas.drawColor(0xFF006D5B.toInt())
     val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.WHITE
@@ -467,7 +528,6 @@ private fun bakeRoundaboutDiagramBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSign
     }
     canvas.drawRoundRect(RectF(8f, 8f, w - 8f, h - 8f), 14f, 14f, borderPaint)
 
-    // Top Roundabout Title Strip ("സ്വരാജ് റൗണ്ട് • SWARAJ ROUND")
     val headerText = spec.headerTitle.ifBlank { "സ്വരാജ് റൗണ്ട് • SWARAJ ROUND" }
     val hdrY = 56f
     val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -481,7 +541,6 @@ private fun bakeRoundaboutDiagramBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSign
     }
     drawFittedText(canvas, headerText, w * 0.5f, 41f, w - 48f, 24f, hdrPaint)
 
-    // Roundabout ring positioned cleanly in the center of the lower zone
     val cx = w * 0.5f
     val cy = 224f
     val ringR = 32f
@@ -499,10 +558,8 @@ private fun bakeRoundaboutDiagramBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSign
     val headSz = 14f
 
     canvas.drawCircle(cx, cy, ringR, diagramStrokePaint)
-    // Entry stem bottom (South M.O. Road entry)
     canvas.drawLine(cx, cy + ringR, cx, h - 18f, diagramStrokePaint)
 
-    // Top Straight Arrow (12 o'clock exit)
     val topTipY = 74f
     canvas.drawLine(cx, cy - ringR, cx, topTipY + headSz * 0.85f, diagramStrokePaint)
     val tri = AndroidPath()
@@ -512,7 +569,6 @@ private fun bakeRoundaboutDiagramBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSign
     tri.close()
     canvas.drawPath(tri, whiteFillPaint)
 
-    // Left Turn Arrow (9 o'clock exit)
     val leftTipX = cx - 88f
     canvas.drawLine(cx - ringR, cy, leftTipX + headSz * 0.85f, cy, diagramStrokePaint)
     tri.reset()
@@ -522,7 +578,6 @@ private fun bakeRoundaboutDiagramBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSign
     tri.close()
     canvas.drawPath(tri, whiteFillPaint)
 
-    // Right Turn Arrow (3 o'clock exit)
     val rightTipX = cx + 88f
     canvas.drawLine(cx + ringR, cy, rightTipX - headSz * 0.85f, cy, diagramStrokePaint)
     tri.reset()
@@ -532,7 +587,6 @@ private fun bakeRoundaboutDiagramBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSign
     tri.close()
     canvas.drawPath(tri, whiteFillPaint)
 
-    // Grouped Malayalam + English destination labels placed clearly beside their own arrow tips
     val engLeftPaint = createSignTitlePaint(android.graphics.Color.WHITE).apply {
         textAlign = Paint.Align.LEFT
     }
@@ -546,19 +600,16 @@ private fun bakeRoundaboutDiagramBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSign
         textAlign = Paint.Align.RIGHT
     }
 
-    // 12 o'clock Straight Exit (Vadakke Stand) -> grouped right beside the UP arrow
     val topLabelX = cx + 26f
     val topMaxW = w - topLabelX - 24f
     drawFittedText(canvas, spec.straightDest.malName, topLabelX, 102f, topMaxW, 25f, malLeftPaint)
     drawFittedText(canvas, "${spec.straightDest.engName}  ${spec.straightDest.distKm}", topLabelX, 134f, topMaxW, 27f, engLeftPaint)
 
-    // 9 o'clock Left Exit (West Fort) -> right-aligned right beside the LEFT arrow tip
     val leftLabelX = leftTipX - 14f
     val leftMaxW = leftLabelX - 22f
     drawFittedText(canvas, spec.leftDest.malName, leftLabelX, cy - 4f, leftMaxW, 25f, malRightPaint)
     drawFittedText(canvas, "${spec.leftDest.engName}  ${spec.leftDest.distKm}", leftLabelX, cy + 30f, leftMaxW, 27f, engRightPaint)
 
-    // 3 o'clock Right Exit (Mannuthy) -> left-aligned right beside the RIGHT arrow tip
     val rightLabelX = rightTipX + 14f
     val rightMaxW = w - rightLabelX - 22f
     drawFittedText(canvas, spec.rightDest.malName, rightLabelX, cy - 4f, rightMaxW, 25f, malLeftPaint)

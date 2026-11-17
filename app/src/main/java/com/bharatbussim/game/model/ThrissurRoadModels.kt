@@ -9,6 +9,54 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
+/**
+ * Section 1: Geographic Foundation & Simulation Coordinates (Thrissur District)
+ * - Geographic CRS: WGS84 (EPSG:4326)
+ * - Metric Projected CRS: UTM Zone 43N (EPSG:32643)
+ * - District World Datum Anchor: Thrissur Swaraj Round (Thekkinkadu Maidan Center)
+ *   - Coordinate: 10.5244° N, 76.2144° E
+ *   - UTM 43N: X = 632883.20 m, Y = 1163650.18 m, Elevation = 12.00 m
+ * - Mini-Scale Factor (CORRIDOR_SCALE = 0.20):
+ *   - Inter-town highway corridors: 1:5 scale (20% distance compression)
+ *   - Road cross-sections, vehicle physics, toll plazas, bridges, tunnels, and bus stands: Strictly 1:1 metric scale
+ */
+object ThrissurGeoConstants {
+    const val GEOGRAPHIC_CRS = "EPSG:4326"
+    const val PROJECTED_CRS = "EPSG:32643"
+    const val ORIGIN_NAME = "Thrissur Swaraj Round (Thekkinkadu Maidan Center)"
+    const val ORIGIN_LAT_DEG = 10.5244
+    const val ORIGIN_LON_DEG = 76.2144
+    const val ORIGIN_UTM_X_M = 632883.20
+    const val ORIGIN_UTM_Y_M = 1163650.18
+    const val ORIGIN_ELEVATION_M = 12.00f
+    const val TEMPLE_BASE_ELEVATION_M = 16.50f
+    const val CORRIDOR_SCALE = 0.20f
+    const val CROSS_SECTION_SCALE = 1.00f
+}
+
+/**
+ * Zone 1 Manikandanal Traffic Signal (Round South) 3-aspect LED cycle:
+ * Cycle: Red (30s) -> Green (25s) -> Amber (4s) (Total 59.0s period)
+ */
+enum class TrafficSignalAspect(val label: String, val durationSec: Float) {
+    Red("RED", 30f),
+    Green("GREEN", 25f),
+    Amber("AMBER", 4f);
+
+    companion object {
+        const val TOTAL_CYCLE_SEC = 59.0f
+
+        fun fromCycleTime(cycleSec: Float): Pair<TrafficSignalAspect, Int> {
+            val t = ((cycleSec % TOTAL_CYCLE_SEC) + TOTAL_CYCLE_SEC) % TOTAL_CYCLE_SEC
+            return when {
+                t < 30f -> Pair(Red, (30f - t).toInt().coerceAtLeast(1))
+                t < 55f -> Pair(Green, (55f - t).toInt().coerceAtLeast(1))
+                else -> Pair(Amber, (59f - t).toInt().coerceAtLeast(1))
+            }
+        }
+    }
+}
+
 @Immutable
 data class Vec3(val x: Float, val y: Float, val z: Float) {
     operator fun plus(o: Vec3) = Vec3(x + o.x, y + o.y, z + o.z)
@@ -45,6 +93,7 @@ data class ThrissurOsmRoad(
     val lanes: Int,
     val divided: Boolean,
     val closedLoop: Boolean,
+    val oneWayClockwise: Boolean = false,
     val realDistanceM: Float,
     val stepNames: List<String>,
     val points: List<Vec3>,
@@ -152,6 +201,7 @@ object ThrissurRoadRepository {
             val lanes: Int,
             val divided: Boolean,
             val closedLoop: Boolean,
+            val oneWayClockwise: Boolean,
             val realDist: Float,
             val steps: List<String>,
             var smoothedPts: MutableList<Vec3>,
@@ -166,10 +216,17 @@ object ThrissurRoadRepository {
             val id = obj.getString("id")
             val name = obj.getString("name")
             val roadType = obj.optString("road_type", "city_arterial")
-            val widthM = obj.optDouble("width_m", 10.0).toFloat()
+            val defaultWidth = when (id) {
+                "ROAD_SWARAJ_ROUND" -> 14.0
+                "ROAD_SAKTHAN_TO_SWARAJ" -> 12.0
+                "ROAD_SWARAJ_TO_VADAKKE", "ROAD_SWARAJ_TO_WEST_FORT" -> 11.0
+                else -> 10.0
+            }
+            val widthM = obj.optDouble("width_m", defaultWidth).toFloat()
             val lanes = obj.optInt("lanes", 2)
             val divided = obj.optBoolean("divided", false)
             val closedLoop = obj.optBoolean("closed_loop", false)
+            val oneWayClockwise = obj.optBoolean("one_way_clockwise", id == "ROAD_SWARAJ_ROUND")
             val realDist = obj.optDouble("real_distance_m", 1500.0).toFloat()
 
             val stepsArr = obj.optJSONArray("step_names")
@@ -204,6 +261,7 @@ object ThrissurRoadRepository {
                     lanes = lanes,
                     divided = divided,
                     closedLoop = closedLoop,
+                    oneWayClockwise = oneWayClockwise,
                     realDist = realDist,
                     steps = steps,
                     smoothedPts = engineered,
@@ -453,7 +511,6 @@ object ThrissurRoadRepository {
                 val leftMaskB = leftCoveredMask[branch.id]!!
                 val rightMaskB = rightCoveredMask[branch.id]!!
                 for (bi in iMin..iMax) {
-                    // Mark branch edges between bTipIdx and bThroatIdx (exclusive of bThroatIdx) as covered so straight edge lines start/stop right at bThroatIdx
                     if (bi != bThroatIdx) {
                         leftMaskB[bi] = true
                         rightMaskB[bi] = true
@@ -478,7 +535,6 @@ object ThrissurRoadRepository {
 
                 val flareDistAlongTrunk = bThroat.halfWidthM + 4.2f
 
-                // Special handling for Mannuthy 3-way junction where NH544 branches South right at the weld between ROAD_SWARAJ_TO_MANNUTHY (end) and ROAD_MANNUTHY_TO_PEECHI_DAM (start)
                 val tBeforeFrame: RoadFrame
                 val tAfterFrame: RoadFrame
                 val beforeSideSign: Float
@@ -493,9 +549,8 @@ object ThrissurRoadRepository {
                     val eAfterIdx = stepAlongFrames(eFrames, 0, +1, flareDistAlongTrunk, false)
                     tBeforeFrame = wFrames[wBeforeIdx]
                     tAfterFrame = eFrames[eAfterIdx]
-                    beforeSideSign = 1f // South (+right) side of West-to-East Mannuthy highway
+                    beforeSideSign = 1f
                     afterSideSign = 1f
-                    // Mark strictly inside (wBeforeIdx + 1 .. last) and (0 .. eAfterIdx - 1) so straight white edge lines meet the Bezier fillet at wBeforeIdx and eAfterIdx!
                     markRoadSideRange(westTrunk.id, wBeforeIdx + 1, wFrames.size - 1, beforeSideSign, false)
                     markRoadSideRange(eastTrunk.id, 0, eAfterIdx - 1, afterSideSign, false)
                 } else {
@@ -512,7 +567,6 @@ object ThrissurRoadRepository {
                     markRoadSideRange(trunk.id, markStart, markEnd, trunkCenterSideSign, trunk.closedLoop)
                 }
 
-                // Determine which side of bThroat (-1f left vs +1f right) faces tBefore vs tAfter
                 val alongTrunkVec = (tAfterFrame.pos - tBeforeFrame.pos).normalizedXZ()
                 val bRightDotTrunk = bThroat.right.dotXZ(alongTrunkVec)
                 val bBeforeSign = if (bRightDotTrunk >= 0f) -1f else 1f
@@ -572,6 +626,7 @@ object ThrissurRoadRepository {
                     lanes = spec.lanes,
                     divided = spec.divided,
                     closedLoop = spec.closedLoop,
+                    oneWayClockwise = spec.oneWayClockwise,
                     realDistanceM = spec.realDist,
                     stepNames = spec.steps,
                     points = spec.smoothedPts,
@@ -695,7 +750,6 @@ object ThrissurRoadRepository {
             for (i in 0 until current.size - 1) {
                 val p0 = current[i]
                 val p1 = current[i + 1]
-                // Finer subdivision near start/end joints so junction frames have ~1.6m resolution
                 val nearEnd = i < 4 || i >= current.size - 5
                 if (nearEnd) {
                     if (i > 0) chaikin.add(lerp(p0, p1, 0.20f))
@@ -798,8 +852,6 @@ object ThrissurRoadRepository {
             var frameHalfW = baseHalfW + smoothCurveExtra[i]
 
             // Exact gate-width alignment at Sakthan Stand North Gates (Z = -140m):
-            // - Right Exit Gate (X = 19.0m..31.0m, center 25.0m): halfWidth = 5.6m (width 11.2m) inside Z <= -136m, flaring smoothly to 8.0m by Z = -124m
-            // - Left Entry Gate (X = 2.0m..12.0m, center 7.0m): halfWidth = 4.6m (width 9.2m) inside Z <= -122m
             val pz = pts[i].z
             if (roadId == "ROAD_SAKTHAN_TO_SWARAJ" && pz < -124.0f) {
                 val gateBlend = ((pz - (-136.0f)) / 12.0f).coerceIn(0f, 1f)

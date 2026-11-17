@@ -643,14 +643,14 @@ private fun ThrissurRoutesInspectorModal(
     val totalKm = state.roads.sumOf { it.realDistanceM.toDouble() } / 1000.0
 
     val landmarkPresets = listOf(
-        Triple("SAKTHAN_STAND", "Sakthan Stand", "20 Bays • Entry/Exit"),
+        Triple("SAKTHAN_STAND", "Sakthan Stand", "Bay 1 • Clock Tower"),
+        Triple("THRISSUR_RAILWAY_TCR", "TCR Railway", "Station Rd • WAP-7"),
+        Triple("MANIKANDANAL_SIGNAL", "Manikandanal", "30s/25s/4s Signal"),
+        Triple("SWARAJ_ROUND", "Swaraj Round", "14m 1-Way • Temple"),
         Triple("VADAKKE_STAND", "Vadakke Stand", "8 Bays • Entry/Exit"),
-        Triple("SWARAJ_ROUND", "Swaraj Round", "Vadakkumnathan Temple"),
         Triple("PALIYEKKARA_TOLL", "Paliyekkara Toll", "NH 544 FASTag Plaza"),
         Triple("GURUVAYUR_TEMPLE", "Guruvayur Temple", "East Nada & Flagstaff"),
-        Triple("GURUVAYUR_STAND", "Guruvayur Stand", "10 Pilgrim Bays"),
-        Triple("CHAVAKKAD_BEACH", "Chavakkad Beach", "Azhi & Lighthouse"),
-        Triple("TRIPRAYAR_BEACH", "Triprayar Beach", "Stand & Shoreline")
+        Triple("CHAVAKKAD_BEACH", "Chavakkad Beach", "Azhi & Lighthouse")
     )
 
     Box(
@@ -680,7 +680,7 @@ private fun ThrissurRoutesInspectorModal(
             ) {
                 Column {
                     Text(
-                        text = "THRISSUR REALISTIC OSM ROADS & 6 BLENDER 3D LANDMARKS",
+                        text = "THRISSUR DISTRICT — ZONE 1: HEART & CITY TRANSIT HUBS",
                         color = HudAmber,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Black
@@ -688,7 +688,7 @@ private fun ThrissurRoutesInspectorModal(
                     Text(
                         text = String.format(
                             Locale.US,
-                            "%d Aligned Corridors • 6 3D Landmarks • %.1f km Total • %,d Verts / %,d Quads • 0 Trees",
+                            "UTM 43N (632883.20E, 1163650.18N) • %d Corridors • %.1f km • %,d Verts / %,d Quads",
                             state.roads.size,
                             totalKm,
                             totalVerts,

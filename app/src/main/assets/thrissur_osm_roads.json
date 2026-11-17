@@ -2,7 +2,8 @@
   "source": "OpenStreetMap Overpass API + OSRM Real-World Driving Geometry (Thrissur District)",
   "origin_utm": {
     "x": 632883.2,
-    "y": 1163650.18
+    "y": 1163650.18,
+    "elevation_m": 12.0
   },
   "corridor_scale": 0.2,
   "trees_enabled": false,
@@ -11,7 +12,7 @@
       "id": "ROAD_SWARAJ_ROUND",
       "name": "Swaraj Round (Thrissur Round)",
       "road_type": "roundabout",
-      "width_m": 21.0,
+      "width_m": 14.0,
       "lanes": 4,
       "divided": false,
       "closed_loop": true,
@@ -525,13 +526,14 @@
           0.05,
           -35.102
         ]
-      ]
+      ],
+      "one_way_clockwise": true
     },
     {
       "id": "ROAD_SAKTHAN_TO_SWARAJ",
       "name": "Sakthan Thampuran Stand - M.O. Road - Swaraj Round South",
       "road_type": "city_arterial",
-      "width_m": 16.0,
+      "width_m": 12.0,
       "lanes": 4,
       "divided": false,
       "closed_loop": false,
@@ -755,7 +757,7 @@
       "id": "ROAD_SWARAJ_TO_VADAKKE",
       "name": "Swaraj Round North - Shoranur Road - Vadakke Bus Stand",
       "road_type": "city_arterial",
-      "width_m": 16.5,
+      "width_m": 11.0,
       "lanes": 2,
       "divided": false,
       "closed_loop": false,
@@ -7506,7 +7508,7 @@
       "id": "ROAD_SWARAJ_TO_WEST_FORT",
       "name": "Swaraj Round West - M.G. Road - West Fort Junction",
       "road_type": "city_arterial",
-      "width_m": 16.5,
+      "width_m": 11.0,
       "lanes": 2,
       "divided": false,
       "closed_loop": false,
@@ -17930,5 +17932,8 @@
         ]
       ]
     }
-  ]
+  ],
+  "cross_section_scale": 1.0,
+  "geographic_crs": "EPSG:4326",
+  "projected_crs": "EPSG:32643"
 }

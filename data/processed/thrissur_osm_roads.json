@@ -2,7 +2,8 @@
   "source": "OpenStreetMap Overpass API + OSRM Real-World Driving Geometry (Thrissur District)",
   "origin_utm": {
     "x": 632883.2,
-    "y": 1163650.18
+    "y": 1163650.18,
+    "elevation_m": 12.0
   },
   "corridor_scale": 0.2,
   "trees_enabled": false,
@@ -11,7 +12,7 @@
       "id": "ROAD_SWARAJ_ROUND",
       "name": "Swaraj Round (Thrissur Round)",
       "road_type": "roundabout",
-      "width_m": 21.0,
+      "width_m": 14.0,
       "lanes": 4,
       "divided": false,
       "closed_loop": true,
@@ -525,13 +526,14 @@
           0.05,
           -35.102
         ]
-      ]
+      ],
+      "one_way_clockwise": true
     },
     {
       "id": "ROAD_SAKTHAN_TO_SWARAJ",
       "name": "Sakthan Thampuran Stand - M.O. Road - Swaraj Round South",
       "road_type": "city_arterial",
-      "width_m": 16.0,
+      "width_m": 12.0,
       "lanes": 4,
       "divided": false,
       "closed_loop": false,
@@ -683,7 +685,7 @@
       "id": "ROAD_SAKTHAN_STAND_ENTRY",
       "name": "Sakthan Stand Left Entry Slip Road",
       "road_type": "city_arterial",
-      "width_m": 13.0,
+      "width_m": 9.6,
       "lanes": 2,
       "divided": false,
       "closed_loop": false,
@@ -695,72 +697,57 @@
       ],
       "points_unity": [
         [
-          19.5,
+          24.8,
           0.05,
-          -100.0
+          -98.0
         ],
         [
-          16.5,
+          18.0,
           0.05,
-          -104.0
+          -99.2
         ],
         [
-          13.5,
+          12.0,
+          0.05,
+          -102.5
+        ],
+        [
+          8.4,
           0.05,
           -108.0
         ],
         [
-          10.85,
+          7.0,
           0.05,
-          -112.5
-        ],
-        [
-          8.2,
-          0.05,
-          -117.0
+          -115.0
         ],
         [
           7.0,
           0.05,
-          -121.5
+          -123.0
         ],
         [
-          5.8,
+          7.0,
           0.05,
-          -126.0
+          -131.5
         ],
         [
-          5.5,
-          0.05,
-          -133.0
-        ],
-        [
-          5.5,
+          7.0,
           0.05,
           -140.0
         ],
         [
-          5.5,
+          7.0,
           0.05,
-          -146.0
+          -148.0
         ],
         [
-          5.5,
+          7.0,
           0.05,
-          -152.0
+          -156.5
         ],
         [
-          5.5,
-          0.05,
-          -156.333
-        ],
-        [
-          5.5,
-          0.05,
-          -160.667
-        ],
-        [
-          5.5,
+          7.0,
           0.05,
           -165.0
         ]
@@ -770,7 +757,7 @@
       "id": "ROAD_SWARAJ_TO_VADAKKE",
       "name": "Swaraj Round North - Shoranur Road - Vadakke Bus Stand",
       "road_type": "city_arterial",
-      "width_m": 16.5,
+      "width_m": 11.0,
       "lanes": 2,
       "divided": false,
       "closed_loop": false,
@@ -956,7 +943,7 @@
       ],
       "points_unity": [
         [
-          23.9,
+          23.96,
           0.05,
           -86.0
         ],
@@ -4047,6 +4034,11 @@
       ],
       "points_unity": [
         [
+          25.0,
+          0.05,
+          -114.5
+        ],
+        [
           29.8,
           0.05,
           -116.0
@@ -5283,7 +5275,7 @@
         [
           1050.3,
           0.05,
-          198.3
+          198.33
         ],
         [
           1056.049,
@@ -7516,7 +7508,7 @@
       "id": "ROAD_SWARAJ_TO_WEST_FORT",
       "name": "Swaraj Round West - M.G. Road - West Fort Junction",
       "road_type": "city_arterial",
-      "width_m": 16.5,
+      "width_m": 11.0,
       "lanes": 2,
       "divided": false,
       "closed_loop": false,
@@ -7718,9 +7710,9 @@
           -54.591
         ],
         [
-          -266.085,
+          -266.09,
           0.05,
-          -58.909
+          -58.905
         ]
       ]
     },
@@ -7738,9 +7730,9 @@
       ],
       "points_unity": [
         [
-          -266.1,
+          -266.09,
           0.05,
-          -58.9
+          -58.905
         ],
         [
           -273.159,
@@ -16649,6 +16641,16 @@
       ],
       "points_unity": [
         [
+          -2802.2,
+          0.05,
+          -1220.5
+        ],
+        [
+          -2797.2,
+          0.05,
+          -1218.2
+        ],
+        [
           -2792.0,
           0.05,
           -1216.0
@@ -17930,5 +17932,8 @@
         ]
       ]
     }
-  ]
+  ],
+  "cross_section_scale": 1.0,
+  "geographic_crs": "EPSG:4326",
+  "projected_crs": "EPSG:32643"
 }

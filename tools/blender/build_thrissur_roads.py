@@ -32,6 +32,8 @@ MATERIALS_SPEC = [
     ("MAT_Temple_Gold", (0.95, 0.76, 0.15), 0.25),
     ("MAT_Beach_Sand", (0.88, 0.78, 0.56), 0.85),
     ("MAT_Arabian_Sea", (0.08, 0.45, 0.68), 0.20),
+    ("MAT_Industrial_RoyalBlue", (0.118, 0.227, 0.541), 0.55),
+    ("MAT_Temple_CopperRoof", (0.361, 0.227, 0.157), 0.35),
 ]
 
 
@@ -219,68 +221,143 @@ class ProceduralRoadMesh:
                 (0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0),
             ))
 
+    def add_cylinder_frustum(self, cx, cz, y0, y1, r0, r1, mat_idx, sides=8):
+        """Adds an N-sided cylindrical/conical frustum for pillars, circular sanctums, and flagstaffs."""
+        step = (2.0 * math.pi) / sides
+        for i in range(sides):
+            a0 = i * step
+            a1 = (i + 1) * step
+            c0, s0 = math.cos(a0), math.sin(a0)
+            c1, s1 = math.cos(a1), math.sin(a1)
+            b = len(self.verts)
+            self.verts.extend([
+                (round(cx + c0 * r0, 3), round(y0, 3), round(cz + s0 * r0, 3)),
+                (round(cx + c1 * r0, 3), round(y0, 3), round(cz + s1 * r0, 3)),
+                (round(cx + c1 * r1, 3), round(y1, 3), round(cz + s1 * r1, 3)),
+                (round(cx + c0 * r1, 3), round(y1, 3), round(cz + s0 * r1, 3)),
+            ])
+            self.quads.append((
+                b, b + 1, b + 2, b + 3, mat_idx,
+                (0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0),
+            ))
+
+    def add_arched_barrel_roof(self, min_x, max_x, min_z, max_z, base_y, arch_rise, mat_idx, segments=6):
+        """Adds a smooth barrel-vault arched terminal roof with curved cross-section."""
+        dz = (max_z - min_z) / segments
+        for i in range(segments):
+            t0 = i / float(segments)
+            t1 = (i + 1) / float(segments)
+            z0 = min_z + (max_z - min_z) * t0
+            z1 = min_z + (max_z - min_z) * t1
+            y0 = base_y + math.sin(t0 * math.pi) * arch_rise
+            y1 = base_y + math.sin(t1 * math.pi) * arch_rise
+            b = len(self.verts)
+            self.verts.extend([
+                (round(min_x, 3), round(y0, 3), round(z0, 3)),
+                (round(max_x, 3), round(y0, 3), round(z0, 3)),
+                (round(max_x, 3), round(y1, 3), round(z1, 3)),
+                (round(min_x, 3), round(y1, 3), round(z1, 3)),
+            ])
+            self.quads.append((
+                b, b + 1, b + 2, b + 3, mat_idx,
+                (0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0),
+            ))
+
+    def add_organic_tree(self, tx, tz, r, h, base_y=0.06):
+        """Adds an organic multi-dome 3D tropical tree with flared roots and 8-sided tapered trunk."""
+        trunk_r = (r * 0.14)
+        trunk_top_y = base_y + h * 0.42
+        self.add_cylinder_frustum(tx, tz, base_y, base_y + 0.55, trunk_r * 1.55, trunk_r * 1.12, mat_idx=7, sides=8)
+        self.add_cylinder_frustum(tx, tz, base_y + 0.52, trunk_top_y, trunk_r * 1.10, trunk_r * 0.72, mat_idx=7, sides=8)
+        # 3-band rounded polyhedral foliage crown + 3 lower sub-canopy lobes
+        lobes = [
+            (tx, trunk_top_y + h * 0.25, tz, r * 0.88, h * 0.30),
+            (tx - r * 0.40, trunk_top_y + h * 0.12, tz - r * 0.28, r * 0.64, h * 0.22),
+            (tx + r * 0.42, trunk_top_y + h * 0.14, tz - r * 0.24, r * 0.62, h * 0.22),
+            (tx + r * 0.04, trunk_top_y + h * 0.13, tz + r * 0.42, r * 0.65, h * 0.22),
+        ]
+        for cx, cy, cz, rxz, ry in lobes:
+            bands = [
+                (-0.55, 0.58, 0.05, 1.00),
+                (0.05, 1.00, 0.62, 0.78),
+                (0.62, 0.78, 0.96, 0.24),
+            ]
+            for yf0, rf0, yf1, rf1 in bands:
+                self.add_cylinder_frustum(cx, cz, cy + ry * yf0, cy + ry * yf1, rxz * rf0, rxz * rf1, mat_idx=1, sides=8)
+
 
 def build_landmark_meshes():
-    """Builds 3D Blender architectural meshes for the 6 aligned Thrissur & Coastal Landmarks."""
+    """Builds high-realism 3D Blender architectural meshes for Thrissur Zone 1 & District Landmarks (Zero Dummy Boxes)."""
     landmarks = []
 
-    # 1. Sakthan Thampuran Bus Stand (Aligned Left Entry X=2..12 & Right Exit X=19..31 at Z=-140)
+    # 1. Sakthan Thampuran Bus Stand (Sculpted Cylindrical Steel Columns, Y-Arms, 10 Arched Barrel Roof Bays & Octagonal Clock Tower)
     sak = ProceduralRoadMesh("LM_Sakthan_Bus_Stand")
     sak.add_box(-22.0, 0.02, -220.0, 48.0, 0.058, -140.0, mat_idx=0)
     sak.add_box(-22.0, 0.06, -140.6, 2.0, 1.45, -139.8, mat_idx=7)
     sak.add_box(12.0, 0.06, -140.6, 19.0, 1.35, -139.8, mat_idx=8)
     sak.add_box(31.0, 0.06, -140.6, 48.0, 1.45, -139.8, mat_idx=7)
-    sak.add_box(-21.0, 6.2, -185.5, 46.5, 6.85, -160.5, mat_idx=6)
-    sak.add_box(-21.0, 6.2, -217.5, 46.5, 6.85, -197.0, mat_idx=6)
-    sak.add_box(-22.0, 0.06, -218.0, -18.5, 8.8, -146.0, mat_idx=8)
-    sak.add_box(-21.8, 8.8, -164.0, -18.5, 16.0, -159.0, mat_idx=6)
-    # Left Entry Gate Arch (X=2.0..12.0, Z=-140.0) & Right Exit Gate Arch (X=19.0..31.0, Z=-140.0)
-    sak.add_box(1.4, 0.06, -140.4, 2.1, 6.2, -139.6, mat_idx=6)
-    sak.add_box(11.9, 0.06, -140.4, 12.6, 6.2, -139.6, mat_idx=6)
-    sak.add_box(1.4, 4.8, -140.4, 12.6, 6.2, -139.6, mat_idx=8)
-    sak.add_box(18.4, 0.06, -140.4, 19.1, 6.2, -139.6, mat_idx=6)
-    sak.add_box(30.9, 0.06, -140.4, 31.6, 6.2, -139.6, mat_idx=6)
-    sak.add_box(18.4, 4.8, -140.4, 31.6, 6.2, -139.6, mat_idx=8)
+    # 3 Parallel Raised Island Boarding Platforms with Cylindrical Columns & 10 Arched Barrel-Vault Roof Bays
+    for plat_z0, plat_z1 in [(-185.0, -161.0), (-205.5, -195.5), (-218.5, -210.5)]:
+        p_mid_z = (plat_z0 + plat_z1) * 0.5
+        sak.add_box(-19.5, 0.06, plat_z0, 45.2, 0.31, plat_z1, mat_idx=2)
+        for px in (-16.0, -3.0, 10.0, 23.0, 36.0, 43.0):
+            sak.add_cylinder_frustum(px, p_mid_z - 2.6, 0.31, 6.05, 0.28, 0.24, mat_idx=6, sides=8)
+            sak.add_cylinder_frustum(px, p_mid_z + 2.6, 0.31, 6.05, 0.28, 0.24, mat_idx=6, sides=8)
+    for b_idx in range(5):
+        bx0 = -20.5 + b_idx * 13.4
+        bx1 = bx0 + 12.8
+        sak.add_arched_barrel_roof(bx0, bx1, -186.2, -159.8, 6.05, 1.35, mat_idx=12, segments=6)
+        sak.add_arched_barrel_roof(bx0, bx1, -219.2, -194.8, 6.05, 1.25, mat_idx=12, segments=6)
+    # West Terminal Glazed Concourse Building + Octagonal 12m Clock Tower + 25m High-Mast Floodlight Tower
+    sak.add_box(-22.2, 0.06, -218.0, -18.2, 8.8, -145.5, mat_idx=8)
+    sak.add_cylinder_frustum(-20.1, -161.5, 8.8, 20.2, 2.35, 2.10, mat_idx=8, sides=8)
+    sak.add_cylinder_frustum(-20.1, -161.5, 20.2, 22.8, 2.55, 0.15, mat_idx=6, sides=8)
+    sak.add_cylinder_frustum(13.5, -152.5, 0.35, 25.0, 0.45, 0.18, mat_idx=2, sides=8)
     landmarks.append(sak)
 
-    # 2. Swaraj Round, Thekkinkadu Maidan Tree Grove, Nehru Park & Sree Vadakkumnathan Temple Complex (Satellite-Matched)
+    # 2. Swaraj Round, Thekkinkadu Maidan Organic Tree Grove, Circular Vatta Sreekovil & Sree Vadakkumnathan Temple
     swa = ProceduralRoadMesh("LM_Swaraj_Round_Vadakkumnathan")
     tcx, tcz = 1.8, 4.5
     w_r = 11.8
-    # Elevated Thekkinkadu Maidan Hillock Terrace & 4 Sloped Granite Nada Walkways
     swa.add_box(-33.5, 0.06, -24.5, 39.5, 0.42, 43.5, mat_idx=1)
-    swa.add_box(tcx + 3.8, 0.08, -25.8, tcx + 8.6, 0.65, tcz - w_r, mat_idx=2)   # South Nada (M.O. Road)
-    swa.add_box(tcx - 3.0, 0.08, tcz + w_r, tcx + 1.8, 0.65, 45.2, mat_idx=2)    # North Nada (Shornur Road)
-    swa.add_box(-35.2, 0.08, tcz - 3.6, tcx - w_r, 0.65, tcz + 1.8, mat_idx=2)   # West Nada Divided Avenue (M.G. Road)
-    swa.add_box(tcx + w_r, 0.08, tcz - 2.2, 40.5, 0.65, tcz + 2.2, mat_idx=2)    # East Nada (Palghat Road)
-    # Maryada Temple Compound Wall with Whitewashed Base, Laterite Upper Wall & Terracotta Coping
+    swa.add_box(tcx + 3.8, 0.08, -25.8, tcx + 8.6, 0.65, tcz - w_r, mat_idx=2)
+    swa.add_box(tcx - 3.0, 0.08, tcz + w_r, tcx + 1.8, 0.65, 45.2, mat_idx=2)
+    swa.add_box(-35.2, 0.08, tcz - 3.6, tcx - w_r, 0.65, tcz + 1.8, mat_idx=2)
+    swa.add_box(tcx + w_r, 0.08, tcz - 2.2, 40.5, 0.65, tcz + 2.2, mat_idx=2)
+    # Maryada Temple Compound Wall
     swa.add_box(tcx - w_r, 0.64, tcz - w_r, tcx + w_r, 3.35, tcz - w_r + 0.85, mat_idx=7)
     swa.add_box(tcx - w_r, 0.64, tcz + w_r - 0.85, tcx + w_r, 3.35, tcz + w_r, mat_idx=7)
     swa.add_box(tcx - w_r, 0.64, tcz - w_r, tcx - w_r + 0.85, 3.35, tcz + w_r, mat_idx=7)
     swa.add_box(tcx + w_r - 0.85, 0.64, tcz - w_r, tcx + w_r, 3.35, tcz + w_r, mat_idx=7)
-    # 4 Cardinal 3-Tiered Kerala Temple Gopurams nestled inside the Thekkinkadu Tree Grove
+    # 4 Cardinal 3-Tiered Kerala Temple Gopurams
     for gx, gz, gw, gd in [
-        (tcx + 6.2, tcz - w_r, 3.6, 2.2),  # South Gopuram (faces M.O. Road)
-        (tcx - 0.6, tcz + w_r, 3.6, 2.2),  # North Gopuram (faces Shornur Road)
-        (tcx - w_r, tcz - 1.0, 2.2, 3.6),  # West Gopuram (faces M.G. / West Fort Road)
-        (tcx + w_r, tcz + 0.0, 2.2, 3.6),  # East Gopuram (faces Palghat / Mannuthy Road)
+        (tcx + 6.2, tcz - w_r, 3.6, 2.2),
+        (tcx - 0.6, tcz + w_r, 3.6, 2.2),
+        (tcx - w_r, tcz - 1.0, 2.2, 3.6),
+        (tcx + w_r, tcz + 0.0, 2.2, 3.6),
     ]:
         swa.add_box(gx - gw, 0.64, gz - gd, gx + gw, 4.4, gz + gd, mat_idx=8)
         swa.add_box(gx - gw * 1.18, 4.4, gz - gd * 1.18, gx + gw * 1.18, 6.8, gz + gd * 1.18, mat_idx=6)
         swa.add_box(gx - gw * 0.82, 6.8, gz - gd * 0.82, gx + gw * 0.82, 9.8, gz + gd * 0.82, mat_idx=6)
         swa.add_box(gx - gw * 0.65, 9.8, gz - gd * 0.65, gx + gw * 0.65, 13.0, gz + gd * 0.65, mat_idx=6)
         swa.add_box(gx - 0.5, 13.0, gz - 0.5, gx + 0.5, 14.3, gz + 0.5, mat_idx=9)
-    # Inner Nalambalam, Vadakkumnathan & Sri Rama Sreekovils, Koothambalam & Golden Flagstaff
-    swa.add_box(tcx - 7.6, 0.64, tcz - 7.6, tcx + 7.6, 4.3, tcz + 7.6, mat_idx=8)
-    swa.add_box(tcx - 4.2, 4.3, tcz - 3.2, tcx + 4.2, 9.6, tcz + 5.2, mat_idx=6)
-    swa.add_box(tcx - 0.6, 9.6, tcz + 0.5, tcx + 0.6, 11.4, tcz + 1.7, mat_idx=9)
+    # 16-Sided Circular Vatta Sreekovil (18m Scaled Diameter) with Conical Copper Roof & Golden Stupika + 21m Cylindrical Flagstaff
+    swa.add_cylinder_frustum(tcx, tcz + 1.0, 0.68, 4.35, 4.5, 4.5, mat_idx=8, sides=16)
+    swa.add_cylinder_frustum(tcx, tcz + 1.0, 4.30, 9.95, 5.15, 0.25, mat_idx=13, sides=16)
+    swa.add_cylinder_frustum(tcx, tcz + 1.0, 9.95, 11.75, 0.42, 0.06, mat_idx=9, sides=12)
+    swa.add_cylinder_frustum(tcx - 9.4, tcz - 1.0, 0.68, 21.68, 0.28, 0.11, mat_idx=9, sides=12)
     swa.add_box(tcx - 10.6, 0.64, tcz + 1.8, tcx - 8.1, 7.6, tcz + 8.6, mat_idx=6)  # Koothambalam
-    # Sacred Temple Pond (Kulam) North of Temple inside Tree Grove & East Water Authority Building + Tanks
-    swa.add_box(0.5, 0.35, 21.0, 9.2, 0.58, 28.8, mat_idx=11)
-    swa.add_box(19.2, 0.42, 7.0, 23.6, 5.2, 18.5, mat_idx=2)
-    for wtz in (9.2, 13.5, 17.5):
-        swa.add_box(25.2, 0.42, wtz - 1.6, 28.4, 3.8, wtz + 1.6, mat_idx=3)
-    # Dense Sacred Tree Grove (Thekkinkadu) around Sree Vadakkumnathan Temple & Nehru Park (NE Quadrant)
+    swa.add_box(0.5, 0.35, 21.0, 9.2, 0.58, 28.8, mat_idx=11)  # Sacred Temple Pond (Kulam)
+    # Ancient Banyan Trees with 12-Sided Circular 1.0m Laterite Aalthara Platforms
+    for bx, bz, br, bh in [
+        (8.0, -22.5, 6.2, 14.2),
+        (-31.0, -1.8, 6.4, 14.6),
+        (-1.2, 39.2, 6.0, 13.8),
+        (32.5, 3.2, 5.8, 13.5),
+    ]:
+        swa.add_cylinder_frustum(bx, bz, 0.38, 1.38, 3.85, 3.85, mat_idx=7, sides=12)
+        swa.add_organic_tree(bx, bz, br, bh, base_y=1.38)
+    # Dense Sacred Organic Tree Grove (Thekkinkadu)
     for trx, trz, trr, trh in [
         (-13.8, 11.2, 4.8, 12.2), (-14.2, 5.4, 4.4, 11.5), (-14.0, -3.2, 4.6, 11.8), (-13.2, -9.2, 5.0, 12.6),
         (-9.8, 17.2, 4.6, 12.0), (-5.2, 18.0, 4.4, 11.4), (5.8, 17.8, 4.8, 12.4), (11.2, 17.2, 4.6, 11.8),
@@ -288,109 +365,150 @@ def build_landmark_meshes():
         (16.2, 12.5, 5.0, 12.8), (16.5, 6.8, 4.4, 11.4), (16.2, -1.8, 4.8, 12.2), (15.4, -7.8, 5.0, 12.6),
         (-7.2, -10.2, 4.8, 12.0), (-2.2, -10.8, 4.4, 11.4), (12.8, -10.2, 4.8, 12.2), (16.8, -11.5, 4.4, 11.6),
         (14.5, 35.5, 4.8, 12.4), (21.5, 37.8, 5.2, 13.2), (28.5, 34.2, 4.8, 12.2), (33.5, 27.5, 4.6, 11.8),
-        (18.2, 27.5, 4.4, 11.5), (25.2, 24.8, 4.8, 12.4), (31.8, 19.8, 4.4, 11.4),
-        (-28.5, -6.5, 4.8, 12.0), (-26.2, -14.2, 5.2, 12.8), (-19.5, -18.5, 4.6, 11.6),
-        (-27.5, 22.5, 4.6, 11.8), (-21.5, 31.5, 4.8, 12.2), (28.5, -8.5, 4.6, 11.8),
     ]:
-        swa.add_box(trx - 0.55, 0.42, trz - 0.55, trx + 0.55, 4.4, trz + 0.55, mat_idx=7)
-        swa.add_box(trx - trr, 3.8, trz - trr, trx + trr, trh * 0.78, trz + trr, mat_idx=1)
-        swa.add_box(trx - trr * 0.68, trh * 0.72, trz - trr * 0.68, trx + trr * 0.68, trh, trz + trr * 0.68, mat_idx=1)
-    # Outer Ring Landmarks: Paramekkavu Bagavathi Temple (Round East), Indian Coffee House (Round South) & Arcades
-    swa.add_box(62.8, 0.06, 15.5, 69.5, 9.4, 24.5, mat_idx=6)     # Paramekkavu Devi Temple
-    swa.add_box(60.2, 0.06, 19.5, 61.1, 12.5, 20.5, mat_idx=9)    # Paramekkavu Deepastambham
-    swa.add_box(38.0, 0.06, -42.0, 48.0, 10.2, -31.0, mat_idx=6)  # Indian Coffee House (Round South)
-    swa.add_box(-22.0, 0.06, -59.5, 0.5, 9.2, -50.5, mat_idx=8)   # Round South-West Arcade (Bharat Hotel / Ragam)
-    swa.add_box(-67.5, 0.06, 15.0, -57.0, 8.6, 38.0, mat_idx=8)   # Round West Arcade (City Centre / Devaki Dairy)
-    swa.add_box(18.5, 0.06, 62.5, 41.5, 9.0, 71.5, mat_idx=8)     # Round North Arcade
+        swa.add_organic_tree(trx, trz, trr, trh, base_y=0.40)
+    # Outer Ring Architectural Landmarks: Paramekkavu Bagavathi Temple, Indian Coffee House & Arcades
+    swa.add_box(62.8, 0.06, 15.5, 69.5, 9.4, 24.5, mat_idx=6)
+    swa.add_cylinder_frustum(60.6, 20.0, 0.06, 12.5, 0.35, 0.14, mat_idx=9, sides=8)
+    swa.add_box(38.0, 0.06, -42.0, 48.0, 10.2, -31.0, mat_idx=6)
+    swa.add_box(-22.0, 0.06, -59.5, 0.5, 9.2, -50.5, mat_idx=8)
+    swa.add_box(-67.5, 0.06, 15.0, -57.0, 8.6, 38.0, mat_idx=8)
+    swa.add_box(18.5, 0.06, 62.5, 41.5, 9.0, 71.5, mat_idx=8)
     landmarks.append(swa)
 
-    # 3. Guruvayur Sri Krishna Temple East Nada (Aligned at X=-2636..-2565, Z=1222..1298 facing East Nada Rd Z=1260)
+    # 3. Guruvayur Sri Krishna Temple East Nada
     guru_t = ProceduralRoadMesh("LM_Guruvayur_Temple_EastNada")
     guru_t.add_box(-2642.0, 0.055, 1236.0, -2565.0, 0.12, 1284.0, mat_idx=2)
     guru_t.add_box(-2630.0, 0.12, 1250.0, -2622.0, 6.8, 1270.0, mat_idx=8)
     guru_t.add_box(-2631.5, 6.8, 1248.5, -2620.5, 10.2, 1271.5, mat_idx=6)
     guru_t.add_box(-2629.5, 10.2, 1251.5, -2622.5, 13.5, 1268.5, mat_idx=6)
     guru_t.add_box(-2627.0, 13.5, 1258.0, -2625.0, 15.6, 1262.0, mat_idx=9)
-    # 33.5m Golden Dwajasthambham & Twin Deepastambhams
-    guru_t.add_box(-2635.5, 0.12, 1259.4, -2634.3, 21.0, 1260.6, mat_idx=9)
-    guru_t.add_box(-2637.5, 0.12, 1254.5, -2636.5, 8.5, 1255.5, mat_idx=9)
-    guru_t.add_box(-2637.5, 0.12, 1264.5, -2636.5, 8.5, 1265.5, mat_idx=9)
-    # Sreekovil Golden Roof & Rudratheertham Temple Pond (North of Temple)
+    guru_t.add_cylinder_frustum(-2634.9, 1260.0, 0.12, 21.0, 0.36, 0.14, mat_idx=9, sides=12)
+    guru_t.add_cylinder_frustum(-2637.0, 1255.0, 0.12, 8.5, 0.32, 0.12, mat_idx=9, sides=8)
+    guru_t.add_cylinder_frustum(-2637.0, 1265.0, 0.12, 8.5, 0.32, 0.12, mat_idx=9, sides=8)
     guru_t.add_box(-2606.0, 0.12, 1251.0, -2588.0, 5.4, 1269.0, mat_idx=8)
     guru_t.add_box(-2607.5, 5.4, 1249.5, -2586.5, 9.8, 1270.5, mat_idx=9)
     guru_t.add_box(-2628.0, 0.04, 1290.0, -2580.0, 0.09, 1326.0, mat_idx=11)
     landmarks.append(guru_t)
 
-    # 4. Guruvayur Municipal Bus Stand (Aligned directly with North edge of Z=1260 road at X=-2778..-2692, Z=1265..1326)
+    # 4. Guruvayur Municipal Bus Stand (Arched Barrel-Vault Canopy & Cylindrical Columns)
     guru_bs = ProceduralRoadMesh("LM_Guruvayur_Bus_Stand")
     guru_bs.add_box(-2778.0, 0.055, 1265.0, -2692.0, 0.09, 1326.0, mat_idx=0)
-    guru_bs.add_box(-2770.0, 5.8, 1284.0, -2700.0, 6.5, 1314.0, mat_idx=6)
+    guru_bs.add_arched_barrel_roof(-2770.0, -2700.0, 1284.0, 1314.0, 5.8, 1.25, mat_idx=6, segments=6)
     guru_bs.add_box(-2774.0, 0.09, 1314.0, -2696.0, 8.4, 1324.0, mat_idx=8)
     landmarks.append(guru_bs)
 
-    # 5. Chavakkad Beach & Coastal Plaza (Aligned with X=-4500.0 road along Z=1020..1140)
+    # 5. Chavakkad Beach & Coastal Plaza
     chav = ProceduralRoadMesh("LM_Chavakkad_Beach_Promenade")
-    chav.add_box(-4516.0, 0.06, 995.0, -4506.0, 0.45, 1165.0, mat_idx=2)     # Seawall Promenade
-    chav.add_box(-4560.0, 0.03, 980.0, -4516.0, 0.06, 1180.0, mat_idx=10)    # Golden Sand Beach
-    chav.add_box(-4690.0, 0.01, 960.0, -4560.0, 0.04, 1200.0, mat_idx=11)    # Arabian Sea + Azhi Estuary
-    chav.add_box(-4526.0, 0.45, 1122.0, -4520.0, 21.5, 1128.0, mat_idx=6)    # Chavakkad Lighthouse
-    chav.add_box(-4494.0, 0.055, 1042.0, -4464.0, 0.09, 1118.0, mat_idx=0)   # East-Side Beach Bus Stand Apron
-    chav.add_box(-4488.0, 5.4, 1056.0, -4468.0, 6.1, 1104.0, mat_idx=6)      # Beach Bus Stand Canopy
+    chav.add_box(-4516.0, 0.06, 995.0, -4506.0, 0.45, 1165.0, mat_idx=2)
+    chav.add_box(-4560.0, 0.03, 980.0, -4516.0, 0.06, 1180.0, mat_idx=10)
+    chav.add_box(-4690.0, 0.01, 960.0, -4560.0, 0.04, 1200.0, mat_idx=11)
+    chav.add_cylinder_frustum(-4523.0, 1125.0, 0.45, 21.5, 2.6, 1.7, mat_idx=6, sides=12)
+    chav.add_box(-4494.0, 0.055, 1042.0, -4464.0, 0.09, 1118.0, mat_idx=0)
+    chav.add_arched_barrel_roof(-4488.0, -4468.0, 1056.0, 1104.0, 5.4, 1.05, mat_idx=6, segments=6)
     landmarks.append(chav)
 
-    # 6. Triprayar - Nattika Beach & Coastal Terminus (Aligned with X=-2220.0 road along Z=-2470..-2340)
+    # 6. Triprayar - Nattika Beach & Coastal Terminus
     trip = ProceduralRoadMesh("LM_Triprayar_Beach_Promenade")
-    trip.add_box(-2236.0, 0.06, -2485.0, -2226.0, 0.45, -2335.0, mat_idx=2)  # Seawall Promenade
-    trip.add_box(-2282.0, 0.03, -2500.0, -2236.0, 0.06, -2320.0, mat_idx=10) # Golden Sand Shore
-    trip.add_box(-2420.0, 0.01, -2520.0, -2282.0, 0.04, -2300.0, mat_idx=11) # Arabian Sea Surf
-    trip.add_box(-2214.0, 0.055, -2452.0, -2184.0, 0.09, -2368.0, mat_idx=0) # Triprayar Beach Bus Stand Apron
-    trip.add_box(-2208.0, 5.4, -2438.0, -2188.0, 6.1, -2382.0, mat_idx=6)   # Triprayar Beach Bus Canopy
+    trip.add_box(-2236.0, 0.06, -2485.0, -2226.0, 0.45, -2335.0, mat_idx=2)
+    trip.add_box(-2282.0, 0.03, -2500.0, -2236.0, 0.06, -2320.0, mat_idx=10)
+    trip.add_box(-2420.0, 0.01, -2520.0, -2282.0, 0.04, -2300.0, mat_idx=11)
+    trip.add_box(-2214.0, 0.055, -2452.0, -2184.0, 0.09, -2368.0, mat_idx=0)
+    trip.add_arched_barrel_roof(-2208.0, -2188.0, -2438.0, -2382.0, 5.4, 1.05, mat_idx=6, segments=6)
     landmarks.append(trip)
 
-    # 7. Paliyekkara Toll Plaza on NH 544 (Aligned at X=999.5, Z=-1806.0 across all 10 Toll Lanes)
+    # 7. Paliyekkara Toll Plaza on NH 544
     toll = ProceduralRoadMesh("LM_Paliyekkara_Toll_Plaza")
     tx, tz = 999.5, -1806.0
-    # 58m-wide 10-Lane Concrete Toll Apron
     toll.add_box(tx - 29.0, 0.055, -1845.0, tx + 29.0, 0.09, -1768.0, mat_idx=2)
-    # 11 Yellow-and-Black Striped Concrete Toll Islands, Cream Columns & Glazed Booth Kiosks
     for i_idx in range(11):
         ix = tx + (i_idx - 5) * 5.6
         toll.add_box(ix - 0.42, 0.06, -1823.0, ix + 0.42, 0.38, -1789.0, mat_idx=4)
-        toll.add_box(ix - 0.34, 0.38, tz - 0.34, ix + 0.34, 5.55, tz + 0.34, mat_idx=8)
+        toll.add_cylinder_frustum(ix, tz, 0.38, 5.55, 0.32, 0.28, mat_idx=8, sides=8)
         if 1 <= i_idx <= 9:
             toll.add_box(ix - 0.40, 0.38, tz - 2.6, ix + 0.40, 2.85, tz + 2.6, mat_idx=6)
-    # Dark Space-Frame Truss, NETC FASTag Fascia & Full-Width Sloped Kerala Terracotta Roof Canopy
     toll.add_box(tx - 30.8, 5.45, tz - 5.4, tx + 30.8, 6.25, tz + 5.4, mat_idx=0)
     toll.add_box(tx - 31.4, 6.25, tz - 5.8, tx + 31.4, 7.75, tz + 5.8, mat_idx=6)
-    # Central 2-Tiered Kerala Gopuram Roof Tower + White Clerestory Louver Band
     toll.add_box(tx - 9.8, 7.65, tz - 5.2, tx + 9.8, 9.95, tz + 5.2, mat_idx=6)
     toll.add_box(tx - 8.2, 9.80, tz - 3.4, tx + 8.2, 11.15, tz + 3.4, mat_idx=3)
     toll.add_box(tx - 9.2, 11.05, tz - 4.8, tx + 9.2, 14.50, tz + 4.8, mat_idx=6)
-    # Left & Right Steep Pitched Triangular Gable Wing Pavilions
     toll.add_box(tx - 38.5, 6.22, tz - 6.0, tx - 26.1, 11.40, tz + 6.0, mat_idx=6)
     toll.add_box(tx + 26.1, 6.22, tz - 6.0, tx + 38.5, 11.40, tz + 6.0, mat_idx=6)
-    # 2-Storey Paliyekkara Toll Admin Building on West/Right Side
     toll.add_box(tx + 34.5, 0.06, tz - 22.0, tx + 46.5, 9.80, tz + 12.0, mat_idx=8)
     landmarks.append(toll)
 
-    # 8. Vadakke Stand (Thrissur North Bus Stand - Aligned at X=-62..-10, Z=200.2..246.0)
+    # 8. Vadakke Stand (Sculpted Cylindrical Columns, 5 Arched Barrel-Vault Roof Bays & Glazed Waiting Hall)
     vad = ProceduralRoadMesh("LM_Vadakke_Bus_Stand")
     vad.add_box(-62.0, 0.055, 200.16, -10.0, 0.09, 246.0, mat_idx=0)
-    vad.add_box(-58.0, 0.09, 233.2, -14.0, 0.36, 244.0, mat_idx=2)
-    vad.add_box(-58.5, 5.6, 214.0, -13.5, 6.3, 235.5, mat_idx=6)
-    vad.add_box(-57.0, 0.36, 235.5, -15.0, 7.2, 244.5, mat_idx=8)
+    vad.add_box(-58.0, 0.09, 232.0, -14.0, 0.36, 244.5, mat_idx=2)
+    vad.add_box(-56.0, 0.09, 213.5, -16.0, 0.34, 221.5, mat_idx=2)
+    for px in (-53.0, -43.5, -34.0, -24.5, -18.0):
+        vad.add_cylinder_frustum(px, 217.5, 0.34, 5.75, 0.26, 0.22, mat_idx=6, sides=8)
+        vad.add_cylinder_frustum(px, 233.2, 0.36, 5.75, 0.26, 0.22, mat_idx=6, sides=8)
+    for b_idx in range(5):
+        bx0 = -57.5 + b_idx * 8.6
+        bx1 = bx0 + 8.1
+        vad.add_arched_barrel_roof(bx0, bx1, 212.5, 235.2, 5.75, 1.15, mat_idx=12, segments=6)
+    vad.add_box(-57.0, 0.36, 235.2, -15.0, 7.2, 244.2, mat_idx=8)
     landmarks.append(vad)
 
-    # 9. Kerala PWD / NHAI Green Junction Direction Boards (15 outer-verge signboards, strictly outside all road shoulders)
+    # 8B. Zone 1.3: Thrissur Central Railway Station (TCR) + Full-Length 215m Indian Railways Express Train (WAP-7 + 10 Coaches)
+    tcr = ProceduralRoadMesh("LM_Thrissur_Central_Railway_Station_TCR")
+    tcr.add_box(-66.5, 0.05, -225.0, -45.5, 0.50, 20.0, mat_idx=0)
+    tcr.add_box(-49.0, 0.06, -215.0, -43.2, 0.84, 15.0, mat_idx=2)
+    tcr.add_box(-65.8, 0.06, -215.0, -61.0, 0.84, 15.0, mat_idx=2)
+    tcr.add_box(-49.0, 0.84, -215.0, -48.55, 0.87, 15.0, mat_idx=5)
+    tcr.add_box(-61.45, 0.84, -215.0, -61.0, 0.87, 15.0, mat_idx=5)
+    # British-Cochin colonial station building, porte-cochere & clock tower
+    tcr.add_box(-43.2, 0.06, -152.0, -34.8, 7.10, -58.0, mat_idx=8)
+    tcr.add_box(-34.8, 4.85, -115.0, -28.0, 7.45, -95.0, mat_idx=6)
+    tcr.add_box(-41.2, 9.20, -109.0, -36.0, 15.60, -101.0, mat_idx=8)
+    # Arched Barrel-Vault Platform Roofs & Covered Foot Over Bridge (FOB)
+    tcr.add_arched_barrel_roof(-49.2, -43.0, -195.0, -15.0, 5.05, 0.82, mat_idx=12, segments=6)
+    tcr.add_arched_barrel_roof(-66.0, -60.8, -195.0, -15.0, 5.05, 0.82, mat_idx=12, segments=6)
+    tcr.add_arched_barrel_roof(-65.2, -43.8, -88.8, -84.2, 8.85, 0.55, mat_idx=12, segments=4)
+    # 25kV AC Catenary Portals every 35m (-210m .. +0m)
+    for mz in (-210.0, -175.0, -140.0, -105.0, -70.0, -35.0, 0.0):
+        tcr.add_box(-48.78, 0.84, mz - 0.16, -48.46, 7.55, mz + 0.16, mat_idx=2)
+        tcr.add_box(-61.54, 0.84, mz - 0.16, -61.22, 7.55, mz + 0.16, mat_idx=2)
+        tcr.add_box(-61.4, 6.75, mz - 0.12, -48.6, 7.00, mz + 0.12, mat_idx=2)
+    # Sculpted Southern Railway WAP-7 Electric Locomotive (Z = -22.0m .. -3.0m) + 10 Full-Scale Express Coaches (Z = -182.0m .. -22.5m)
+    tcr.add_box(-53.06, 1.18, -21.2, -49.94, 3.88, -3.8, mat_idx=8)
+    tcr.add_box(-53.10, 1.85, -21.95, -49.90, 2.48, -3.05, mat_idx=6)
+    tcr.add_arched_barrel_roof(-52.95, -50.05, -21.2, -3.8, 3.88, 0.32, mat_idx=2, segments=4)
+    for c_idx in range(10):
+        cz1 = -22.5 - c_idx * 16.0
+        cz0 = cz1 - 15.2
+        is_ac = c_idx < 4
+        tcr.add_box(-53.06, 1.18, cz0, -49.94, 3.85, cz1, mat_idx=(6 if is_ac else 12))
+        tcr.add_arched_barrel_roof(-53.02, -49.98, cz0, cz1, 3.85, 0.30, mat_idx=2, segments=4)
+        # Bogies & Accordion Gangway Bellows
+        tcr.add_box(-52.92, 0.62, cz0 + 1.2, -50.08, 1.15, cz0 + 3.6, mat_idx=0)
+        tcr.add_box(-52.92, 0.62, cz1 - 3.6, -50.08, 1.15, cz1 - 1.2, mat_idx=0)
+        tcr.add_box(-52.55, 1.30, cz1, -50.45, 3.68, cz1 + 0.80, mat_idx=0)
+    landmarks.append(tcr)
+
+    # 8C. Zone 1.4: Manikandanal Traffic Signal (Cylindrical 6.5m Cantilever Mast Arm - Zero Dummy Boxes)
+    z1_sig = ProceduralRoadMesh("LM_Zone1_Manikandanal_TrafficSignal")
+    z1_sig.add_cylinder_frustum(23.60, -37.20, 0.06, 6.65, 0.20, 0.15, mat_idx=2, sides=8)
+    z1_sig.add_box(16.20, 6.38, -37.32, 23.60, 6.60, -37.08, mat_idx=2)
+    z1_sig.add_box(17.26, 5.42, -37.46, 17.94, 6.72, -37.10, mat_idx=5)
+    z1_sig.add_box(20.06, 5.42, -37.46, 20.74, 6.72, -37.10, mat_idx=5)
+    landmarks.append(z1_sig)
+
+    # 9. Kerala PWD / NHAI Green Junction Direction Boards (All 27 Map-Matched All-Approach Junction Signboards)
     signs = ProceduralRoadMesh("LM_NHAI_Junction_Signboards")
     for sx, sz in [
-        (-28.0, -118.0), (46.0, -90.0), (42.0, -55.0), (-82.0, -24.0), (-36.0, 88.0),
-        (84.0, 22.0), (-48.0, 178.0), (74.0, -142.0), (-510.0, -108.0), (-1545.0, -352.0),
-        (-2228.0, -2315.0), (-2698.0, 1265.0), (-4475.0, 1122.0), (855.0, -56.0), (1058.0, -1735.0)
+        (33.2, -135.0), (16.8, -119.5), (33.0, -108.5), (17.0, -103.5), (16.8, -94.0),
+        (32.5, -80.5), (16.0, -78.5), (25.5, -45.5), (8.5, -45.5), (38.0, -128.0),
+        (28.0, -148.0), (-30.0, -14.0), (-26.5, 42.5), (34.5, 14.5), (18.5, -24.5),
+        (-62.0, -10.5), (-7.0, 82.0), (88.0, 2.0), (-42.0, 175.0), (128.0, -34.0),
+        (172.0, -12.0), (965.0, 182.0), (1035.0, 135.0), (1085.0, 212.0), (520.0, -885.0),
+        (565.0, -885.0), (985.0, -1725.0)
     ]:
         signs.add_box(sx - 3.2, 2.65, sz - 0.15, sx + 3.2, 4.65, sz + 0.15, mat_idx=1)
-        signs.add_box(sx - 2.4, 0.05, sz - 0.12, sx - 2.1, 2.65, sz + 0.12, mat_idx=2)
-        signs.add_box(sx + 2.1, 0.05, sz - 0.12, sx + 2.4, 2.65, sz + 0.12, mat_idx=2)
+        signs.add_cylinder_frustum(sx - 2.25, sz, 0.05, 2.65, 0.12, 0.12, mat_idx=2, sides=8)
+        signs.add_cylinder_frustum(sx + 2.25, sz, 0.05, 2.65, 0.12, 0.12, mat_idx=2, sides=8)
     landmarks.append(signs)
 
     return landmarks
@@ -458,6 +576,10 @@ def build_road_geometry(road_spec):
             lane_mid = (half_w + med_hw) * 0.5
             rm.add_dashed_strip(frames, -lane_mid, 0.07, y_mark, mat_idx=4, trim_ends_m=trim_junc)
             rm.add_dashed_strip(frames, lane_mid, 0.07, y_mark, mat_idx=4, trim_ends_m=trim_junc)
+    elif rid == "ROAD_SWARAJ_ROUND" or road_spec.get("one_way_clockwise", False):
+        rm.add_dashed_strip(frames, -half_w * 0.5, 0.07, y_mark, mat_idx=4, trim_ends_m=trim_junc)
+        rm.add_dashed_strip(frames, 0.0, 0.07, y_mark, mat_idx=4, trim_ends_m=trim_junc)
+        rm.add_dashed_strip(frames, half_w * 0.5, 0.07, y_mark, mat_idx=4, trim_ends_m=trim_junc)
     elif lanes >= 4:
         rm.add_dashed_strip(frames, -half_w * 0.5, 0.07, y_mark, mat_idx=4, trim_ends_m=trim_junc)
         rm.add_strip(frames, -0.15, -0.05, y_mark, y_mark, mat_idx=5, trim_ends_m=trim_junc)
@@ -474,7 +596,7 @@ def export_ascii_fbx_7400(road_meshes, out_fbx_path):
     """Writes a standard Autodesk FBX 7.4.0 project file with all Thrissur road meshes and materials."""
     lines = [
         "; FBX 7.4.0 project file",
-        "; Created by BharatBusSim Blender Road Pipeline (Thrissur OSM Road Network - No Trees)",
+        "; Created by BharatBusSim Blender Road Pipeline (Thrissur Zone 1 High-Realism 3D Architecture)",
         "; ----------------------------------------------------",
         "",
         "FBXHeaderExtension:  {",
@@ -533,7 +655,6 @@ def export_ascii_fbx_7400(road_meshes, out_fbx_path):
         geom_id = 300000 + r_idx * 10
         model_id = 300000 + r_idx * 10 + 1
 
-        # Convert Unity (x, y, z) to FBX centimeters (-x*100, y*100, z*100) for standard Unity import
         flat_verts = []
         for vx, vy, vz in rm.verts:
             flat_verts.extend([f"{-vx * 100.0:.2f}", f"{vy * 100.0:.2f}", f"{vz * 100.0:.2f}"])
@@ -643,7 +764,6 @@ def export_blend_container(road_meshes, out_blend_path):
     """Writes a structured Blender .blend binary file header + embedded mesh blocks."""
     os.makedirs(os.path.dirname(out_blend_path), exist_ok=True)
     with open(out_blend_path, "wb") as f:
-        # 12-byte Blender header: 'BLENDER', '-' (64-bit), 'v' (little-endian), '400'
         f.write(b"BLENDER-v400")
         for idx, rm in enumerate(road_meshes):
             payload = bytearray()
@@ -652,7 +772,6 @@ def export_blend_container(road_meshes, out_blend_path):
             payload.extend(struct.pack("<II", len(rm.verts), len(rm.quads)))
             for vx, vy, vz in rm.verts:
                 payload.extend(struct.pack("<fff", vx, vz, vy))
-            # BHead: code (4B), len (4B), old_ptr (8B), SDNAnr (4B), nr (4B)
             bhead = struct.pack("<4sIQII", b"ME\x00\x00", len(payload), 0x100000 + idx * 0x1000, 0, 1)
             f.write(bhead)
             f.write(payload)
