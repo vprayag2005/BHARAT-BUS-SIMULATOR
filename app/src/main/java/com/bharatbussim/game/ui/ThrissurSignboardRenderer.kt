@@ -28,16 +28,24 @@ internal class SignboardQuadSpec(
     val cacheKey: String,
     val bmpWidth: Int,
     val bmpHeight: Int,
-    val isDoubleSided: Boolean,
+    val isDoubleSided: Boolean = true,
     val backplateColor: Color = Color(0xFF94A3B8),
     val backplateBorderColor: Color = Color(0xFF475569),
+    val renderBackBitmap: (() -> Bitmap)? = null,
     val renderBitmap: () -> Bitmap
 )
 
 internal object SignboardTextureCache {
-    private val cache = HashMap<String, Bitmap>(96)
+    private val cache = HashMap<String, Bitmap>(160)
 
-    fun getOrCreate(spec: SignboardQuadSpec): Bitmap {
+    fun getOrCreate(spec: SignboardQuadSpec, isBackFace: Boolean = false): Bitmap {
+        if (isBackFace && spec.renderBackBitmap != null) {
+            val backKey = "${spec.cacheKey}_BACK"
+            cache[backKey]?.let { return it }
+            val bmp = spec.renderBackBitmap.invoke()
+            cache[backKey] = bmp
+            return bmp
+        }
         cache[spec.cacheKey]?.let { return it }
         val bmp = spec.renderBitmap()
         cache[spec.cacheKey] = bmp
@@ -167,7 +175,7 @@ internal fun DrawScope.drawProjectiveSignboardQuad(
         signDstPts[6] = sx3; signDstPts[7] = sy3
 
         if (signMatrix.setPolyToPoly(signSrcPts, 0, signDstPts, 0, 4)) {
-            val bmp = SignboardTextureCache.getOrCreate(spec)
+            val bmp = SignboardTextureCache.getOrCreate(spec, isBackFace = isBack)
             val nativeCanvas = drawContext.canvas.nativeCanvas
             nativeCanvas.save()
             nativeCanvas.concat(signMatrix)
@@ -228,7 +236,7 @@ internal fun DrawScope.drawProjectiveSignboardQuad(
         return
     }
 
-    val bmp = SignboardTextureCache.getOrCreate(spec)
+    val bmp = SignboardTextureCache.getOrCreate(spec, isBackFace = isBack)
     val nativeCanvas = drawContext.canvas.nativeCanvas
     nativeCanvas.save()
     nativeCanvas.clipPath(signClipNativePath)
@@ -410,32 +418,145 @@ private fun drawVectorHighwayArrow(
     canvas.restore()
 }
 
+private fun sectorRouteHeaderForRoad(roadId: String, uniqueIndex: Int, isReverse: Boolean): Pair<String, String> {
+    val secNum = (uniqueIndex % 12) + 1
+    val secCode = "SEC-%02d".format(secNum)
+    return when (roadId) {
+        "ROAD_SWARAJ_ROUND" -> Pair(secCode, "സ്വരാജ് റൗണ്ട് • SWARAJ ROUND RING")
+        "ROAD_SAKTHAN_TO_SWARAJ" -> Pair(secCode, if (!isReverse) "M.O. ROAD • NORTHBOUND TO ROUND" else "M.O. ROAD • SOUTHBOUND TO SAKTHAN")
+        "ROAD_SAKTHAN_STAND_ENTRY" -> Pair(secCode, "SAKTHAN TERMINAL & TCR LINK ROAD")
+        "ROAD_STATION_ROAD" -> Pair(secCode, "RAILWAY STATION ROAD (TCR CORRIDOR)")
+        "ROAD_SWARAJ_TO_VADAKKE" -> Pair("SH 22 • $secCode", "SHORANUR ROAD • VADAKKE STAND")
+        "ROAD_SWARAJ_TO_WEST_FORT" -> Pair("SH 75 • $secCode", "M.G. ROAD • WEST FORT CORRIDOR")
+        "ROAD_WEST_FORT_TO_KANJANI" -> Pair("SH 75 • $secCode", "THRISSUR - KANJANI - GURUVAYUR HWY")
+        "ROAD_KANJANI_TO_GURUVAYUR_CHAVAKKAD" -> Pair("SH 75 • $secCode", "GURUVAYUR - CHAVAKKAD CORRIDOR")
+        "ROAD_SH61_TRIPRAYAR_TO_KANJANI" -> Pair("SH 61 • $secCode", "TRIPRAYAR - KANJANI STATE HIGHWAY")
+        "ROAD_NH66_CHAVAKKAD_TO_TRIPRAYAR" -> Pair("NH 66 • $secCode", "COASTAL NATIONAL HIGHWAY 66")
+        "ROAD_SWARAJ_TO_MANNUTHY" -> Pair("SH 51 • $secCode", "EAST FORT - MANNUTHY ARTERIAL")
+        "ROAD_MANNUTHY_TO_PEECHI_DAM" -> Pair("SH 51 • $secCode", "MANNUTHY - PEECHI DAM ROAD")
+        "ROAD_NH544_MANNUTHY_TO_PALIYEKKARA" -> Pair("NH 544 • $secCode", "MANNUTHY - PALIYEKKARA 6-LANE NH")
+        "ROAD_SAKTHAN_TO_OLLUR" -> Pair("NH LINK • $secCode", "SAKTHAN - OLLUR - NH 544 LINK")
+        "ROAD_PUTHANPALLI_LINK" -> Pair(secCode, "HIGH ROAD • PUTHANPALLI CORRIDOR")
+        else -> Pair(secCode, "THRISSUR CITY CORRIDOR")
+    }
+}
+
+private fun deriveReverseDirectionSpec(spec: KeralaRoadSignSpec, uniqueIndex: Int): KeralaRoadSignSpec {
+    fun flipDir(d: String): String = when (d) {
+        "LEFT" -> "RIGHT"
+        "RIGHT" -> "LEFT"
+        else -> "UP"
+    }
+    val (_, hdrTitle) = sectorRouteHeaderForRoad(spec.roadId, uniqueIndex, isReverse = true)
+    return when (spec.roadId) {
+        "ROAD_SAKTHAN_TO_SWARAJ" -> if (spec.travelDir >= 0) {
+            spec.copy(
+                headerTitle = hdrTitle,
+                straightDest = KeralaSignDestination("ശക്തൻ സ്റ്റാൻഡ്", "Sakthan Stand", "UP", "0.3 KM"),
+                leftDest = KeralaSignDestination("ഒല്ലൂർ NH 544", "Ollur NH 544", "LEFT", "1.2 KM"),
+                rightDest = KeralaSignDestination("റെയിൽവേ സ്റ്റേഷൻ", "Railway Station", "RIGHT", "0.2 KM"),
+                travelDir = -1
+            )
+        } else {
+            spec.copy(
+                headerTitle = hdrTitle,
+                straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "UP", "0.3 KM"),
+                leftDest = KeralaSignDestination("റെയിൽവേ സ്റ്റേഷൻ", "Railway Station", "LEFT", "0.2 KM"),
+                rightDest = KeralaSignDestination("പുത്തൻപള്ളി", "Puthanpalli", "RIGHT", "0.5 KM"),
+                travelDir = 1
+            )
+        }
+        "ROAD_STATION_ROAD" -> if (spec.travelDir >= 0) {
+            spec.copy(
+                headerTitle = hdrTitle,
+                straightDest = KeralaSignDestination("റെയിൽവേ സ്റ്റേഷൻ", "Railway Station", "RIGHT", "0.1 KM"),
+                leftDest = KeralaSignDestination("ശക്തൻ സ്റ്റാൻഡ്", "Sakthan Stand", "UP", "0.3 KM"),
+                rightDest = KeralaSignDestination("എം.ഒ. റോഡ്", "M.O. Road", "LEFT", "0.2 KM"),
+                travelDir = -1
+            )
+        } else {
+            spec.copy(
+                headerTitle = hdrTitle,
+                straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "UP", "0.2 KM"),
+                leftDest = KeralaSignDestination("വെസ്റ്റ് ഫോർട്ട്", "West Fort", "LEFT", "1.0 KM"),
+                rightDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "RIGHT", "1.3 KM"),
+                travelDir = 1
+            )
+        }
+        "ROAD_SWARAJ_TO_VADAKKE" -> if (spec.travelDir >= 0) {
+            spec.copy(
+                headerTitle = hdrTitle,
+                straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "UP", "1.1 KM"),
+                leftDest = KeralaSignDestination("മണ്ണുത്തി NH 544", "Mannuthy", "LEFT", "7.0 KM"),
+                rightDest = KeralaSignDestination("റെയിൽവേ സ്റ്റേഷൻ", "Railway Station", "RIGHT", "1.4 KM"),
+                travelDir = -1
+            )
+        } else {
+            spec.copy(
+                headerTitle = hdrTitle,
+                straightDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "UP", "0.3 KM"),
+                leftDest = KeralaSignDestination("സ്റ്റാൻഡ് എൻട്രി", "Stand Entry", "LEFT", "0.2 KM"),
+                rightDest = KeralaSignDestination("ഷൊർണ്ണൂർ SH 22", "Shoranur", "UP", "28 KM"),
+                travelDir = 1
+            )
+        }
+        "ROAD_SWARAJ_TO_WEST_FORT", "ROAD_WEST_FORT_TO_KANJANI" -> if (spec.travelDir >= 0) {
+            spec.copy(
+                headerTitle = hdrTitle,
+                straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "UP", "1.0 KM"),
+                leftDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "LEFT", "2.1 KM"),
+                rightDest = KeralaSignDestination("ശക്തൻ സ്റ്റാൻഡ്", "Sakthan Stand", "RIGHT", "1.4 KM"),
+                travelDir = -1
+            )
+        } else {
+            spec.copy(
+                headerTitle = hdrTitle,
+                straightDest = KeralaSignDestination("കാഞ്ഞാണി SH 75", "Kanjani", "UP", "11.4 KM"),
+                leftDest = KeralaSignDestination("ഗുരുവായൂർ", "Guruvayur", "UP", "16.1 KM"),
+                rightDest = KeralaSignDestination("ചാവക്കാട് ബീച്ച്", "Chavakkad Beach", "LEFT", "16.5 KM"),
+                travelDir = 1
+            )
+        }
+        else -> spec.copy(
+            headerTitle = hdrTitle,
+            straightDest = spec.straightDest.copy(arrowDir = "UP"),
+            leftDest = spec.rightDest.copy(arrowDir = flipDir(spec.rightDest.arrowDir)),
+            rightDest = spec.leftDest.copy(arrowDir = flipDir(spec.leftDest.arrowDir)),
+            travelDir = -spec.travelDir
+        )
+    }
+}
+
 internal fun createKeralaRoadSignSpec(spec: KeralaRoadSignSpec, uniqueIndex: Int): SignboardQuadSpec {
-    val key = "NHAI_${uniqueIndex}_${spec.roadId}_${spec.style.name}_${spec.straightDest.engName}_${spec.headerTitle}"
+    val key = "NHAI_V2_${uniqueIndex}_${spec.roadId}_${spec.style.name}_${spec.straightDest.engName}_${spec.headerTitle}"
+    val revSpec = deriveReverseDirectionSpec(spec, uniqueIndex)
     return when (spec.style) {
         KeralaSignStyle.ROUNDABOUT_DIAGRAM -> SignboardQuadSpec(
             cacheKey = key,
             bmpWidth = 576,
             bmpHeight = 360,
-            isDoubleSided = false
+            isDoubleSided = true,
+            renderBackBitmap = { bakeRoundaboutDiagramBitmap(576, 360, revSpec, uniqueIndex, isReverse = true) }
         ) {
-            bakeRoundaboutDiagramBitmap(576, 360, spec)
+            bakeRoundaboutDiagramBitmap(576, 360, spec, uniqueIndex, isReverse = false)
         }
         KeralaSignStyle.STACKED_3_PANEL -> SignboardQuadSpec(
             cacheKey = key,
             bmpWidth = 576,
-            bmpHeight = 360,
-            isDoubleSided = false
+            bmpHeight = 384,
+            isDoubleSided = true,
+            renderBackBitmap = { bakeStacked3PanelBitmap(576, 384, revSpec, uniqueIndex, isReverse = true) }
         ) {
-            bakeStacked3PanelBitmap(576, 360, spec)
+            bakeStacked3PanelBitmap(576, 384, spec, uniqueIndex, isReverse = false)
         }
         KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY -> SignboardQuadSpec(
             cacheKey = key,
             bmpWidth = 960,
-            bmpHeight = 224,
-            isDoubleSided = false
+            bmpHeight = 236,
+            isDoubleSided = true,
+            renderBackBitmap = { bakeOverheadGantryBitmap(960, 236, revSpec, uniqueIndex, isReverse = true) }
         ) {
-            bakeOverheadGantryBitmap(960, 224, spec)
+            bakeOverheadGantryBitmap(960, 236, spec, uniqueIndex, isReverse = false)
         }
     }
 }
@@ -514,7 +635,130 @@ internal fun createBannerSignSpec(
     bmp
 }
 
-private fun bakeRoundaboutDiagramBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSignSpec): Bitmap {
+/**
+ * Creates a high-visibility authentic Indian Railways trilingual station board
+ * (available in Mustard-Yellow monument style or Southern Railway Royal-Blue & Gold fascia style)
+ * with double borders, Indian Railways emblem roundels on left/right, bold Malayalam/English/Hindi
+ * station title, and station code / platform subtitle banner.
+ */
+internal fun createIndianRailwaysStationSignSpec(
+    cacheKey: String,
+    bgColorInt: Int,
+    borderColorInt: Int,
+    accentBandColorInt: Int,
+    malTitle: String,
+    engTitle: String,
+    subTitle: String,
+    titleColorInt: Int,
+    subColorInt: Int,
+    isDoubleSided: Boolean = true,
+    bmpWidth: Int = 960,
+    bmpHeight: Int = 240,
+    badgeLabel: String = "IR",
+    badgeBgColorInt: Int = 0xFFB91C1C.toInt()
+): SignboardQuadSpec = SignboardQuadSpec(
+    cacheKey = cacheKey,
+    bmpWidth = bmpWidth,
+    bmpHeight = bmpHeight,
+    isDoubleSided = isDoubleSided,
+    backplateColor = Color(0xFF1E293B),
+    backplateBorderColor = Color(borderColorInt)
+) {
+    val bmp = Bitmap.createBitmap(bmpWidth, bmpHeight, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val w = bmpWidth.toFloat()
+    val h = bmpHeight.toFloat()
+
+    canvas.drawColor(bgColorInt)
+
+    // Bottom accent ribbon band for subtitle / Southern Railway / Station Code
+    val bandTop = h * 0.72f
+    val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = accentBandColorInt
+        style = Paint.Style.FILL
+    }
+    canvas.drawRect(8f, bandTop, w - 8f, h - 8f, bandPaint)
+
+    // Outer & inner crisp borders
+    val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = borderColorInt
+        style = Paint.Style.STROKE
+        strokeWidth = 8f
+    }
+    canvas.drawRoundRect(RectF(8f, 8f, w - 8f, h - 8f), 14f, 14f, borderPaint)
+    borderPaint.strokeWidth = 3.5f
+    canvas.drawLine(12f, bandTop, w - 12f, bandTop, borderPaint)
+
+    // Left & Right Emblem Roundels
+    val emblemR = h * 0.21f
+    val emblemCy = bandTop * 0.52f
+    val emblemFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    val emblemStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = borderColorInt
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+    }
+    val badgeTextPaint = createSignTitlePaint(android.graphics.Color.WHITE).apply {
+        textSize = if (badgeLabel.length >= 3) emblemR * 0.52f else emblemR * 0.68f
+    }
+    for (emblemCx in floatArrayOf(18f + emblemR + 12f, w - 18f - emblemR - 12f)) {
+        emblemFill.color = badgeBgColorInt
+        canvas.drawCircle(emblemCx, emblemCy, emblemR, emblemFill)
+        canvas.drawCircle(emblemCx, emblemCy, emblemR, emblemStroke)
+        canvas.drawCircle(emblemCx, emblemCy, emblemR * 0.74f, emblemStroke)
+        canvas.drawText(badgeLabel, emblemCx, emblemCy + emblemR * 0.23f, badgeTextPaint)
+    }
+
+    val safeTextW = w - (emblemR * 4.6f) - 72f
+    val malPaint = createSignTitlePaint(titleColorInt).apply {
+        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+    }
+    val engPaint = createSignTitlePaint(titleColorInt).apply {
+        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+    }
+    val subPaint = createSignTitlePaint(subColorInt).apply {
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+    }
+
+    drawFittedText(
+        canvas = canvas,
+        text = malTitle,
+        x = w * 0.5f,
+        y = h * 0.31f,
+        maxWidth = safeTextW,
+        baseTextSize = h * 0.24f,
+        paint = malPaint
+    )
+    drawFittedText(
+        canvas = canvas,
+        text = engTitle,
+        x = w * 0.5f,
+        y = h * 0.62f,
+        maxWidth = safeTextW,
+        baseTextSize = h * 0.24f,
+        paint = engPaint
+    )
+    drawFittedText(
+        canvas = canvas,
+        text = subTitle,
+        x = w * 0.5f,
+        y = h * 0.90f,
+        maxWidth = w - 48f,
+        baseTextSize = h * 0.165f,
+        paint = subPaint
+    )
+    bmp
+}
+
+private fun bakeRoundaboutDiagramBitmap(
+    wPx: Int,
+    hPx: Int,
+    spec: KeralaRoadSignSpec,
+    uniqueIndex: Int = 0,
+    isReverse: Boolean = false
+): Bitmap {
     val bmp = Bitmap.createBitmap(wPx, hPx, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
     val w = wPx.toFloat()
@@ -528,21 +772,41 @@ private fun bakeRoundaboutDiagramBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSign
     }
     canvas.drawRoundRect(RectF(8f, 8f, w - 8f, h - 8f), 14f, 14f, borderPaint)
 
-    val headerText = spec.headerTitle.ifBlank { "സ്വരാജ് റൗണ്ട് • SWARAJ ROUND" }
-    val hdrY = 56f
+    val (secBadge, defaultHdr) = sectorRouteHeaderForRoad(spec.roadId, uniqueIndex, isReverse)
+    val headerText = spec.headerTitle.ifBlank { defaultHdr }
+    val hdrY = 58f
+    val hdrBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF024E40.toInt()
+        style = Paint.Style.FILL
+    }
+    canvas.drawRect(12f, 12f, w - 12f, hdrY, hdrBgPaint)
+
     val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.WHITE
         style = Paint.Style.STROKE
         strokeWidth = 3.5f
     }
-    canvas.drawLine(14f, hdrY, w - 14f, hdrY, dividerPaint)
+    canvas.drawLine(12f, hdrY, w - 12f, hdrY, dividerPaint)
+
+    // Yellow Sector / Route Code Pill Badge on Left of Header
+    val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFACC15.toInt()
+        style = Paint.Style.FILL
+    }
+    canvas.drawRoundRect(RectF(18f, 17f, 134f, 52f), 8f, 8f, pillPaint)
+    val pillTextPaint = createSignTitlePaint(0xFF0F172A.toInt()).apply {
+        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+        textAlign = Paint.Align.CENTER
+    }
+    drawFittedText(canvas, secBadge, 76f, 41f, 108f, 20f, pillTextPaint)
+
     val hdrPaint = createSignTitlePaint(0xFFFEF08A.toInt()).apply {
         textAlign = Paint.Align.CENTER
     }
-    drawFittedText(canvas, headerText, w * 0.5f, 41f, w - 48f, 24f, hdrPaint)
+    drawFittedText(canvas, headerText, (138f + w - 16f) * 0.5f, 42f, w - 164f, 23f, hdrPaint)
 
     val cx = w * 0.5f
-    val cy = 224f
+    val cy = 226f
     val ringR = 32f
     val roadStroke = 11f
     val diagramStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -560,7 +824,7 @@ private fun bakeRoundaboutDiagramBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSign
     canvas.drawCircle(cx, cy, ringR, diagramStrokePaint)
     canvas.drawLine(cx, cy + ringR, cx, h - 18f, diagramStrokePaint)
 
-    val topTipY = 74f
+    val topTipY = 76f
     canvas.drawLine(cx, cy - ringR, cx, topTipY + headSz * 0.85f, diagramStrokePaint)
     val tri = AndroidPath()
     tri.moveTo(cx, topTipY)
@@ -618,7 +882,13 @@ private fun bakeRoundaboutDiagramBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSign
     return bmp
 }
 
-private fun bakeStacked3PanelBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSignSpec): Bitmap {
+private fun bakeStacked3PanelBitmap(
+    wPx: Int,
+    hPx: Int,
+    spec: KeralaRoadSignSpec,
+    uniqueIndex: Int = 0,
+    isReverse: Boolean = false
+): Bitmap {
     val bmp = Bitmap.createBitmap(wPx, hPx, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
     val w = wPx.toFloat()
@@ -632,25 +902,54 @@ private fun bakeStacked3PanelBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSignSpec
     }
     canvas.drawRoundRect(RectF(8f, 8f, w - 8f, h - 8f), 14f, 14f, borderPaint)
 
+    // Top Sector & Corridor Header Band (12f .. 58f)
+    val hdrBot = 58f
+    val hdrBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF024E3B.toInt()
+        style = Paint.Style.FILL
+    }
+    canvas.drawRect(12f, 12f, w - 12f, hdrBot, hdrBgPaint)
+
+    val (secBadge, corridorTitle) = sectorRouteHeaderForRoad(spec.roadId, uniqueIndex, isReverse)
+    val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFACC15.toInt()
+        style = Paint.Style.FILL
+    }
+    canvas.drawRoundRect(RectF(18f, 17f, 156f, 52f), 8f, 8f, pillPaint)
+    val pillTextPaint = createSignTitlePaint(0xFF0F172A.toInt()).apply {
+        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+        textAlign = Paint.Align.CENTER
+    }
+    drawFittedText(canvas, secBadge, 87f, 41f, 130f, 20f, pillTextPaint)
+
+    val hdrPaint = createSignTitlePaint(0xFFFEF08A.toInt()).apply {
+        textAlign = Paint.Align.CENTER
+    }
+    drawFittedText(canvas, corridorTitle, (162f + w - 16f) * 0.5f, 42f, w - 184f, 22f, hdrPaint)
+
     val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = 5f
+        strokeWidth = 4.5f
     }
-    val innerTop = 12f
+    val innerTop = hdrBot
     val innerBot = h - 12f
     val rowH = (innerBot - innerTop) / 3f
+    canvas.drawLine(12f, innerTop, w - 12f, innerTop, dividerPaint)
     canvas.drawLine(12f, innerTop + rowH, w - 12f, innerTop + rowH, dividerPaint)
     canvas.drawLine(12f, innerTop + rowH * 2f, w - 12f, innerTop + rowH * 2f, dividerPaint)
 
-    val malPaint = createSignSubPaint(android.graphics.Color.WHITE).apply {
+    val malPaint = createSignSubPaint(0xFFFEF08A.toInt()).apply {
         textAlign = Paint.Align.LEFT
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
     }
     val engPaint = createSignTitlePaint(android.graphics.Color.WHITE).apply {
         textAlign = Paint.Align.LEFT
+        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
     }
     val distPaint = createSignTitlePaint(android.graphics.Color.WHITE).apply {
         textAlign = Paint.Align.RIGHT
+        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
     }
     val arrowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.WHITE
@@ -658,30 +957,41 @@ private fun bakeStacked3PanelBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSignSpec
     }
 
     val rows = arrayOf(spec.straightDest, spec.leftDest, spec.rightDest)
-    val nameMaxW = 356f
+    val nameMaxW = 352f
     for (i in 0..2) {
         val cy = innerTop + (i + 0.5f) * rowH
         val dest = rows[i]
 
-        drawFittedText(canvas, dest.malName, 28f, cy - 10f, nameMaxW, 29f, malPaint)
-        drawFittedText(canvas, dest.engName, 28f, cy + 30f, nameMaxW, 33f, engPaint)
+        drawFittedText(canvas, dest.malName, 26f, cy - 8f, nameMaxW, 27f, malPaint)
+        drawFittedText(canvas, dest.engName, 26f, cy + 30f, nameMaxW, 31f, engPaint)
 
         drawVectorHighwayArrow(
             canvas = canvas,
-            cx = 432f,
+            cx = 426f,
             cy = cy,
             dir = dest.arrowDir,
-            length = 42f,
-            strokeW = 8.5f,
+            length = 40f,
+            strokeW = 8.2f,
             paintFill = arrowFillPaint
         )
 
-        drawFittedText(canvas, dest.distKm, w - 26f, cy + 12f, 88f, 34f, distPaint)
+        val distLabel = if (dest.distKm.contains("KM", ignoreCase = true) || dest.distKm.contains("M", ignoreCase = true) || dest.distKm == "TCR") {
+            dest.distKm
+        } else {
+            "${dest.distKm} KM"
+        }
+        drawFittedText(canvas, distLabel, w - 22f, cy + 12f, 102f, 28f, distPaint)
     }
     return bmp
 }
 
-private fun bakeOverheadGantryBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSignSpec): Bitmap {
+private fun bakeOverheadGantryBitmap(
+    wPx: Int,
+    hPx: Int,
+    spec: KeralaRoadSignSpec,
+    uniqueIndex: Int = 0,
+    isReverse: Boolean = false
+): Bitmap {
     val bmp = Bitmap.createBitmap(wPx, hPx, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
     val w = wPx.toFloat()
@@ -695,20 +1005,38 @@ private fun bakeOverheadGantryBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSignSpe
     }
     canvas.drawRoundRect(RectF(7f, 7f, w - 7f, h - 7f), 12f, 12f, borderPaint)
 
+    val headerBottomY = 58f
+    val hdrBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF034E37.toInt()
+        style = Paint.Style.FILL
+    }
+    canvas.drawRect(11f, 11f, w - 11f, headerBottomY, hdrBgPaint)
+
+    val (secBadge, defaultHdr) = sectorRouteHeaderForRoad(spec.roadId, uniqueIndex, isReverse)
+    val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFACC15.toInt()
+        style = Paint.Style.FILL
+    }
+    canvas.drawRoundRect(RectF(18f, 16f, 184f, 52f), 8f, 8f, pillPaint)
+    val pillTextPaint = createSignTitlePaint(0xFF0F172A.toInt()).apply {
+        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+        textAlign = Paint.Align.CENTER
+    }
+    drawFittedText(canvas, secBadge, 101f, 41f, 154f, 21f, pillTextPaint)
+
     val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.WHITE
         style = Paint.Style.STROKE
         strokeWidth = 4.5f
     }
-
-    val headerBottomY = 56f
     canvas.drawLine(12f, headerBottomY, w - 12f, headerBottomY, dividerPaint)
 
     val hdrPaint = createSignSubPaint(0xFFFEF08A.toInt()).apply {
         textAlign = Paint.Align.CENTER
-        letterSpacing = 0.08f
+        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
     }
-    drawFittedText(canvas, spec.headerTitle, w * 0.5f, 40f, w - 60f, 24f, hdrPaint)
+    val hdrText = spec.headerTitle.ifBlank { defaultHdr }
+    drawFittedText(canvas, hdrText, (192f + w - 20f) * 0.5f, 42f, w - 220f, 24f, hdrPaint)
 
     val colW = (w - 24f) / 3f
     canvas.drawLine(12f + colW, headerBottomY, 12f + colW, h - 12f, dividerPaint)
@@ -716,12 +1044,15 @@ private fun bakeOverheadGantryBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSignSpe
 
     val engPaint = createSignTitlePaint(android.graphics.Color.WHITE).apply {
         textAlign = Paint.Align.LEFT
+        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
     }
-    val malPaint = createSignSubPaint(0xFFE2E8F0.toInt()).apply {
+    val malPaint = createSignSubPaint(0xFFFEF08A.toInt()).apply {
         textAlign = Paint.Align.LEFT
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
     }
     val distPaint = createSignTitlePaint(0xFFFEF08A.toInt()).apply {
         textAlign = Paint.Align.RIGHT
+        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
     }
     val arrowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.WHITE
@@ -736,16 +1067,16 @@ private fun bakeOverheadGantryBitmap(wPx: Int, hPx: Int, spec: KeralaRoadSignSpe
         drawVectorHighwayArrow(
             canvas = canvas,
             cx = colLeft + 34f,
-            cy = 114f,
+            cy = 122f,
             dir = dest.arrowDir,
             length = 44f,
             strokeW = 8.5f,
             paintFill = arrowFillPaint
         )
 
-        drawFittedText(canvas, dest.engName, colLeft + 62f, 118f, colW - 82f, 32f, engPaint)
-        drawFittedText(canvas, dest.malName, colLeft + 62f, 166f, colW - 156f, 25f, malPaint)
-        drawFittedText(canvas, dest.distKm, colLeft + colW - 18f, 166f, 84f, 25f, distPaint)
+        drawFittedText(canvas, dest.engName, colLeft + 62f, 122f, colW - 82f, 32f, engPaint)
+        drawFittedText(canvas, dest.malName, colLeft + 62f, 174f, colW - 156f, 25f, malPaint)
+        drawFittedText(canvas, dest.distKm, colLeft + colW - 18f, 174f, 88f, 25f, distPaint)
     }
     return bmp
 }

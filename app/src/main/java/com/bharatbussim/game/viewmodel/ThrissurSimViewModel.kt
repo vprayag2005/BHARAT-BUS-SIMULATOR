@@ -36,7 +36,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.tan
 
-private const val MAX_STEERING_WHEEL_DEG = 300f // Snappy single-thumb lock-to-lock steering range
+private const val MAX_STEERING_WHEEL_DEG = 360f // Full 360° left / 360° right (720° lock-to-lock) smooth bus steering
 private const val CINEMATIC_FOLLOW_FOV_DEG = 58.0f
 private const val CINEMATIC_COCKPIT_FOV_DEG = 80.0f
 private const val MIN_ROAD_CAMERA_CLEARANCE_M = 1.42f
@@ -263,20 +263,23 @@ class ThrissurSimViewModel : ViewModel() {
             } else if (abs(targetWheelAngleDeg) > 0.01f) {
                 val rollingKmh = abs(s.signedSpeedMps) * 3.6f
                 val speedFactor = (rollingKmh / 50f).coerceIn(0f, 1f)
-                val maxReturnDegPerSec = 240f + speedFactor * 160f
-                val springRate = 3.2f + speedFactor * 2.4f
+                val maxReturnDegPerSec = 150f + speedFactor * 190f
+                val springRate = 2.6f + speedFactor * 2.8f
                 val springDesired = lerp(targetWheelAngleDeg, 0f, smoothDampAlpha(springRate, dt))
                 val maxStep = maxReturnDegPerSec * dt
                 val step = (springDesired - targetWheelAngleDeg).coerceIn(-maxStep, maxStep)
                 val nextTarget = targetWheelAngleDeg + step
-                targetWheelAngleDeg = if (abs(nextTarget) < 0.7f) 0f else nextTarget
+                targetWheelAngleDeg = if (abs(nextTarget) < 0.6f) 0f else nextTarget
             }
         }
 
+        val rollingSpeedKmh = abs(s.signedSpeedMps) * 3.6f
+        val highSpeedFactor = ((rollingSpeedKmh - 18f) / 72f).coerceIn(0f, 1f)
+
         val wheelFollowRate = when {
-            isSteeringPointerHeld -> 38.0f
+            isSteeringPointerHeld -> 26.0f
             s.autoSteerAssist -> 10.0f
-            else -> 15.0f
+            else -> 14.0f
         }
         displayedWheelAngleDeg = lerp(
             start = displayedWheelAngleDeg,
@@ -287,38 +290,39 @@ class ThrissurSimViewModel : ViewModel() {
             displayedWheelAngleDeg = 0f
         }
         val nextWheelDeg = displayedWheelAngleDeg.coerceIn(-MAX_STEERING_WHEEL_DEG, MAX_STEERING_WHEEL_DEG)
-        val targetSteerNorm = (targetWheelAngleDeg / MAX_STEERING_WHEEL_DEG).coerceIn(-1f, 1f)
+        val targetSteerNorm = (nextWheelDeg / MAX_STEERING_WHEEL_DEG).coerceIn(-1f, 1f)
 
+        // Continuous speed-adaptive hydraulic power steering rack (zero sign-flip step jumps)
         val steerDiff = targetSteerNorm - smoothedWheelSteerInput
-        val isReversingSteer = (targetSteerNorm * smoothedWheelSteerInput) < -0.001f
-        val rackRate = when {
-            isReversingSteer -> 28.0f
-            isSteeringPointerHeld -> 22.0f
-            else -> 14.0f
+        val rackRate = if (isSteeringPointerHeld) {
+            13.5f - highSpeedFactor * 4.5f
+        } else {
+            10.5f - highSpeedFactor * 2.5f
         }
-        val rackAlpha = smoothDampAlpha(rackRate, dt)
-        val maxRackStep = (when {
-            isReversingSteer -> 11.0f
-            isSteeringPointerHeld -> 8.0f
-            else -> 5.0f
-        }) * dt
-        val rackStep = (steerDiff * rackAlpha).coerceIn(-maxRackStep, maxRackStep)
+        val maxRackPerSec = if (isSteeringPointerHeld) {
+            3.4f - highSpeedFactor * 1.25f
+        } else {
+            2.6f - highSpeedFactor * 0.8f
+        }
+        val rackStep = (steerDiff * smoothDampAlpha(rackRate, dt))
+            .coerceIn(-maxRackPerSec * dt, maxRackPerSec * dt)
         smoothedWheelSteerInput = (smoothedWheelSteerInput + rackStep).coerceIn(-1f, 1f)
         if (!isSteeringPointerHeld && abs(targetSteerNorm) < 0.002f && abs(smoothedWheelSteerInput) < 0.003f) {
             smoothedWheelSteerInput = 0f
         }
 
+        // Progressive non-linear steering curve: gentle precision around center, 100% authority at full lock
         val absSteer = abs(smoothedWheelSteerInput).coerceIn(0f, 1f)
-        val curveSpeedMix = ((abs(s.signedSpeedMps) * 3.6f) / 85f).coerceIn(0f, 1f)
-        val lowSpeedCurve = absSteer
-        val highSpeedCurve = absSteer * (0.68f + 0.32f * absSteer)
-        val curvedSteerMag = (lowSpeedCurve + (highSpeedCurve - lowSpeedCurve) * curveSpeedMix).coerceIn(0f, 1f)
+        val curveSpeedMix = (rollingSpeedKmh / 80f).coerceIn(0f, 1f)
+        val lowSpeedCurve = absSteer * (0.62f + 0.38f * absSteer)
+        val highSpeedCurve = absSteer * (0.36f + 0.64f * absSteer)
+        val curvedSteerMag = lerp(lowSpeedCurve, highSpeedCurve, curveSpeedMix).coerceIn(0f, 1f)
         val shapedSteer = if (smoothedWheelSteerInput >= 0f) curvedSteerMag else -curvedSteerMag
-        val targetVisualWheelRad = (shapedSteer * 0.45f).coerceIn(-0.45f, 0.45f)
+        val targetVisualWheelRad = (shapedSteer * 0.46f).coerceIn(-0.46f, 0.46f)
         smoothedFrontWheelRad = lerp(
             start = smoothedFrontWheelRad,
             end = targetVisualWheelRad,
-            t = smoothDampAlpha(18.0f, dt)
+            t = smoothDampAlpha(16.0f, dt)
         )
         if (!isSteeringPointerHeld && abs(targetVisualWheelRad) < 0.002f && abs(smoothedFrontWheelRad) < 0.002f) {
             smoothedFrontWheelRad = 0f
@@ -471,34 +475,31 @@ class ThrissurSimViewModel : ViewModel() {
         }
 
         // 3. Speed-Calibrated Ackermann Kinematics & Chassis Yaw Response
-        val effectiveWheelbase = 5.25f
+        val effectiveWheelbase = 5.15f
         val steerSpeedRatio = (curSpeedKmh / 105f).coerceIn(0f, 1f)
         val speedTaper = 1f - steerSpeedRatio
-        val maxFrontWheelDeg = 18.0f + 24.0f * speedTaper
+        val maxFrontWheelDeg = 22.0f + 20.0f * speedTaper
         val frontWheelAngleRad = shapedSteer * Math.toRadians(maxFrontWheelDeg.toDouble()).toFloat()
 
         val absSpeedMps = abs(speedMps)
-        val scaledSpeedMag = if (absSpeedMps <= 7.8f) {
+        val scaledSpeedMag = if (absSpeedMps <= 8.5f) {
             absSpeedMps
         } else {
-            7.8f + (absSpeedMps - 7.8f) * 0.56f
+            8.5f + (absSpeedMps - 8.5f) * 0.62f
         }
         val kinematicSpeedMps = if (speedMps >= 0f) scaledSpeedMag else -scaledSpeedMag
 
         val rawAngularVel = if (abs(kinematicSpeedMps) > 0.03f) {
             (kinematicSpeedMps / effectiveWheelbase) * tan(frontWheelAngleRad)
         } else 0f
-        val lowSpeedYawCap = 1.05f
-        val lateralComfortYawCap = if (abs(kinematicSpeedMps) > 4.5f) {
-            9.8f / abs(kinematicSpeedMps)
-        } else lowSpeedYawCap
-        val maxSafeYawRate = min(lowSpeedYawCap, lateralComfortYawCap).coerceAtLeast(0.56f)
-        val targetAngularVel = rawAngularVel.coerceIn(-maxSafeYawRate, maxSafeYawRate)
+        val maxSafeYawRate = (1.18f - 0.28f * steerSpeedRatio).coerceAtLeast(0.82f)
+        val softKneeYaw = rawAngularVel / (1f + abs(rawAngularVel) / (maxSafeYawRate * 2.2f))
+        val targetAngularVel = softKneeYaw.coerceIn(-maxSafeYawRate, maxSafeYawRate)
 
-        val yawInertiaRate = 16.0f - 4.0f * steerSpeedRatio
-        smoothedYawRate += (targetAngularVel - smoothedYawRate) * (dt * yawInertiaRate).coerceIn(0f, 1f)
+        val yawInertiaRate = 11.0f - 3.2f * steerSpeedRatio
+        smoothedYawRate += (targetAngularVel - smoothedYawRate) * smoothDampAlpha(yawInertiaRate, dt)
         if (abs(kinematicSpeedMps) <= 0.03f) {
-            smoothedYawRate *= (1f - (dt * 16f).coerceIn(0f, 1f))
+            smoothedYawRate *= (1f - smoothDampAlpha(16f, dt))
         }
 
         var newHeading = s.busHeadingRad + smoothedYawRate * dt
@@ -604,7 +605,7 @@ class ThrissurSimViewModel : ViewModel() {
         val newSpeedKmh = abs(speedMps) * 3.6f
         val yawFollowRate = when (s.cameraMode) {
             CameraViewMode.Cockpit -> 0f
-            CameraViewMode.Chase -> 9.2f
+            CameraViewMode.Chase -> 7.8f
             CameraViewMode.Orbit -> 10.5f
         }
         val nextFollowYawRad = if (s.cameraMode == CameraViewMode.Cockpit) {
@@ -613,7 +614,7 @@ class ThrissurSimViewModel : ViewModel() {
             lerpAngleRad(
                 fromRad = s.camFollowYawRad,
                 toRad = newHeading,
-                t = (dt * yawFollowRate).coerceIn(0f, 1f)
+                t = smoothDampAlpha(yawFollowRate, dt)
             )
         }
         val nextOrbitYawDeg = if (s.cameraMode == CameraViewMode.Orbit) {
@@ -733,9 +734,9 @@ class ThrissurSimViewModel : ViewModel() {
     }
 
     fun steerByDeltaDeg(deltaDeg: Float) {
-        val safeDelta = deltaDeg.coerceIn(-220f, 220f)
+        val safeDelta = deltaDeg.coerceIn(-45f, 45f)
         isSteeringPointerHeld = true
-        steerReleaseHoldSec = 0.20f
+        steerReleaseHoldSec = 0.16f
         targetWheelAngleDeg = (targetWheelAngleDeg + safeDelta).coerceIn(
             -MAX_STEERING_WHEEL_DEG,
             MAX_STEERING_WHEEL_DEG
@@ -1191,11 +1192,11 @@ class ThrissurSimViewModel : ViewModel() {
                 banner = "Sakthan Stand Left Entry Slip Road • Drive Straight In"
             )
             "THRISSUR_RAILWAY_TCR" -> LandmarkSpawn(
-                roadId = "ROAD_SAKTHAN_STAND_ENTRY",
-                pos = Vec3(-12.5f, 0.06f, -112.0f),
-                headingRad = (-PI * 0.42).toFloat(),
+                roadId = "ROAD_STATION_ROAD",
+                pos = Vec3(-18.65f, 0.06f, -114.0f),
+                headingRad = 0f,
                 streetLabel = "Thrissur Central Railway Station (TCR) • Station Road",
-                banner = "Thrissur Central Railway Station (TCR) • Colonial Facade, 25kV Catenary & WAP-7"
+                banner = "Thrissur Central Railway Station (TCR) • 3D Station Boards, Clock Tower & Station Road"
             )
             "MANIKANDANAL_SIGNAL" -> LandmarkSpawn(
                 roadId = "ROAD_SAKTHAN_TO_SWARAJ",
@@ -1459,7 +1460,7 @@ class ThrissurSimViewModel : ViewModel() {
                 surfaceY = max(surfaceY, 0.31f)
             }
             // Thrissur Central Railway Station (TCR) platforms
-            if (x in -76f..-22f && z in -165f..-45f) {
+            if (x in -76f..-45f && z in -165f..-45f) {
                 surfaceY = max(surfaceY, 0.36f)
             }
             // Vadakke Stand boarding platforms

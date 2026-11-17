@@ -655,6 +655,7 @@ internal fun RealisticSteeringWheel(
                     val cy = size.height * 0.5f
                     var prevPos = down.position
                     var totalTravel = 0f
+                    var smoothedStepDeg = 0f
 
                     try {
                         while (true) {
@@ -668,26 +669,29 @@ internal fun RealisticSteeringWheel(
                             val dx = currPos.x - prevPos.x
                             val dy = currPos.y - prevPos.y
                             val stepDist = hypot(dx, dy)
-                            if (stepDist > 0.25f) {
+                            if (stepDist > 0.20f) {
                                 change.consume()
                                 totalTravel += stepDist
 
-                                val rx = (prevPos.x + currPos.x) * 0.5f - cx
+                                val midX = (prevPos.x + currPos.x) * 0.5f - cx
+                                val midY = (prevPos.y + currPos.y) * 0.5f - cy
+                                val rMid = hypot(midX, midY)
 
-                                // High-gain, sign-consistent steering so full left lock (-300°) is
-                                // effortlessly reached within a single short thumb sweep before hitting the left edge.
-                                val absDx = abs(dx)
-                                val absDy = abs(dy)
-                                val vertMoveWeight = (((absDy / (absDx + absDy + 1e-3f)) - 0.35f) / 0.45f)
-                                    .coerceIn(0f, 1f)
-                                val sideRimWeight = ((abs(rx) - w * 0.20f) / (w * 0.18f)).coerceIn(0f, 1f)
-                                val rxSign = if (rx >= 0f) 1f else -1f
+                                // Continuous 360° tangential rim tracking around wheel center (cx, cy):
+                                // Clockwise = positive (Right), Counter-Clockwise = negative (Left)
+                                // across all 4 quadrants (12, 3, 6, 9 o'clock) with zero sign flips or jumps.
+                                val effR = rMid.coerceAtLeast(w * 0.20f)
+                                val tangentStepPx = (midX * dy - midY * dx) / effR
+                                val circularDeltaDeg = (tangentStepPx / (w * 0.25f)) * (180f / PI.toFloat())
 
-                                val horizDeg = (dx / w) * 900f
-                                val vertRimDeg = sideRimWeight * vertMoveWeight * rxSign * (dy / w) * 820f
-                                val rawDelta = (horizDeg + vertRimDeg).coerceIn(-220f, 220f)
+                                // Smooth center-hub regularization so crossing near (cx, cy) never spikes
+                                val rimWeight = ((rMid - w * 0.08f) / (w * 0.10f)).coerceIn(0f, 1f)
+                                val centerHorizDeg = (dx / (w * 0.28f)) * 180f
+                                val rawDelta = (circularDeltaDeg * rimWeight + centerHorizDeg * (1f - rimWeight))
+                                    .coerceIn(-40f, 40f)
 
-                                latestOnDelta(rawDelta)
+                                smoothedStepDeg = smoothedStepDeg * 0.25f + rawDelta * 0.75f
+                                latestOnDelta(smoothedStepDeg)
                                 prevPos = currPos
                             }
                         }

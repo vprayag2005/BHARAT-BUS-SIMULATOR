@@ -179,6 +179,7 @@ object ThrissurRoadRepository {
         "ROAD_SAKTHAN_TO_OLLUR" -> 3
         "ROAD_PUTHANPALLI_LINK" -> 3
         "ROAD_SH61_TRIPRAYAR_TO_KANJANI" -> 3
+        "ROAD_STATION_ROAD" -> 4
         else -> 4
     }
 
@@ -267,6 +268,53 @@ object ThrissurRoadRepository {
                     smoothedPts = engineered,
                     baseFrames = mutableListOf(),
                     priority = roadPriority(id)
+                )
+            )
+        }
+
+        // Ensure Thrissur Railway Station (TCR) has a connected drivable arterial road (ROAD_STATION_ROAD)
+        // linking M.O. Road / Sakthan Entry Slip Road (X = 7.0m, Z = -121.0m) directly past the
+        // Thrissur Central Railway Station Forecourt (X = -18.65m, Z = -115m..-60m) to Swaraj Round South-West (-18.653m, -30.398m)
+        if (specs.none { it.id == "ROAD_STATION_ROAD" }) {
+            val stationRawPts = listOf(
+                Vec3(7.0f, 0.05f, -121.0f),
+                Vec3(1.0f, 0.05f, -121.0f),
+                Vec3(-5.5f, 0.05f, -121.0f),
+                Vec3(-12.0f, 0.05f, -120.2f),
+                Vec3(-16.8f, 0.05f, -117.0f),
+                Vec3(-18.65f, 0.05f, -111.5f),
+                Vec3(-18.65f, 0.05f, -105.0f),
+                Vec3(-18.65f, 0.05f, -97.0f),
+                Vec3(-18.65f, 0.05f, -88.0f),
+                Vec3(-18.65f, 0.05f, -78.0f),
+                Vec3(-18.65f, 0.05f, -68.0f),
+                Vec3(-18.65f, 0.05f, -58.0f),
+                Vec3(-18.65f, 0.05f, -48.0f),
+                Vec3(-18.65f, 0.05f, -38.5f),
+                Vec3(-18.653f, 0.05f, -30.398f)
+            )
+            val stationEngineered = engineerHighwaySpline(stationRawPts, closed = false).toMutableList()
+            specs.add(
+                MutableRoadSpec(
+                    idx = specs.size,
+                    id = "ROAD_STATION_ROAD",
+                    name = "M.O. Road Link - Thrissur Railway Station (TCR) - Swaraj Round West",
+                    roadType = "city_arterial",
+                    widthM = 10.5f,
+                    lanes = 2,
+                    divided = false,
+                    closedLoop = false,
+                    oneWayClockwise = false,
+                    realDist = 640.0f,
+                    steps = listOf(
+                        "Railway Station Link Road",
+                        "Thrissur Central Railway Station (TCR)",
+                        "Diwanji Corner",
+                        "Kuruppam Road (Swaraj Round South-West)"
+                    ),
+                    smoothedPts = stationEngineered,
+                    baseFrames = mutableListOf(),
+                    priority = roadPriority("ROAD_STATION_ROAD")
                 )
             )
         }
@@ -533,7 +581,7 @@ object ThrissurRoadRepository {
                     if (branchDir.dotXZ(tCenter.right) >= 0f) 1f else -1f
                 }
 
-                val flareDistAlongTrunk = bThroat.halfWidthM + 4.2f
+                val flareDistAlongTrunk = bThroat.halfWidthM + 6.5f
 
                 val tBeforeFrame: RoadFrame
                 val tAfterFrame: RoadFrame
@@ -551,8 +599,8 @@ object ThrissurRoadRepository {
                     tAfterFrame = eFrames[eAfterIdx]
                     beforeSideSign = 1f
                     afterSideSign = 1f
-                    markRoadSideRange(westTrunk.id, wBeforeIdx + 1, wFrames.size - 1, beforeSideSign, false)
-                    markRoadSideRange(eastTrunk.id, 0, eAfterIdx - 1, afterSideSign, false)
+                    markRoadSideRange(westTrunk.id, wBeforeIdx, wFrames.size - 1, beforeSideSign, false)
+                    markRoadSideRange(eastTrunk.id, 0, eAfterIdx, afterSideSign, false)
                 } else {
                     val tBeforeIdx = stepAlongFrames(tFrames, bestTCenterIdx, -1, flareDistAlongTrunk, trunk.closedLoop)
                     val tAfterIdx = stepAlongFrames(tFrames, bestTCenterIdx, +1, flareDistAlongTrunk, trunk.closedLoop)
@@ -561,10 +609,7 @@ object ThrissurRoadRepository {
                     beforeSideSign = trunkCenterSideSign
                     afterSideSign = trunkCenterSideSign
 
-                    val nT = tFrames.size
-                    val markStart = if (trunk.closedLoop) (tBeforeIdx + 1) % nT else min(nT - 1, tBeforeIdx + 1)
-                    val markEnd = if (trunk.closedLoop) (tAfterIdx - 1 + nT) % nT else max(0, tAfterIdx - 1)
-                    markRoadSideRange(trunk.id, markStart, markEnd, trunkCenterSideSign, trunk.closedLoop)
+                    markRoadSideRange(trunk.id, tBeforeIdx, tAfterIdx, trunkCenterSideSign, trunk.closedLoop)
                 }
 
                 val alongTrunkVec = (tAfterFrame.pos - tBeforeFrame.pos).normalizedXZ()
@@ -595,6 +640,29 @@ object ThrissurRoadRepository {
         cachedBellmouths = bellmouths
 
         // STEP 6: Assemble final ThrissurOsmRoad objects with exact coverage flags
+        // Also run a geometric safety sweep so any outer edge of Swaraj Round or a trunk road that crosses a branch road is 100% covered
+        for (spec in specs) {
+            val lMask = leftCoveredMask[spec.id]!!
+            val rMask = rightCoveredMask[spec.id]!!
+            for (i in spec.baseFrames.indices) {
+                val f = spec.baseFrames[i]
+                val leftEdgePt = f.pos - f.right * (f.halfWidthM + 0.5f)
+                val rightEdgePt = f.pos + f.right * (f.halfWidthM + 0.5f)
+                for (other in specs) {
+                    if (other.id == spec.id || other.priority <= spec.priority) continue
+                    for (of in other.baseFrames) {
+                        val clearR = of.halfWidthM + 3.8f
+                        if ((leftEdgePt - of.pos).lengthXZ() < clearR) {
+                            lMask[i] = true
+                        }
+                        if (spec.id != "ROAD_SWARAJ_ROUND" && (rightEdgePt - of.pos).lengthXZ() < clearR) {
+                            rMask[i] = true
+                        }
+                    }
+                }
+            }
+        }
+
         val result = ArrayList<ThrissurOsmRoad>(specs.size)
         for (spec in specs) {
             val lMask = leftCoveredMask[spec.id]!!
@@ -603,9 +671,12 @@ object ThrissurRoadRepository {
             val finalFrames = ArrayList<RoadFrame>(spec.baseFrames.size)
             for (i in spec.baseFrames.indices) {
                 val f = spec.baseFrames[i]
+                val isStationForecourtFrontage = spec.id == "ROAD_STATION_ROAD" &&
+                    f.pos.x < -16.5f &&
+                    f.pos.z in -152.0f..-108.0f
                 finalFrames.add(
                     f.copy(
-                        leftEdgeCovered = lMask[i],
+                        leftEdgeCovered = lMask[i] || isStationForecourtFrontage,
                         rightEdgeCovered = if (spec.id == "ROAD_SWARAJ_ROUND") false else rMask[i],
                         centerCovered = if (spec.id == "ROAD_SWARAJ_ROUND") false else cMask[i]
                     )

@@ -1412,17 +1412,20 @@ private fun DrawScope.drawContinuousShouldersAndCurbs(
 
     val isSakthanGateRoad = road.id == "ROAD_SAKTHAN_TO_SWARAJ" || road.id == "ROAD_SAKTHAN_STAND_ENTRY"
     val isNh544 = road.id == "ROAD_NH544_MANNUTHY_TO_PALIYEKKARA"
+    val isStationRoad = road.id == "ROAD_STATION_ROAD"
     fun insideTerminalOrTollApron(f: RoadFrame): Boolean =
         (isSakthanGateRoad && f.pos.z < -139.6f) ||
             (isNh544 && f.pos.z in -1856.0f..-1756.0f)
+    fun insideStationForecourtLeft(f: RoadFrame): Boolean =
+        isStationRoad && f.pos.x < -16.5f && f.pos.z in -118.0f..-64.0f
 
-    // 1. Left & Right Earthen Laterite Shoulders (continuous through all road joints; suppressed only inside concrete terminal/toll aprons)
+    // 1. Left & Right Earthen Laterite Shoulders (continuous through all road joints; suppressed only inside concrete terminal/toll/station aprons)
     drawUncoveredSideRibbon(
         offsetInnerFn = { -it.halfWidthM - bevelW - shoulderW },
         offsetOuterFn = { -it.halfWidthM - bevelW },
         color = MatShoulderLaterite
     ) {
-        insideTerminalOrTollApron(it)
+        insideTerminalOrTollApron(it) || insideStationForecourtLeft(it)
     }
     drawUncoveredSideRibbon(
         offsetInnerFn = { it.halfWidthM + bevelW },
@@ -1438,7 +1441,7 @@ private fun DrawScope.drawContinuousShouldersAndCurbs(
         offsetInnerFn = { -it.halfWidthM - bevelW },
         offsetOuterFn = { -it.halfWidthM },
         color = matAsphaltEdgeLip
-    ) { insideTerminalOrTollApron(it) }
+    ) { insideTerminalOrTollApron(it) || insideStationForecourtLeft(it) }
     drawUncoveredSideRibbon(
         offsetInnerFn = { it.halfWidthM },
         offsetOuterFn = { it.halfWidthM + bevelW },
@@ -1448,6 +1451,7 @@ private fun DrawScope.drawContinuousShouldersAndCurbs(
     // 3. Raised Urban Concrete Footpaths & Kerb Stones on Thrissur Town Corridors (never crossing junction mouths)
     val hasUrbanFootpath = road.id == "ROAD_SWARAJ_ROUND" ||
         road.id == "ROAD_SAKTHAN_TO_SWARAJ" ||
+        road.id == "ROAD_STATION_ROAD" ||
         road.id == "ROAD_SWARAJ_TO_VADAKKE" ||
         (road.id == "ROAD_SWARAJ_TO_MANNUTHY" && frames[span.startIdx].cumulativeDist < 320f) ||
         (road.id == "ROAD_SWARAJ_TO_WEST_FORT" && frames[span.startIdx].cumulativeDist < 260f)
@@ -1829,23 +1833,21 @@ private fun DrawScope.drawSwarajRound8ZebraCrossings(
         }
     }
 
-    // Also draw pedestrian stop line & zebra crossing across M.O. Road approach at Manikandanal Signal (Z = -40.5m)
+    // Also draw pedestrian stop line across M.O. Road approach at Manikandanal Signal (Z = -54.0m, 18.5m South of Swaraj Round)
     val moRoad = roads.firstOrNull { it.id == "ROAD_SAKTHAN_TO_SWARAJ" }
     val moFrames = moRoad?.frames
     if (moFrames != null && moFrames.size >= 6) {
-        val sigFrame = moFrames[(moFrames.size - 4).coerceAtLeast(0)]
+        val sigFrame = moFrames.minByOrNull { kotlin.math.abs(it.pos.z - (-55.5f)) } ?: moFrames[(moFrames.size - 4).coerceAtLeast(0)]
         if (hypot(sigFrame.pos.x - camEye.x, sigFrame.pos.z - camEye.z) <= 135f) {
-            // Crisp white stop line before Manikandanal Zebra Crossing
-            val stopZOffset = -2.4f
             val sl0 = Vec3(
-                sigFrame.pos.x - sigFrame.right.x * (sigFrame.halfWidthM - 0.4f) + sigFrame.tangent.x * stopZOffset,
+                sigFrame.pos.x - sigFrame.right.x * (sigFrame.halfWidthM - 0.4f),
                 yZebra,
-                sigFrame.pos.z - sigFrame.right.z * (sigFrame.halfWidthM - 0.4f) + sigFrame.tangent.z * stopZOffset
+                sigFrame.pos.z - sigFrame.right.z * (sigFrame.halfWidthM - 0.4f)
             )
             val sl1 = Vec3(
-                sigFrame.pos.x + sigFrame.right.x * (sigFrame.halfWidthM - 0.4f) + sigFrame.tangent.x * stopZOffset,
+                sigFrame.pos.x + sigFrame.right.x * (sigFrame.halfWidthM - 0.4f),
                 yZebra,
-                sigFrame.pos.z + sigFrame.right.z * (sigFrame.halfWidthM - 0.4f) + sigFrame.tangent.z * stopZOffset
+                sigFrame.pos.z + sigFrame.right.z * (sigFrame.halfWidthM - 0.4f)
             )
             rig.projectSegmentClipped(sl0, sl1)?.let { seg ->
                 drawLine(MatRoadWhite, seg.first, seg.second, strokeWidth = 4.2f)
@@ -1855,26 +1857,30 @@ private fun DrawScope.drawSwarajRound8ZebraCrossings(
 }
 
 /**
- * Zone 1.2 Spec: Sakthan Thampuran Bus Stand (Detailed Construction)
- * - 180m × 120m heavy-duty concrete apron (#2B3037) with scored 6m × 6m expansion joint grids
- * - Realistic dark diesel oil drip stains and tire skid marks centered inside bus docking bays
- * - Yellow thermoplastic guide lines painted on concrete marking the bus approach trajectories
- * - Player bus spawn in Bay 1 (X = 25.0m, Z = -176.0m) facing the straight north exit onto M.O. Road
+ * Zone 1.2 Spec: Sakthan Thampuran Bus Stand — Rebuilt 10-Bay Linear Drive-Through Terminal
+ * - Single Row of 10 Drive-Through Bus Bays in 1 line (X = -13.5m .. +36.0m, Z = -182.0m .. -164.0m)
+ *   with Bay 8 (bIdx = 7) centered at X = 25.0m for the Player Bus spawn facing North (+Z)!
+ * - Zero second row of rear slots — instead, the entire rear zone (Z = -208.0m .. -182.0m) is a wide
+ *   26-meter Rear Circulation Carriageway connected via the West Entry Feeder Driveway to the
+ *   North BUS ENTRY Gate (X = 1.0m .. 13.5m, Z = -140.0m)!
+ * - Full 4-Sided Perimeter Compound Wall enclosing the terminal yard (North, East, South, West)
+ * - Distinct Sakthan Stand Maroon-Terracotta & Gold Signboard Theme (#7F1D1D / #F59E0B)
  */
 private fun DrawScope.drawSakthan20BayTerminalYard(
     rig: CameraRig,
     path: Path,
     camEye: Vec3
 ) {
-    if (hypot(camEye.x - 16f, camEye.z - (-178f)) > 320f) return
+    if (hypot(camEye.x - 10f, camEye.z - (-178f)) > 320f) return
 
     val yYard = 0.058f
-    val yardMinX = -22.0f
-    val yardMaxX = 48.0f
-    val yardMinZ = -220.0f
-    val yardMaxZ = -140.0f
+    // Strictly bounded within X = -31.0m .. +40.5m, Z = -214.0m .. -139.5m
+    val yardMinX = -31.0f
+    val yardMaxX = 40.5f
+    val yardMinZ = -214.0f
+    val yardMaxZ = -139.5f
 
-    // 1. Heavy-Duty Concrete Apron (#2B3037)
+    // 1. Heavy-Duty Concrete Terminal Apron (#2B3037)
     if (rig.buildClippedQuadPath(
             path,
             Vec3(yardMinX, yYard, yardMinZ),
@@ -1886,100 +1892,148 @@ private fun DrawScope.drawSakthan20BayTerminalYard(
         drawPath(path, MatTerminalYardConcrete)
     }
 
-    // 2. Scored 6m × 6m Concrete Expansion Joint Grids across the terminal apron
-    if (hypot(camEye.x - 16f, camEye.z - (-178f)) < 145f) {
+    // 2. Dark Hot-Mix Asphalt Circulation Loop:
+    //    - North Front Concourse & Exit Apron (X = -23.5m .. +39.0m, Z = -164.0m .. -140.0m)
+    //    - West Entry Feeder Carriageway (X = -23.5m .. -16.5m, Z = -208.0m .. -140.0m)
+    //    - Wide Rear Circulation Carriageway behind all 10 Bays (X = -23.5m .. +39.5m, Z = -208.0m .. -182.0m)
+    val loopAsphaltCol = Color(0xFF232830)
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-23.5f, 0.059f, -164.0f),
+            Vec3(39.0f, 0.059f, -164.0f),
+            Vec3(39.0f, 0.059f, -140.0f),
+            Vec3(-23.5f, 0.059f, -140.0f)
+        )
+    ) {
+        drawPath(path, loopAsphaltCol)
+    }
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-23.5f, 0.059f, -208.0f),
+            Vec3(-16.5f, 0.059f, -208.0f),
+            Vec3(-16.5f, 0.059f, -164.0f),
+            Vec3(-23.5f, 0.059f, -164.0f)
+        )
+    ) {
+        drawPath(path, loopAsphaltCol)
+    }
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-23.5f, 0.059f, -208.0f),
+            Vec3(39.5f, 0.059f, -208.0f),
+            Vec3(39.5f, 0.059f, -182.0f),
+            Vec3(-23.5f, 0.059f, -182.0f)
+        )
+    ) {
+        drawPath(path, loopAsphaltCol)
+    }
+
+    // 3. Scored 6m × 6m Concrete Expansion Joint Grids across the terminal apron
+    if (hypot(camEye.x - 10f, camEye.z - (-178f)) < 145f) {
         val jointCol = Color(0x5511151C)
-        var gx = -18.0f
-        while (gx <= 44.0f) {
-            rig.projectSegmentClipped(Vec3(gx, 0.059f, yardMinZ), Vec3(gx, 0.059f, yardMaxZ))?.let { seg ->
+        var gx = -24.0f
+        while (gx <= 36.0f) {
+            rig.projectSegmentClipped(Vec3(gx, 0.0595f, yardMinZ), Vec3(gx, 0.0595f, yardMaxZ))?.let { seg ->
                 drawLine(jointCol, seg.first, seg.second, strokeWidth = 1.1f)
             }
             gx += 6.0f
         }
-        var gz = -216.0f
+        var gz = -210.0f
         while (gz <= -144.0f) {
-            rig.projectSegmentClipped(Vec3(yardMinX, 0.059f, gz), Vec3(yardMaxX, 0.059f, gz))?.let { seg ->
+            rig.projectSegmentClipped(Vec3(yardMinX, 0.0595f, gz), Vec3(yardMaxX, 0.0595f, gz))?.let { seg ->
                 drawLine(jointCol, seg.first, seg.second, strokeWidth = 1.1f)
             }
             gz += 6.0f
         }
     }
 
-    // 3. Bus Docking Bays (10 Primary Bays in North Concourse + 10 Intercity Bays in South Concourse)
-    //    with Dark Diesel Oil Drip Stains & Twin Tire Skid Marks centered inside each bay
-    val bayRowZs = arrayOf(
-        Pair(-183.5f, -167.0f), // North Boarding Concourse (Bay 1 at X = 25.0f is Player Bus Spawn!)
-        Pair(-214.5f, -198.0f)  // South Intercity Concourse
-    )
-    val bayHalfW = 2.05f
+    // 4. SINGLE LINEAR ROW OF 10 DRIVE-THROUGH BUS DOCKING BAYS (bIdx in 0..9)
+    //    - 10 Buses park side-by-side in ONE single line at Z = -182.0m .. -164.0m!
+    //    - bx = -13.5f + bIdx * 5.5f -> for bIdx = 7, bx = 25.0f (Exact Player Bus Spawn X = 25.0m, Z = -176.0m!)
+    val z0 = -182.0f
+    val z1 = -164.0f
+    val zMid = (z0 + z1) * 0.5f
+    val bayHalfW = 1.95f
     val oilStainCol = Color(0xCC12151B)
     val skidMarkCol = Color(0x99191D24)
 
-    for ((z0, z1) in bayRowZs) {
-        for (bIdx in 0 until 10) {
-            val bx = -18.2f + bIdx * 7.2f
+    for (bIdx in 0 until 10) {
+        val bx = -13.5f + bIdx * 5.5f
 
-            // Dark diesel oil drip stain patch centered in bay
-            val zMid = (z0 + z1) * 0.5f
-            if (rig.buildClippedQuadPath(
-                    path,
-                    Vec3(bx - 0.58f, 0.060f, zMid - 2.4f),
-                    Vec3(bx + 0.58f, 0.060f, zMid - 2.4f),
-                    Vec3(bx + 0.58f, 0.060f, zMid + 2.4f),
-                    Vec3(bx - 0.58f, 0.060f, zMid + 2.4f)
-                )
-            ) {
-                drawPath(path, oilStainCol)
-            }
+        // Dark diesel oil drip stain patch centered in bay
+        if (rig.buildClippedQuadPath(
+                path,
+                Vec3(bx - 0.55f, 0.060f, zMid - 2.4f),
+                Vec3(bx + 0.55f, 0.060f, zMid - 2.4f),
+                Vec3(bx + 0.55f, 0.060f, zMid + 2.4f),
+                Vec3(bx - 0.55f, 0.060f, zMid + 2.4f)
+            )
+        ) {
+            drawPath(path, oilStainCol)
+        }
 
-            // Twin rubber tire skid marks inside docking bay
-            for (wheelOffX in floatArrayOf(-0.98f, 0.98f)) {
-                rig.projectSegmentClipped(
-                    Vec3(bx + wheelOffX, 0.061f, z0 + 1.2f),
-                    Vec3(bx + wheelOffX, 0.061f, z1 - 0.8f)
-                )?.let { seg ->
-                    drawLine(skidMarkCol, seg.first, seg.second, strokeWidth = 3.2f)
-                }
+        // Twin rubber tire skid marks inside docking bay
+        for (wheelOffX in floatArrayOf(-0.96f, 0.96f)) {
+            rig.projectSegmentClipped(
+                Vec3(bx + wheelOffX, 0.061f, z0 + 1.2f),
+                Vec3(bx + wheelOffX, 0.061f, z1 - 0.8f)
+            )?.let { seg ->
+                drawLine(skidMarkCol, seg.first, seg.second, strokeWidth = 3.2f)
             }
+        }
 
-            // Yellow thermoplastic bay boundary & stop lines
-            rig.projectSegmentClipped(
-                Vec3(bx - bayHalfW, 0.062f, z0),
-                Vec3(bx - bayHalfW, 0.062f, z1)
-            )?.let { leftLine ->
-                drawLine(MatRoadYellow, leftLine.first, leftLine.second, strokeWidth = 2.4f)
-            }
-            rig.projectSegmentClipped(
-                Vec3(bx + bayHalfW, 0.062f, z0),
-                Vec3(bx + bayHalfW, 0.062f, z1)
-            )?.let { rightLine ->
-                drawLine(MatRoadYellow, rightLine.first, rightLine.second, strokeWidth = 2.4f)
-            }
-            rig.projectSegmentClipped(
-                Vec3(bx - bayHalfW, 0.062f, z1),
-                Vec3(bx + bayHalfW, 0.062f, z1)
-            )?.let { frontStop ->
-                drawLine(MatRoadYellow, frontStop.first, frontStop.second, strokeWidth = 3.0f)
-            }
+        // Yellow thermoplastic bay side boundary lines (Left & Right)
+        rig.projectSegmentClipped(
+            Vec3(bx - bayHalfW, 0.062f, z0),
+            Vec3(bx - bayHalfW, 0.062f, z1)
+        )?.let { leftLine ->
+            drawLine(MatRoadYellow, leftLine.first, leftLine.second, strokeWidth = 2.4f)
+        }
+        rig.projectSegmentClipped(
+            Vec3(bx + bayHalfW, 0.062f, z0),
+            Vec3(bx + bayHalfW, 0.062f, z1)
+        )?.let { rightLine ->
+            drawLine(MatRoadYellow, rightLine.first, rightLine.second, strokeWidth = 2.4f)
+        }
+        // North departure stop bar at z1 (-164.0m) so Rear Entry at z0 (-182.0m) is 100% open from the Rear Carriageway!
+        rig.projectSegmentClipped(
+            Vec3(bx - bayHalfW, 0.062f, z1),
+            Vec3(bx + bayHalfW, 0.062f, z1)
+        )?.let { stopSeg ->
+            drawLine(MatRoadYellow, stopSeg.first, stopSeg.second, strokeWidth = 3.0f)
         }
     }
 
-    // 4. Yellow Thermoplastic Guide Lines Painted on Concrete Marking Bus Approach & Exit Trajectories
-    //    - Straight Departure Trajectory from Bay 1 (X = 25.0m) through North Exit Gate onto M.O. Road
-    for (trajX in floatArrayOf(22.6f, 27.4f)) {
-        rig.projectSegmentClipped(Vec3(trajX, 0.063f, -167.0f), Vec3(trajX, 0.063f, -140.0f))?.let { seg ->
+    // 5. Yellow & White Thermoplastic Guide Lines Marking Entry, Rear Circulation Carriageway & Exit:
+    //    - Straight Departure Trajectory from Bay 8 (X = 25.0m) through North Exit Gate onto M.O. Road
+    for (trajX in floatArrayOf(22.4f, 27.6f)) {
+        rig.projectSegmentClipped(Vec3(trajX, 0.063f, -164.0f), Vec3(trajX, 0.063f, -140.0f))?.let { seg ->
+            drawLine(MatRoadYellow, seg.first, seg.second, strokeWidth = 2.6f)
+        }
+    }
+    //    - Entry Guide Lines from North Entry Gate (X = 1.0m..13.5m, Z = -140.0m) curving along West Feeder to Rear Carriageway
+    for (trajX in floatArrayOf(2.2f, 11.8f)) {
+        rig.projectSegmentClipped(Vec3(trajX, 0.063f, -140.0f), Vec3(trajX, 0.063f, -154.0f))?.let { seg ->
+            drawLine(MatRoadYellow, seg.first, seg.second, strokeWidth = 2.6f)
+        }
+    }
+    for (westX in floatArrayOf(-22.8f, -17.2f)) {
+        rig.projectSegmentClipped(Vec3(westX, 0.063f, -154.0f), Vec3(westX, 0.063f, -196.0f))?.let { seg ->
             drawLine(MatRoadYellow, seg.first, seg.second, strokeWidth = 2.4f)
         }
     }
-    //    - Entry Approach Trajectory from Left Entry Gate (X = 7.0m) into the Maneuvering Yard Concourse
-    for (trajX in floatArrayOf(4.8f, 9.2f)) {
-        rig.projectSegmentClipped(Vec3(trajX, 0.063f, -140.0f), Vec3(trajX, 0.063f, -160.0f))?.let { seg ->
+    //    - Rear Circulation Carriageway Guide Lines & Dashed White Centerline (Z = -194.5m, X = -20.0m .. +38.5m)
+    for (aisleZ in floatArrayOf(-184.5f, -204.5f)) {
+        rig.projectSegmentClipped(Vec3(-21.0f, 0.063f, aisleZ), Vec3(38.5f, 0.063f, aisleZ))?.let { seg ->
             drawLine(MatRoadYellow, seg.first, seg.second, strokeWidth = 2.2f)
         }
     }
-    //    - East-West Central Maneuvering Yard Guide Line (Z = -190.5m)
-    rig.projectSegmentClipped(Vec3(-18.0f, 0.062f, -190.5f), Vec3(44.0f, 0.062f, -190.5f))?.let { seg ->
-        drawLine(MatRoadYellow, seg.first, seg.second, strokeWidth = 2.2f)
+    var rearDashX = -19.0f
+    while (rearDashX <= 36.0f) {
+        rig.projectSegmentClipped(Vec3(rearDashX, 0.063f, -194.5f), Vec3(rearDashX + 3.2f, 0.063f, -194.5f))?.let { seg ->
+            drawLine(MatRoadWhite, seg.first, seg.second, strokeWidth = 2.2f)
+        }
+        rearDashX += 6.4f
     }
 }
 
@@ -2145,10 +2199,6 @@ private val cachedSakthanTerminalFaces: List<QuadFace3D> by lazy {
         }
     }
 
-    /**
-     * Builds a smooth N-sided 3D cylindrical or octagonal frustum (for tubular steel pillars,
-     * octagonal clock tower stages, and tapered high-mast floodlight towers).
-     */
     fun addOctagonalFrustum3D(
         cx: Float,
         cz: Float,
@@ -2188,11 +2238,9 @@ private val cachedSakthanTerminalFaces: List<QuadFace3D> by lazy {
         }
     }
 
-    /**
-     * Builds a realistic 3D arched barrel-vault industrial corrugated roof bay (spanning X = [x0..x1], Z = [z0..z1])
-     * with deep royal blue (#1E3A8A) corrugated steel sheets, translucent polycarbonate skylight strips (#93C5FD),
-     * and dark steel under-truss ceiling.
-     */
+    val sakthanMaroonRoof = Color(0xFF7F1D1D)
+    val sakthanMaroonDark = Color(0xFF451A03)
+
     fun addArchedBarrelRoofBay3D(
         x0: Float,
         x1: Float,
@@ -2214,13 +2262,12 @@ private val cachedSakthanTerminalFaces: List<QuadFace3D> by lazy {
             val h0 = eaveY + sin(t0 * PI.toFloat()) * archRise
             val h1 = eaveY + sin(t1 * PI.toFloat()) * archRise
             val isSkylightStrip = hasSkylightCenter && (a == 2 || a == 3)
-            val topCol = if (isSkylightStrip) MatRoofSkylight else MatRoofRoyalBlue
-            val underCol = if (isSkylightStrip) Color(0xFF60A5FA) else MatRoofUnderTruss
+            val topCol = if (isSkylightStrip) MatRoofSkylight else sakthanMaroonRoof
+            val underCol = if (isSkylightStrip) Color(0xFFFDE68A) else MatRoofUnderTruss
 
             for (zs in 0 until zSegs) {
                 val sz0 = z0 + zs * stepZ
                 val sz1 = sz0 + stepZ
-                // Upper curved corrugated roof surface (+Y normal)
                 faces.add(
                     QuadFace3D(
                         Vec3(sx0, h0, sz0),
@@ -2230,7 +2277,6 @@ private val cachedSakthanTerminalFaces: List<QuadFace3D> by lazy {
                         topCol, null, 2.2f, 0f, 0f, 1f, 0f
                     )
                 )
-                // Underside arched ceiling surface (-Y normal)
                 faces.add(
                     QuadFace3D(
                         Vec3(sx0, h0 - 0.14f, sz1),
@@ -2241,14 +2287,13 @@ private val cachedSakthanTerminalFaces: List<QuadFace3D> by lazy {
                     )
                 )
             }
-            // Front & back arched gable fascia rims at z0 and z1
             faces.add(
                 QuadFace3D(
                     Vec3(sx0, eaveY - 0.18f, z0),
                     Vec3(sx1, eaveY - 0.18f, z0),
                     Vec3(sx1, h1, z0),
                     Vec3(sx0, h0, z0),
-                    MatRoofRoyalBlueDark, null, 2.1f, 0f, 0f, 0f, -1f
+                    sakthanMaroonDark, null, 2.1f, 0f, 0f, 0f, -1f
                 )
             )
             faces.add(
@@ -2257,34 +2302,67 @@ private val cachedSakthanTerminalFaces: List<QuadFace3D> by lazy {
                     Vec3(sx0, eaveY - 0.18f, z1),
                     Vec3(sx0, h0, z1),
                     Vec3(sx1, h1, z1),
-                    MatRoofRoyalBlueDark, null, 2.1f, 0f, 0f, 0f, 1f
+                    sakthanMaroonDark, null, 2.1f, 0f, 0f, 0f, 1f
                 )
             )
         }
     }
 
-    // 1. 3 Parallel Passenger Boarding Platforms (250mm raised curbs tiled in non-slip charcoal & grey tactile paving)
-    //    with 8-Sided Cylindrical Terracotta-Red Tubular Steel Pillars (#A83E28) & Y-Branch Space-Frame Capitals
+    fun addCompoundWallWithPilasters(
+        x0: Float,
+        z0: Float,
+        x1: Float,
+        z1: Float
+    ) {
+        val minX = minOf(x0, x1) - 0.24f
+        val maxX = maxOf(x0, x1) + 0.24f
+        val minZ = minOf(z0, z1) - 0.24f
+        val maxZ = maxOf(z0, z1) + 0.24f
+        // Laterite stone plinth + cream plastered masonry wall + terracotta coping cap
+        addBox3D(minX, 0.06f, minZ, maxX, 0.48f, maxZ, MatCreamPlaster, MatTerracottaDark, MatTerracottaDark)
+        addBox3D(minX + 0.04f, 0.48f, minZ + 0.04f, maxX - 0.04f, 2.08f, maxZ - 0.04f, MatCreamPlaster, MatCreamPlaster, MatCreamPlaster)
+        addBox3D(minX - 0.05f, 2.08f, minZ - 0.05f, maxX + 0.05f, 2.28f, maxZ + 0.05f, MatTerracottaPillar, MatTerracottaDark, MatTerracottaDark)
+
+        val dx = x1 - x0
+        val dz = z1 - z0
+        val len = hypot(dx, dz)
+        val steps = (len / 6.5f).toInt().coerceAtLeast(1)
+        for (i in 0..steps) {
+            val t = i.toFloat() / steps
+            val px = x0 + dx * t
+            val pz = z0 + dz * t
+            addBox3D(px - 0.34f, 0.06f, pz - 0.34f, px + 0.34f, 2.46f, pz + 0.34f, MatCreamPlaster, MatTerracottaPillar, MatTerracottaDark)
+        }
+    }
+
+    // =========================================================================
+    // 1. SINGLE LINEAR ROW OF 10 DRIVE-THROUGH BUS BAYS & 11 BOARDING ISLANDS
+    //    - 10 Bus Bays side-by-side in 1 line: bx = -13.5f + bIdx * 5.5f (bIdx in 0..9)
+    //    - 11 Passenger Boarding Islands: platCenterX = -16.25f + pIdx * 5.5f (pIdx in 0..10)
+    //    - Bay 8 (bIdx = 7) is centered at X = 25.0m (between islands at 22.25m and 27.75m),
+    //      where the Player Bus spawns at (X = 25.0m, Z = -176.0m)!
+    //    - West Entry Feeder Lane (X = -23.5m .. -16.9m) is 100% open & unobstructed!
+    // =========================================================================
     for (pIdx in 0..10) {
-        val platCenterX = -21.8f + pIdx * 7.2f
-        val px0 = platCenterX - 1.08f
-        val px1 = platCenterX + 1.08f
+        val platCenterX = -16.25f + pIdx * 5.5f
+        val px0 = platCenterX - 0.65f
+        val px1 = platCenterX + 0.65f
         val tactileTopCol = if (pIdx % 2 == 0) MatPlatformTileCharcoal else MatPlatformTileDark
 
-        // Raised 250mm Passenger Boarding Island (y = 0.06m .. 0.31m) with yellow tactile safety edge
+        // Raised 250mm Passenger Boarding Island (y = 0.06m .. 0.31m, Z = -182.0m .. -164.0m)
         addBox3D(
-            px0, 0.06f, -184.5f,
-            px1, 0.31f, -161.5f,
+            px0, 0.06f, -182.0f,
+            px1, 0.31f, -164.0f,
             topCol = tactileTopCol,
             sideCol = MatCurbYellow,
             frontBackCol = MatCurbBlack
         )
         // Stainless-steel & teakwood passenger waiting benches along the platform center
         if (pIdx in 1..9) {
-            for (bz in floatArrayOf(-178.0f, -168.0f)) {
+            for (bz in floatArrayOf(-177.5f, -168.5f)) {
                 addBox3D(
-                    platCenterX - 0.36f, 0.31f, bz - 1.35f,
-                    platCenterX + 0.36f, 0.78f, bz + 1.35f,
+                    platCenterX - 0.30f, 0.31f, bz - 1.25f,
+                    platCenterX + 0.30f, 0.78f, bz + 1.25f,
                     topCol = MatPlatformTileLight,
                     sideCol = MatRoofUnderTruss,
                     frontBackCol = MatRoofUnderTruss
@@ -2292,42 +2370,40 @@ private val cachedSakthanTerminalFaces: List<QuadFace3D> by lazy {
             }
         }
 
-        // 8-Sided Cylindrical Tubular Steel Pillars painted Terracotta-Red (#A83E28) with Concrete Pedestals & Y-Arms
-        for (pz in floatArrayOf(-182.0f, -172.0f, -162.5f)) {
-            // Moulded octagonal concrete pedestal base
-            addOctagonalFrustum3D(platCenterX, pz, 0.31f, 0.92f, 0.36f, 0.28f, MatCreamPlaster)
-            // Cylindrical terracotta-red steel shaft (#A83E28)
-            addOctagonalFrustum3D(platCenterX, pz, 0.92f, 5.15f, 0.24f, 0.22f, MatTerracottaPillar)
-            // Flared steel capital & welded space-truss Y-arms supporting the arched roof valleys
-            addOctagonalFrustum3D(platCenterX, pz, 5.15f, 6.08f, 0.22f, 0.62f, MatRoofUnderTruss)
+        // 8-Sided Cylindrical Tubular Steel Pillars painted Terracotta-Maroon (#A83E28)
+        for (pz in floatArrayOf(-180.5f, -173.0f, -165.5f)) {
+            addOctagonalFrustum3D(platCenterX, pz, 0.31f, 0.92f, 0.32f, 0.25f, MatCreamPlaster)
+            addOctagonalFrustum3D(platCenterX, pz, 0.92f, 5.20f, 0.21f, 0.19f, MatTerracottaPillar)
+            addOctagonalFrustum3D(platCenterX, pz, 5.20f, 6.08f, 0.19f, 0.54f, MatRoofUnderTruss)
         }
         // Longitudinal welded steel box-girder valley beam
         addBox3D(
-            platCenterX - 0.22f, 5.86f, -185.0f,
-            platCenterX + 0.22f, 6.12f, -160.8f,
+            platCenterX - 0.20f, 5.86f, -182.8f,
+            platCenterX + 0.20f, 6.12f, -163.2f,
             topCol = MatRoofUnderTruss,
             sideCol = MatRoofUnderTruss,
             frontBackCol = MatRoofUnderTruss
         )
     }
 
-    // 2. 10 Arched Barrel-Vault Corrugated Steel Roof Bays (#1E3A8A) with Translucent Polycarbonate Skylights every 15m
-    val canopySpanW = (51.5f - (-23.0f)) / 10f
-    for (sIdx in 0 until 10) {
-        val cx0 = -23.0f + sIdx * canopySpanW
+    // 2. 10-Bay Arched Barrel-Vault Corrugated Steel Roof Canopy (#7F1D1D Deep Maroon) spanning X = -17.0m .. +39.2m
+    val canopyMinX = -17.0f
+    val canopyMaxX = 39.2f
+    val canopySpanW = (canopyMaxX - canopyMinX) / 8f
+    for (sIdx in 0 until 8) {
+        val cx0 = canopyMinX + sIdx * canopySpanW
         val cx1 = cx0 + canopySpanW
         val hasSkylight = (sIdx % 2 == 1)
         addArchedBarrelRoofBay3D(
             x0 = cx0,
             x1 = cx1,
-            z0 = -185.5f,
-            z1 = -160.5f,
+            z0 = -183.2f,
+            z1 = -162.8f,
             eaveY = 6.10f,
             archRise = 0.88f,
             hasSkylightCenter = hasSkylight
         )
-        // Transverse steel tie-beams beneath each barrel vault
-        for (tz in floatArrayOf(-182.0f, -172.0f, -162.5f)) {
+        for (tz in floatArrayOf(-180.5f, -173.0f, -165.5f)) {
             addBox3D(
                 cx0, 5.90f, tz - 0.14f,
                 cx1, 6.08f, tz + 0.14f,
@@ -2337,93 +2413,67 @@ private val cachedSakthanTerminalFaces: List<QuadFace3D> by lazy {
         }
     }
 
-    // 3. South Intercity Boarding Concourse (Parallel Boarding Platforms 2 & 3 + Arched Royal Blue Barrel-Vault Roofs)
-    for (pIdx in 0..10) {
-        val platCenterX = -21.8f + pIdx * 7.2f
-        for (pz in floatArrayOf(-215.5f, -206.5f, -197.5f)) {
-            addOctagonalFrustum3D(platCenterX, pz, 0.31f, 0.90f, 0.34f, 0.26f, MatCreamPlaster)
-            addOctagonalFrustum3D(platCenterX, pz, 0.90f, 5.15f, 0.22f, 0.20f, MatTerracottaPillar)
-            addOctagonalFrustum3D(platCenterX, pz, 5.15f, 6.08f, 0.20f, 0.58f, MatRoofUnderTruss)
-        }
-    }
-    for (sIdx in 0 until 10) {
-        val cx0 = -23.0f + sIdx * canopySpanW
-        val cx1 = cx0 + canopySpanW
-        addBox3D(
-            cx0, 0.06f, -198.2f,
-            cx1, 0.31f, -195.6f,
-            topCol = if (sIdx % 2 == 0) MatPlatformTileCharcoal else MatPlatformTileDark,
-            sideCol = MatCurbYellow,
-            frontBackCol = MatCurbBlack
-        )
-        addBox3D(
-            cx0, 0.06f, -218.5f,
-            cx1, 0.31f, -214.5f,
-            topCol = if (sIdx % 2 == 0) MatPlatformTileDark else MatPlatformTileCharcoal,
-            sideCol = MatCurbYellow,
-            frontBackCol = MatCurbBlack
-        )
-        addArchedBarrelRoofBay3D(
-            x0 = cx0,
-            x1 = cx1,
-            z0 = -217.5f,
-            z1 = -196.0f,
-            eaveY = 6.10f,
-            archRise = 0.85f,
-            hasSkylightCenter = (sIdx % 2 == 0)
-        )
-    }
+    // =========================================================================
+    // 3. SOUTH PASSENGER CONCOURSE PROMENADE AT REAR PERIMETER (Z = -213.2m .. -208.5m)
+    //    - Set behind the 26-meter-wide Rear Circulation Carriageway (Z = -208.0m .. -182.0m)
+    //      so buses have a massive, 100% obstacle-free carriageway behind all 10 bays!
+    // =========================================================================
+    addBox3D(
+        -23.5f, 0.06f, -213.2f,
+        39.2f, 0.32f, -208.5f,
+        topCol = MatPlatformTileDark,
+        sideCol = MatCurbYellow,
+        frontBackCol = MatCurbBlack
+    )
 
-    // 4. Sculpted Multi-Bay Main Terminal Concourse Building (West Wing X = -25.2m..-19.5m, Z = -216.0m..-148.0m)
-    //    Stepped granite base + ground-floor colonnade + recessed structural glass curtain wall + pitched terracotta roof
-    addBox3D(-25.2f, 0.06f, -216.0f, -19.2f, 0.48f, -148.0f, MatPlatformTileDark, MatPlatformTileCharcoal)
-    addBox3D(-25.0f, 0.48f, -215.5f, -20.2f, 4.20f, -148.5f, MatCreamPlaster, MatCreamPlaster)
-    // Ground-floor colonnade of cylindrical pillars along X = -19.6f
-    var colZ = -212.0f
-    while (colZ <= -152.0f) {
-        addOctagonalFrustum3D(-19.6f, colZ, 0.48f, 4.20f, 0.24f, 0.22f, MatTerracottaPillar)
+    // =========================================================================
+    // 4. SCULPTED MULTI-BAY MAIN TERMINAL CONCOURSE BUILDING (WEST WING)
+    //    Located at X = -30.4m .. -24.0m (West of the West Entry Feeder Lane X = -23.5m .. -16.9m)
+    // =========================================================================
+    addBox3D(-30.4f, 0.06f, -210.0f, -24.0f, 0.48f, -146.0f, MatPlatformTileDark, MatPlatformTileCharcoal)
+    addBox3D(-30.1f, 0.48f, -209.5f, -24.8f, 4.20f, -146.5f, MatCreamPlaster, MatCreamPlaster)
+    var colZ = -206.0f
+    while (colZ <= -150.0f) {
+        addOctagonalFrustum3D(-24.3f, colZ, 0.48f, 4.20f, 0.24f, 0.22f, MatTerracottaPillar)
         colZ += 6.0f
     }
-    // Cantilevered mid-level concrete sun-breaker slab
-    addBox3D(-25.2f, 4.20f, -216.0f, -19.0f, 4.55f, -148.0f, MatCreamPlaster, MatCreamPlaster)
-    // Upper floor recessed blue-tinted structural glass curtain wall with vertical mullions
-    addBox3D(-24.8f, 4.55f, -215.0f, -19.8f, 7.85f, -149.0f, MatPlatformTileDark, Color(0xFF1E293B))
-    var mulZ = -213.0f
-    while (mulZ <= -151.0f) {
-        addBox3D(-20.0f, 4.55f, mulZ - 0.12f, -19.5f, 7.85f, mulZ + 0.12f, MatCreamPlaster, MatCreamPlaster)
+    addBox3D(-30.4f, 4.20f, -210.0f, -23.9f, 4.55f, -146.0f, MatCreamPlaster, MatCreamPlaster)
+    addBox3D(-30.0f, 4.55f, -209.0f, -24.5f, 7.85f, -147.0f, MatPlatformTileDark, Color(0xFF1E293B))
+    var mulZ = -207.0f
+    while (mulZ <= -149.0f) {
+        addBox3D(-24.7f, 4.55f, mulZ - 0.12f, -24.2f, 7.85f, mulZ + 0.12f, MatCreamPlaster, MatCreamPlaster)
         mulZ += 4.0f
     }
-    // Overhanging pitched terracotta roof crowning the West Terminal Concourse
     val wRoofBaseY = 7.85f
     val wRoofPeakY = 9.85f
-    faces.add(QuadFace3D(Vec3(-25.6f, wRoofBaseY, -216.5f), Vec3(-22.2f, wRoofPeakY, -214.0f), Vec3(-22.2f, wRoofPeakY, -150.0f), Vec3(-25.6f, wRoofBaseY, -147.5f), MatTerracottaPillar))
-    faces.add(QuadFace3D(Vec3(-18.8f, wRoofBaseY, -147.5f), Vec3(-22.2f, wRoofPeakY, -150.0f), Vec3(-22.2f, wRoofPeakY, -214.0f), Vec3(-18.8f, wRoofBaseY, -216.5f), MatTerracottaPillar))
+    faces.add(QuadFace3D(Vec3(-30.8f, wRoofBaseY, -210.5f), Vec3(-27.2f, wRoofPeakY, -208.0f), Vec3(-27.2f, wRoofPeakY, -148.0f), Vec3(-30.8f, wRoofBaseY, -145.5f), MatTerracottaPillar))
+    faces.add(QuadFace3D(Vec3(-23.6f, wRoofBaseY, -145.5f), Vec3(-27.2f, wRoofPeakY, -148.0f), Vec3(-27.2f, wRoofPeakY, -208.0f), Vec3(-23.6f, wRoofBaseY, -210.5f), MatTerracottaPillar))
 
-    // 5. True 8-Sided Octagonal 12-Meter Clock Tower at the Northern Exit Gate (X = 15.4m, Z = -142.2m)
-    val ctX = 15.4f
+    // =========================================================================
+    // 5. TRUE 8-SIDED OCTAGONAL 12-METER CLOCK TOWER ON MEDIAN ISLAND (X = 15.8m, Z = -142.2m)
+    //    Separating the Left BUS ENTRY Gate (X = 1.0m..13.5m) and Right BUS EXIT Gate (X = 18.0m..33.5m)
+    // =========================================================================
+    val ctX = 15.8f
     val ctZ = -142.2f
-    // Stepped octagonal granite & cream plaster base
-    addOctagonalFrustum3D(ctX, ctZ, 0.06f, 0.85f, 1.95f, 1.80f, MatPlatformTileDark)
-    // Stage 1: Exposed red-brick octagonal shaft + cream cornice band
-    addOctagonalFrustum3D(ctX, ctZ, 0.85f, 3.60f, 1.65f, 1.52f, MatClockBrickRed)
-    addOctagonalFrustum3D(ctX, ctZ, 3.60f, 4.00f, 1.68f, 1.68f, MatCreamPlaster)
-    // Stage 2: Tapered red-brick octagonal shaft + upper cream cornice
-    addOctagonalFrustum3D(ctX, ctZ, 4.00f, 6.80f, 1.48f, 1.36f, MatClockBrickRed)
-    addOctagonalFrustum3D(ctX, ctZ, 6.80f, 7.20f, 1.54f, 1.54f, MatCreamPlaster)
-    // Stage 3: Cream octagonal belfry & clock stage
-    addOctagonalFrustum3D(ctX, ctZ, 7.20f, 9.55f, 1.38f, 1.32f, MatCreamPlaster)
-    // 8-Sided Pyramidal Terracotta Roof + Brass Finial Spire reaching 12.0m
-    addOctagonalFrustum3D(ctX, ctZ, 9.55f, 9.80f, 1.68f, 1.62f, MatTerracottaDark)
-    addOctagonalFrustum3D(ctX, ctZ, 9.80f, 11.45f, 1.62f, 0.18f, MatTerracottaPillar)
+    addOctagonalFrustum3D(ctX, ctZ, 0.06f, 0.85f, 1.85f, 1.72f, MatPlatformTileDark)
+    addOctagonalFrustum3D(ctX, ctZ, 0.85f, 3.60f, 1.58f, 1.46f, MatClockBrickRed)
+    addOctagonalFrustum3D(ctX, ctZ, 3.60f, 4.00f, 1.62f, 1.62f, MatCreamPlaster)
+    addOctagonalFrustum3D(ctX, ctZ, 4.00f, 6.80f, 1.42f, 1.32f, MatClockBrickRed)
+    addOctagonalFrustum3D(ctX, ctZ, 6.80f, 7.20f, 1.48f, 1.48f, MatCreamPlaster)
+    addOctagonalFrustum3D(ctX, ctZ, 7.20f, 9.55f, 1.34f, 1.28f, MatCreamPlaster)
+    addOctagonalFrustum3D(ctX, ctZ, 9.55f, 9.80f, 1.62f, 1.56f, MatTerracottaDark)
+    addOctagonalFrustum3D(ctX, ctZ, 9.80f, 11.45f, 1.56f, 0.18f, MatTerracottaPillar)
     addOctagonalFrustum3D(ctX, ctZ, 11.45f, 12.20f, 0.16f, 0.03f, Color(0xFFFACC15))
 
-    // 6. Tapered 8-Sided 25-Meter Steel High-Mast Floodlight Tower at Center of Maneuvering Yard (X = 14.4m, Z = -190.5m)
-    val mastX = 14.4f
-    val mastZ = -190.5f
-    addOctagonalFrustum3D(mastX, mastZ, 0.06f, 0.75f, 0.95f, 0.82f, MatCurbYellow)
-    addOctagonalFrustum3D(mastX, mastZ, 0.75f, 12.5f, 0.34f, 0.24f, MatRoofGalvanized)
+    // =========================================================================
+    // 6. TAPERED 8-SIDED 25-METER HIGH-MAST FLOODLIGHT TOWER AT SOUTH CONCOURSE APRON
+    //    Positioned on the South Perimeter Promenade (7.0m, -211.0m) 100% clear of the Rear Carriageway!
+    // =========================================================================
+    val mastX = 7.0f
+    val mastZ = -211.0f
+    addOctagonalFrustum3D(mastX, mastZ, 0.32f, 0.85f, 0.95f, 0.82f, MatCurbYellow)
+    addOctagonalFrustum3D(mastX, mastZ, 0.85f, 12.5f, 0.34f, 0.24f, MatRoofGalvanized)
     addOctagonalFrustum3D(mastX, mastZ, 12.5f, 24.5f, 0.24f, 0.14f, MatPlatformTileLight)
-    // Circular luminaire carriage ring & 12 radial LED floodlight projectors at Y = 24.5m..25.0m
     addOctagonalFrustum3D(mastX, mastZ, 24.35f, 24.75f, 1.55f, 1.55f, MatRoofUnderTruss, sides = 12)
     for (ledIdx in 0 until 12) {
         val ang = Math.toRadians((ledIdx * 30).toDouble()).toFloat()
@@ -2438,17 +2488,198 @@ private val cachedSakthanTerminalFaces: List<QuadFace3D> by lazy {
         )
     }
 
-    // 7. Road-Aligned Terminal Perimeter Compound Wall & Sculpted Entry/Exit Gate Pillars (at Z = -140.0m, Zero Messy Text)
+    // =========================================================================
+    // 7. CONTINUOUS 4-SIDED PERIMETER COMPOUND WALL AROUND SAKTHAN BUS STAND
+    //    - North Wall (Z = -140.0m): Leaves BUS ENTRY Gate (X = 1.0m..13.5m)
+    //      and BUS EXIT Gate (X = 18.0m..33.5m) 100% open!
+    //    - East Wall (X = 40.2m): Leaves Rear Circulation Gate (Z = -202.0m..-186.0m) open!
+    //    - South Wall (Z = -214.0m, X = -31.0m..40.2m): Full masonry compound wall with pilasters!
+    //    - West Wall (X = -31.0m, Z = -214.0m..-140.0m): Full masonry compound wall with pilasters!
+    // =========================================================================
     val exitZ = -140.0f
-    addBox3D(-22.0f, 0.06f, exitZ - 0.42f, -3.8f, 1.38f, exitZ + 0.32f, MatCreamPlaster, MatTerracottaDark, MatTerracottaPillar)
-    addBox3D(37.8f, 0.06f, exitZ - 0.42f, 48.0f, 1.38f, exitZ + 0.32f, MatCreamPlaster, MatTerracottaDark, MatTerracottaPillar)
-    addBox3D(47.3f, 0.06f, -218.0f, 48.0f, 1.38f, exitZ, MatCreamPlaster, MatTerracottaPillar, MatTerracottaDark)
+    addCompoundWallWithPilasters(-31.0f, exitZ, 0.4f, exitZ)
+    addCompoundWallWithPilasters(33.8f, exitZ, 40.2f, exitZ)
+    addCompoundWallWithPilasters(40.2f, -186.0f, 40.2f, exitZ)
+    addCompoundWallWithPilasters(40.2f, -214.0f, 40.2f, -202.0f)
+    addCompoundWallWithPilasters(-31.0f, -214.0f, 40.2f, -214.0f)
+    addCompoundWallWithPilasters(-31.0f, -214.0f, -31.0f, exitZ)
 
-    // Sculpted Octagonal Gate Pillars flanking the Entry and Exit Gateways
-    for (gx in floatArrayOf(-3.4f, 13.6f, 17.2f, 37.4f)) {
-        addOctagonalFrustum3D(gx, exitZ, 0.06f, 0.85f, 0.48f, 0.42f, MatCreamPlaster)
-        addOctagonalFrustum3D(gx, exitZ, 0.85f, 2.65f, 0.38f, 0.34f, MatTerracottaPillar)
-        addOctagonalFrustum3D(gx, exitZ, 2.65f, 3.05f, 0.46f, 0.12f, MatCreamPlaster)
+    // Sculpted gate pillars at the East Rear Circulation Gate (Z = -202.0m and Z = -186.0m at X = 40.15m)
+    for (rz in floatArrayOf(-202.0f, -186.0f)) {
+        addOctagonalFrustum3D(40.15f, rz, 0.06f, 0.85f, 0.46f, 0.40f, MatCreamPlaster)
+        addOctagonalFrustum3D(40.15f, rz, 0.85f, 3.10f, 0.36f, 0.32f, MatTerracottaPillar)
+    }
+
+    // =========================================================================
+    // 8. GRAND SAKTHAN THAMPURAN BUS STAND ENTRANCE ARCHWAY & DISTINCT MAROON-GOLD BOARDS
+    //    (Distinct from Railway Station Royal Blue #1E3A8A & Vadakke Stand Emerald-Teal #064E3B!)
+    // =========================================================================
+    for (gx in floatArrayOf(0.6f, 13.8f, 17.8f, 33.6f)) {
+        addOctagonalFrustum3D(gx, exitZ, 0.06f, 1.05f, 0.56f, 0.48f, MatCreamPlaster)
+        addOctagonalFrustum3D(gx, exitZ, 1.05f, 6.20f, 0.40f, 0.36f, MatTerracottaPillar)
+        addOctagonalFrustum3D(gx, exitZ, 6.20f, 7.75f, 0.46f, 0.42f, MatCreamPlaster)
+    }
+    // Lower Lintel Beams (5.40..5.68m) & Upper Crown Beams (7.52..7.78m) — no solid box across 5.70..7.50m!
+    addBox3D(0.2f, 5.40f, exitZ - 0.34f, 14.2f, 5.68f, exitZ + 0.34f, MatTerracottaPillar, sakthanMaroonRoof, sakthanMaroonDark)
+    addBox3D(0.2f, 7.52f, exitZ - 0.34f, 14.2f, 7.78f, exitZ + 0.34f, MatTerracottaPillar, sakthanMaroonRoof, sakthanMaroonDark)
+    addBox3D(17.4f, 5.40f, exitZ - 0.34f, 34.0f, 5.68f, exitZ + 0.34f, MatTerracottaPillar, sakthanMaroonRoof, sakthanMaroonDark)
+    addBox3D(17.4f, 7.52f, exitZ - 0.34f, 34.0f, 7.78f, exitZ + 0.34f, MatTerracottaPillar, sakthanMaroonRoof, sakthanMaroonDark)
+
+    // BOARD A1: Left Gate Overhead "BUS ENTRY • പ്രവേശനം" Signboard (Sakthan Maroon-Gold Theme, Badge "IN")
+    val sakthanEntryGateSign = createIndianRailwaysStationSignSpec(
+        cacheKey = "SAKTHAN_STAND_MAIN_ENTRY_GATE_SIGN_V3",
+        bgColorInt = 0xFF7F1D1D.toInt(),
+        borderColorInt = 0xFFF59E0B.toInt(),
+        accentBandColorInt = 0xFF451A03.toInt(),
+        malTitle = "⬇ ബസ് പ്രവേശനം • BUS ENTRY • SEC-02 ⬇",
+        engTitle = "SAKTHAN THAMPURAN BUS STAND — ENTRY TO SECTORS 01–10",
+        subTitle = "SH 75 / NH 544 TERMINAL • PROCEED TO REAR CARRIAGEWAY FOR BAYS 1–10",
+        titleColorInt = 0xFFFDE68A.toInt(),
+        subColorInt = android.graphics.Color.WHITE,
+        isDoubleSided = true,
+        bmpWidth = 960,
+        bmpHeight = 230,
+        badgeLabel = "IN",
+        badgeBgColorInt = 0xFFB45309.toInt()
+    )
+    // Single Unobstructed Double-Sided Gate Signboard (readable from both North & South!)
+    faces.add(
+        QuadFace3D(
+            Vec3(13.5f, 5.70f, exitZ),
+            Vec3(0.9f, 5.70f, exitZ),
+            Vec3(0.9f, 7.50f, exitZ),
+            Vec3(13.5f, 7.50f, exitZ),
+            baseColor = sakthanMaroonRoof,
+            biasDist = -2.20f,
+            signboard = sakthanEntryGateSign
+        )
+    )
+
+    // BOARD A2: Right Gate Overhead "BUS EXIT • പുറത്തേക്ക്" Signboard (Sakthan Maroon-Amber Theme, Badge "OUT")
+    val sakthanExitGateSign = createIndianRailwaysStationSignSpec(
+        cacheKey = "SAKTHAN_STAND_MAIN_EXIT_GATE_SIGN_V3",
+        bgColorInt = 0xFF881337.toInt(),
+        borderColorInt = 0xFFF59E0B.toInt(),
+        accentBandColorInt = 0xFF4C0519.toInt(),
+        malTitle = "⬆ പുറത്തേക്ക് • BUS EXIT • SEC-02 ⬆",
+        engTitle = "SAKTHAN THAMPURAN BUS STAND — EXIT TO M.O. ROAD",
+        subTitle = "TO SWARAJ ROUND (SEC-01) • RAILWAY STATION (TCR) • OLLUR / NH 544 (SEC-03)",
+        titleColorInt = 0xFFFDE68A.toInt(),
+        subColorInt = android.graphics.Color.WHITE,
+        isDoubleSided = true,
+        bmpWidth = 960,
+        bmpHeight = 230,
+        badgeLabel = "OUT",
+        badgeBgColorInt = 0xFFD97706.toInt()
+    )
+    // Single Unobstructed Double-Sided Exit Gate Signboard (readable from both South & North!)
+    faces.add(
+        QuadFace3D(
+            Vec3(18.1f, 5.70f, exitZ),
+            Vec3(33.3f, 5.70f, exitZ),
+            Vec3(33.3f, 7.50f, exitZ),
+            Vec3(18.1f, 7.50f, exitZ),
+            baseColor = sakthanMaroonRoof,
+            biasDist = -2.20f,
+            signboard = sakthanExitGateSign
+        )
+    )
+
+    // BOARD B: Grand 49-Meter Main Terminal Rooftop Nameboard on the 10-Bay Boarding Canopy Fascia
+    //          Positioned cleanly above the 6.10m..6.98m barrel-vault roof at Y = 7.02m..8.80m so the roof never occludes it!
+    val sakthanMainNameSign = createIndianRailwaysStationSignSpec(
+        cacheKey = "SAKTHAN_THAMPURAN_BUS_STAND_MAIN_NAME_BOARD_V3",
+        bgColorInt = 0xFF7F1D1D.toInt(),
+        borderColorInt = 0xFFF59E0B.toInt(),
+        accentBandColorInt = 0xFF451A03.toInt(),
+        malTitle = "ശക്തൻ തമ്പുരാൻ ബസ് സ്റ്റാൻഡ്, തൃശ്ശൂർ • SEC-02",
+        engTitle = "SAKTHAN THAMPURAN BUS STAND • THRISSUR",
+        subTitle = "SECTORS 01–10 (BAYS 1–10) • GURUVAYUR • PALAKKAD • KOCHI • KANJANI • PEECHI",
+        titleColorInt = 0xFFFDE68A.toInt(),
+        subColorInt = android.graphics.Color.WHITE,
+        isDoubleSided = true,
+        bmpWidth = 1024,
+        bmpHeight = 230,
+        badgeLabel = "BUS",
+        badgeBgColorInt = 0xFFB45309.toInt()
+    )
+    // Facing North (+Z, clearly visible from M.O. Road, Entry/Exit Gates & Front Apron)
+    faces.add(
+        QuadFace3D(
+            Vec3(35.0f, 7.02f, -162.6f),
+            Vec3(-14.0f, 7.02f, -162.6f),
+            Vec3(-14.0f, 8.80f, -162.6f),
+            Vec3(35.0f, 8.80f, -162.6f),
+            baseColor = sakthanMaroonRoof,
+            biasDist = -2.20f,
+            signboard = sakthanMainNameSign
+        )
+    )
+    // Facing South (-Z, visible from the Rear Circulation Carriageway behind all 10 Bays!)
+    faces.add(
+        QuadFace3D(
+            Vec3(-14.0f, 7.02f, -183.4f),
+            Vec3(35.0f, 7.02f, -183.4f),
+            Vec3(35.0f, 8.80f, -183.4f),
+            Vec3(-14.0f, 8.80f, -183.4f),
+            baseColor = sakthanMaroonRoof,
+            biasDist = -2.20f,
+            signboard = sakthanMainNameSign
+        )
+    )
+
+    // BOARD C: Double-Sided Sector & Route Destination Boards along Both Sides (North Z=-162.8m & South Z=-183.2m) of the 10-Bay Canopy
+    val sakthanSectorSpecs = arrayOf(
+        Triple("SEC 01–02 • BAYS 1 & 2", "GURUVAYUR • CHAVAKKAD • KANJANI (SH 75)", "ഗുരുവായൂർ • ചാവക്കാട് • കാഞ്ഞാണി"),
+        Triple("SEC 03–04 • BAYS 3 & 4", "PALAKKAD • MANNUTHY • ALATHUR (NH 544)", "പാലക്കാട് • മണ്ണുത്തി • ആലത്തൂർ"),
+        Triple("SEC 05–06 • BAYS 5 & 6", "KOCHI • CHALAKUDY • ANGAMALY (NH 544)", "കൊച്ചി • ചാലക്കുടി • അങ്കമാലി"),
+        Triple("SEC 07–08 • BAYS 7 & 8", "THRISSUR ROUND • RAILWAY STN • VADAKKE", "സ്വരാജ് റൗണ്ട് • റെയിൽവേ സ്റ്റേഷൻ • വടക്കേ സ്റ്റാൻഡ്"),
+        Triple("SEC 09–10 • BAYS 9 & 10", "TRIPRAYAR • KODUNGALLUR • IRINJALAKUDA", "തൃപ്രയാർ • കൊടുങ്ങല്ലൂർ • ഇരിഞ്ഞാലക്കുട")
+    )
+    for (sIdx in sakthanSectorSpecs.indices) {
+        val (secHeader, engDest, malDest) = sakthanSectorSpecs[sIdx]
+        val sx0 = -16.2f + sIdx * 11.2f
+        val sx1 = sx0 + 10.4f
+        val secSign = createIndianRailwaysStationSignSpec(
+            cacheKey = "SAKTHAN_SECTOR_BOARD_V3_$sIdx",
+            bgColorInt = 0xFF7F1D1D.toInt(),
+            borderColorInt = 0xFFF59E0B.toInt(),
+            accentBandColorInt = 0xFF451A03.toInt(),
+            malTitle = "$secHeader  •  $malDest",
+            engTitle = engDest,
+            subTitle = "SAKTHAN STAND SECTOR 0${sIdx * 2 + 1}/0${sIdx * 2 + 2} • DRIVE-THROUGH BAY",
+            titleColorInt = 0xFFFDE68A.toInt(),
+            subColorInt = android.graphics.Color.WHITE,
+            isDoubleSided = true,
+            bmpWidth = 768,
+            bmpHeight = 200,
+            badgeLabel = "S${sIdx * 2 + 1}",
+            badgeBgColorInt = 0xFFB45309.toInt()
+        )
+        // North Side of Canopy (facing departing buses & Front Apron)
+        faces.add(
+            QuadFace3D(
+                Vec3(sx1, 5.10f, -162.8f),
+                Vec3(sx0, 5.10f, -162.8f),
+                Vec3(sx0, 5.92f, -162.8f),
+                Vec3(sx1, 5.92f, -162.8f),
+                baseColor = sakthanMaroonRoof,
+                biasDist = -2.10f,
+                signboard = secSign
+            )
+        )
+        // South Side of Canopy (facing arriving buses on Rear Circulation Carriageway)
+        faces.add(
+            QuadFace3D(
+                Vec3(sx0, 5.10f, -183.2f),
+                Vec3(sx1, 5.10f, -183.2f),
+                Vec3(sx1, 5.92f, -183.2f),
+                Vec3(sx0, 5.92f, -183.2f),
+                baseColor = sakthanMaroonRoof,
+                biasDist = -2.10f,
+                signboard = secSign
+            )
+        )
     }
 
     faces
@@ -2458,9 +2689,9 @@ internal fun collectSakthanTerminalSceneFaces(
     camEye: Vec3,
     outFaces: MutableList<QuadFace3D>
 ) {
-    val dxT = camEye.x - 16f
+    val dxT = camEye.x - 10f
     val dzT = camEye.z - (-178f)
-    if (dxT * dxT + dzT * dzT > 200f * 200f) return
+    if (dxT * dxT + dzT * dzT > 210f * 210f) return
     outFaces.addAll(cachedSakthanTerminalFaces)
 }
 
