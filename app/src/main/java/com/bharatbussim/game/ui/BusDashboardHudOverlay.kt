@@ -53,6 +53,8 @@ import com.bharatbussim.game.ui.theme.HudEmerald
 import com.bharatbussim.game.ui.theme.HudRed
 import com.bharatbussim.game.ui.theme.HudTextMuted
 import com.bharatbussim.game.ui.theme.HudTextPrimary
+import com.bharatbussim.game.ui.theme.JetBrainsMonoFamily
+import com.bharatbussim.game.ui.theme.OutfitDisplayFamily
 import com.bharatbussim.game.viewmodel.SimUiState
 import com.bharatbussim.game.viewmodel.ThrissurSimViewModel
 import java.util.Locale
@@ -84,11 +86,6 @@ fun BusDashboardHudOverlay(
     val brakeActive by remember { derivedStateOf { stateProvider().brakeInput > 0.05f } }
     val throttleActive by remember { derivedStateOf { stateProvider().throttleInput > 0.05f } }
     val engineStartPromptVisible by remember { derivedStateOf { stateProvider().engineStartPromptVisible } }
-
-    val speedInt by remember { derivedStateOf { stateProvider().speedKmh.roundToInt().coerceIn(0, 180) } }
-    val rpmBucket by remember { derivedStateOf { (stateProvider().engineRpm / 25) * 25 } }
-    val displayGearNumber by remember { derivedStateOf { stateProvider().displayGearNumber } }
-    val fuelInt by remember { derivedStateOf { stateProvider().fuelLiters.roundToInt() } }
 
     if (showRouteModal) {
         BackHandler {
@@ -236,13 +233,10 @@ fun BusDashboardHudOverlay(
                     .align(Alignment.BottomStart)
                     .padding(start = 2.dp)
             ) {
-                RealisticSteeringWheel(
-                    wheelAngleProvider = { stateProvider().steeringWheelAngleDeg },
+                SteeringWheelHost(
+                    stateProvider = stateProvider,
                     sizeDp = wheelSize,
-                    onSteerGrab = { viewModel.grabSteeringWheel() },
-                    onSteerDeltaDeg = { viewModel.steerByDeltaDeg(it) },
-                    onSteerRelease = { viewModel.releaseSteeringWheel() },
-                    onHornClick = { viewModel.triggerSteeringHorn() }
+                    viewModel = viewModel
                 )
             }
 
@@ -251,13 +245,10 @@ fun BusDashboardHudOverlay(
             // In Cockpit view, Speed & Fuel are integrated directly inside the 3D Instrument Cluster!
             // ==========================================
             if (!isCockpit) {
-                BottomSpeedFuelBar(
-                    speedKmh = speedInt.toFloat(),
-                    rpm = rpmBucket,
+                BottomSpeedFuelBarHost(
+                    stateProvider = stateProvider,
                     gear = gear,
                     isParkBrakeActive = isParkBrakeActive,
-                    displayGearNumber = displayGearNumber,
-                    fuelLiters = fuelInt.toFloat(),
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 2.dp)
@@ -465,9 +456,10 @@ fun BusDashboardHudOverlay(
                     Text(
                         text = "ENGINE OFF • TAP START BUTTON",
                         color = ActiveOrangeStart,
+                        fontFamily = OutfitDisplayFamily,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 0.6.sp
+                        letterSpacing = 0.8.sp
                     )
                 }
             }
@@ -508,6 +500,48 @@ fun BusDashboardHudOverlay(
 }
 
 @Composable
+private fun SteeringWheelHost(
+    stateProvider: () -> SimUiState,
+    sizeDp: androidx.compose.ui.unit.Dp,
+    viewModel: ThrissurSimViewModel
+) {
+    val quantizedWheelDeg by remember {
+        derivedStateOf { (stateProvider().steeringWheelAngleDeg * 2f).roundToInt() * 0.5f }
+    }
+    RealisticSteeringWheel(
+        wheelAngleProvider = { quantizedWheelDeg },
+        sizeDp = sizeDp,
+        onSteerGrab = { viewModel.grabSteeringWheel() },
+        onSteerDeltaDeg = { viewModel.steerByDeltaDeg(it) },
+        onSteerRelease = { viewModel.releaseSteeringWheel() },
+        onHornClick = { viewModel.triggerSteeringHorn() }
+    )
+}
+
+@Composable
+private fun BottomSpeedFuelBarHost(
+    stateProvider: () -> SimUiState,
+    gear: TransmissionGear,
+    isParkBrakeActive: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val speedInt by remember { derivedStateOf { stateProvider().speedKmh.roundToInt().coerceIn(0, 180) } }
+    val rpmBucket by remember { derivedStateOf { (stateProvider().engineRpm / 25) * 25 } }
+    val displayGearNumber by remember { derivedStateOf { stateProvider().displayGearNumber } }
+    val fuelInt by remember { derivedStateOf { stateProvider().fuelLiters.roundToInt() } }
+
+    BottomSpeedFuelBar(
+        speedKmh = speedInt.toFloat(),
+        rpm = rpmBucket,
+        gear = gear,
+        isParkBrakeActive = isParkBrakeActive,
+        displayGearNumber = displayGearNumber,
+        fuelLiters = fuelInt.toFloat(),
+        modifier = modifier
+    )
+}
+
+@Composable
 private fun PauseMenuModal(
     state: SimUiState,
     onResume: () -> Unit,
@@ -540,9 +574,10 @@ private fun PauseMenuModal(
             Text(
                 text = "PAUSED",
                 color = Color.White,
-                fontSize = 18.sp,
+                fontFamily = OutfitDisplayFamily,
+                fontSize = 19.sp,
                 fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 1.5.sp
+                letterSpacing = 2.0.sp
             )
             Text(
                 text = state.currentRoadStreetName,
@@ -644,13 +679,32 @@ private fun ThrissurRoutesInspectorModal(
 
     val landmarkPresets = listOf(
         Triple("SAKTHAN_STAND", "Sakthan Stand", "Bay 1 • Clock Tower"),
-        Triple("THRISSUR_RAILWAY_TCR", "TCR Railway", "Station Rd • WAP-7"),
-        Triple("MANIKANDANAL_SIGNAL", "Manikandanal", "30s/25s/4s Signal"),
-        Triple("SWARAJ_ROUND", "Swaraj Round", "14m 1-Way • Temple"),
+        Triple("THRISSUR_RAILWAY_TCR", "TCR Railway", "Station Rd • Bus Bays & Rail"),
+        Triple("SWARAJ_ROUND", "Swaraj Round", "15m 1-Way • Temple"),
+        Triple("PUTHANPALLY_BASILICA", "Puthanpally", "Basilica • Twin Towers & Cross"),
         Triple("VADAKKE_STAND", "Vadakke Stand", "8 Bays • Entry/Exit"),
-        Triple("PALIYEKKARA_TOLL", "Paliyekkara Toll", "NH 544 FASTag Plaza"),
-        Triple("GURUVAYUR_TEMPLE", "Guruvayur Temple", "East Nada & Flagstaff"),
-        Triple("CHAVAKKAD_BEACH", "Chavakkad Beach", "Azhi & Lighthouse")
+        Triple("MANNUTHY_FLYOVER", "Mannuthy NH 544", "4-Way Junction • 25m Mast"),
+        Triple("KUTHIRAN_TUNNEL", "Kuthiran Tunnel", "6-Lane Twin • Mountain"),
+        Triple("PEECHI_DAM", "Peechi Dam", "Entry/Exit Stand • Spillway"),
+        Triple("WADAKKANCHERY_ROB", "Wadakkanchery", "SH 22 ROB • 2 Trains"),
+        Triple("SHORANUR_TERMINAL", "Shoranur Stand", "8 Bays • Sawtooth"),
+        Triple("SHORANUR_STATION", "Shoranur Jn", "SRR • 2-Track Trains"),
+        Triple("OLLUR_ROB", "Ollur ROB", "NH 544 • 25kV Train Below"),
+        Triple("PALIYEKKARA_TOLL", "Paliakkara Toll", "12-Lane FASTag • Live Boom"),
+        Triple("KURUMALI_BRIDGE", "Kurumali Bridge", "Puthukkad • Flowing River"),
+        Triple("CHALAKUDY_BRIDGE", "Chalakudy Bridge", "280m Span • River & Boats"),
+        Triple("KOLE_WETLANDS", "Kole Wetlands", "SH 75 • 1.5m Bunds & Paddy"),
+        Triple("ENAMAVU_BRIDGE", "Enamavu Bridge", "18-Gate Sluice • Lake & Sea"),
+        Triple("MUTHUVARA_LC", "Muthuvara LC", "SH 69 • Live 8-Coach Train"),
+        Triple("GURUVAYUR_TEMPLE", "Guruvayur Temple", "East Nada • 33m Flagstaff"),
+        Triple("GURUVAYUR_STAND", "Guruvayur Stand", "8 Sawtooth Bays • Terminal"),
+        Triple("BHARATHAPPUZHA_BRIDGES", "Nila Bridges", "SH 22 + 1902 Cochin Truss"),
+        Triple("CHAVAKKAD_BEACH", "Chavakkad Beach", "Seawall (Kallidum) & Boats"),
+        Triple("CHETTUVA_BRIDGE", "Chettuva Bridge", "NH 66 • Chinese Nets & Boats"),
+        Triple("NATTIKA_TOLL", "Nattika Toll", "10-Lane NH 66 • Live FASTag"),
+        Triple("TRIPRAYAR_CANAL", "Triprayar Canal", "Sree Rama Ghat & Meenootu"),
+        Triple("KOTTAPURAM_BRIDGE", "Kottapuram NW-3", "540m High Bridge & Barge"),
+        Triple("MANIKANDANAL_SIGNAL", "Manikandanal", "30s/25s/4s Signal")
     )
 
     Box(
@@ -680,10 +734,12 @@ private fun ThrissurRoutesInspectorModal(
             ) {
                 Column {
                     Text(
-                        text = "THRISSUR DISTRICT — ZONE 1: HEART & CITY TRANSIT HUBS",
+                        text = "THRISSUR DISTRICT — ZONES 1–5 (NH 544 • NH 66 • SH 22 • SH 69 • SH 75)",
                         color = HudAmber,
+                        fontFamily = OutfitDisplayFamily,
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.6.sp
                     )
                     Text(
                         text = String.format(
@@ -696,7 +752,7 @@ private fun ThrissurRoutesInspectorModal(
                         ),
                         color = HudEmerald,
                         fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = JetBrainsMonoFamily
                     )
                 }
 
@@ -713,38 +769,45 @@ private fun ThrissurRoutesInspectorModal(
                 }
             }
 
-            // 6 Road-Aligned 3D Blender Landmarks Quick-Teleport Bar
-            Row(
+            // Road-Aligned 3D Landmarks Quick-Teleport Grid (2 neat rows)
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                for ((lmId, lmTitle, lmSub) in landmarkPresets) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF1A2639))
-                            .border(1.dp, HudAmber.copy(alpha = 0.65f), RoundedCornerShape(10.dp))
-                            .clickable { onSelectLandmark(lmId) }
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                            .testTag("landmark_btn_${lmId.lowercase(Locale.ROOT)}"),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                for (rowChunk in landmarkPresets.chunked(6)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(
-                            text = lmTitle,
-                            color = HudAmber,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = lmSub,
-                            color = HudTextPrimary,
-                            fontSize = 8.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        for ((lmId, lmTitle, lmSub) in rowChunk) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF1A2639))
+                                    .border(1.dp, HudAmber.copy(alpha = 0.65f), RoundedCornerShape(10.dp))
+                                    .clickable { onSelectLandmark(lmId) }
+                                    .padding(horizontal = 6.dp, vertical = 5.dp)
+                                    .testTag("landmark_btn_${lmId.lowercase(Locale.ROOT)}"),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = lmTitle,
+                                    color = HudAmber,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = lmSub,
+                                    color = HudTextPrimary,
+                                    fontSize = 8.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -768,14 +831,16 @@ private fun ThrissurRoutesInspectorModal(
                     Text(
                         text = "ACTIVE COACH: ${state.vehicleModelName.uppercase(Locale.ROOT)}",
                         color = HudCyan,
+                        fontFamily = OutfitDisplayFamily,
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.5.sp
                     )
                     Text(
                         text = state.vehicleLicense,
                         color = HudAmber,
                         fontSize = 9.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = JetBrainsMonoFamily,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -783,7 +848,7 @@ private fun ThrissurRoutesInspectorModal(
                     text = "3D Model Creator: ${state.vehicleCreator} • Source: ${state.vehicleSourceUrl}",
                     color = HudTextPrimary,
                     fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = JetBrainsMonoFamily,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -850,7 +915,7 @@ private fun ThrissurRoutesInspectorModal(
                                 ),
                                 color = HudAmber,
                                 fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = JetBrainsMonoFamily,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(

@@ -53,7 +53,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bharatbussim.game.model.ThrissurTrafficSystem
 import com.bharatbussim.game.model.TransmissionGear
+import com.bharatbussim.game.ui.theme.JetBrainsMonoFamily
+import com.bharatbussim.game.ui.theme.OutfitDisplayFamily
 import com.bharatbussim.game.viewmodel.SimUiState
 import kotlin.math.PI
 import kotlin.math.abs
@@ -123,8 +126,10 @@ internal fun HudGlassSquareButton(
             Text(
                 text = badgeText,
                 color = iconColor,
+                fontFamily = OutfitDisplayFamily,
                 fontSize = 8.sp,
                 fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.4.sp,
                 lineHeight = 8.sp,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1090,6 +1095,7 @@ private fun GearCell(
         Text(
             text = code,
             color = if (selected) Color(0xFF151921) else Color.White,
+            fontFamily = OutfitDisplayFamily,
             fontSize = 22.sp,
             fontWeight = FontWeight.ExtraBold
         )
@@ -1111,6 +1117,20 @@ internal fun KeralaGpsMinimap(
 ) {
     val roadPath = remember { Path() }
     val activePath = remember { Path() }
+    val leftFacet = remember { Path() }
+    val rightFacet = remember { Path() }
+    val mapSnapshotState = remember(stateProvider) {
+        androidx.compose.runtime.derivedStateOf {
+            val s = stateProvider()
+            // Quantize to ~1.0m position and ~2.8 deg heading so Compose doesn't redraw the minimap 60x/sec!
+            val qx = kotlin.math.round(s.busPos.x).toInt()
+            val qz = kotlin.math.round(s.busPos.z).toInt()
+            val qh = kotlin.math.round(s.busHeadingRad * 20f).toInt()
+            val qzZoom = kotlin.math.round(s.minimapZoom * 100f).toInt()
+            val qTrafficTick = (s.simTimeSec * 4.0f).toLong()
+            (qx.toLong() * 31L + qz.toLong()) * 997L + qh.toLong() * 37L + qzZoom.toLong() * 7L + s.activeRoadIndex.toLong() * 131L + s.roads.size.toLong() * 7919L + qTrafficTick * 17L
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -1147,8 +1167,10 @@ internal fun KeralaGpsMinimap(
                 Text(
                     text = "Kerala",
                     color = Color.White,
+                    fontFamily = OutfitDisplayFamily,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.5.sp,
                     maxLines = 1
                 )
             }
@@ -1161,8 +1183,10 @@ internal fun KeralaGpsMinimap(
                 .fillMaxSize()
                 .clickable(onClick = onTapMap)
         ) {
+            val mapSnapKey = mapSnapshotState.value
+            val mapState = remember(mapSnapKey) { stateProvider() }
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val state = stateProvider()
+                val state = mapState
                 val w = size.width
                 val h = size.height
                 val cx = w * 0.50f
@@ -1172,37 +1196,55 @@ internal fun KeralaGpsMinimap(
                 val bz = state.busPos.z
                 val cosH = cos(-state.busHeadingRad)
                 val sinH = sin(-state.busHeadingRad)
+                val maxWorldR = ((kotlin.math.max(w, h) + 120f) / mapScale.coerceAtLeast(0.05f))
+                val maxWorldRSq = maxWorldR * maxWorldR
 
                 roadPath.reset()
                 activePath.reset()
 
+                val minXBound = -80f
+                val maxXBound = w + 80f
+                val minYBound = -80f
+                val maxYBound = h + 80f
+
                 for (rIdx in state.roads.indices) {
                     val road = state.roads[rIdx]
                     val pts = road.points
-                    if (pts.size < 2) continue
+                    val nPts = pts.size
+                    if (nPts < 2) continue
                     val targetPath = if (rIdx == state.activeRoadIndex) activePath else roadPath
-                    val step = if (pts.size > 40) 3 else 1
+                    val step = if (nPts > 40) 3 else 1
 
-                    fun projectPt(wx: Float, wz: Float): Offset {
-                        val dx = wx - bx
-                        val dz = wz - bz
-                        val rx = dx * cosH - dz * sinH
-                        val rz = dx * sinH + dz * cosH
-                        return Offset(cx + rx * mapScale, cy - rz * mapScale)
-                    }
+                    val p0 = pts[0]
+                    val dx0 = p0.x - bx
+                    val dz0 = p0.z - bz
+                    var prevX = cx + (dx0 * cosH - dz0 * sinH) * mapScale
+                    var prevY = cy - (dx0 * sinH + dz0 * cosH) * mapScale
+                    var prevNear = (dx0 * dx0 + dz0 * dz0) <= maxWorldRSq
 
-                    var prev = projectPt(pts[0].x, pts[0].z)
                     var i = step
-                    while (i < pts.size) {
-                        val cur = projectPt(pts[i].x, pts[i].z)
-                        if ((prev.x in -80f..(w + 80f) && prev.y in -80f..(h + 80f)) ||
-                            (cur.x in -80f..(w + 80f) && cur.y in -80f..(h + 80f))
-                        ) {
-                            targetPath.moveTo(prev.x, prev.y)
-                            targetPath.lineTo(cur.x, cur.y)
+                    while (i < nPts) {
+                        val pt = pts[i]
+                        val dx = pt.x - bx
+                        val dz = pt.z - bz
+                        val curNear = (dx * dx + dz * dz) <= maxWorldRSq
+                        if (prevNear || curNear) {
+                            val curX = cx + (dx * cosH - dz * sinH) * mapScale
+                            val curY = cy - (dx * sinH + dz * cosH) * mapScale
+                            if ((prevX in minXBound..maxXBound && prevY in minYBound..maxYBound) ||
+                                (curX in minXBound..maxXBound && curY in minYBound..maxYBound)
+                            ) {
+                                targetPath.moveTo(prevX, prevY)
+                                targetPath.lineTo(curX, curY)
+                            }
+                            prevX = curX
+                            prevY = curY
+                        } else {
+                            prevX = cx + (dx * cosH - dz * sinH) * mapScale
+                            prevY = cy - (dx * sinH + dz * cosH) * mapScale
                         }
-                        prev = cur
-                        i = if (i != pts.lastIndex && i + step >= pts.size) pts.lastIndex else i + step
+                        prevNear = curNear
+                        i = if (i != nPts - 1 && i + step >= nPts) nPts - 1 else i + step
                     }
                 }
 
@@ -1218,24 +1260,44 @@ internal fun KeralaGpsMinimap(
                     style = Stroke(width = 6.0.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
 
+                // Live AI Traffic & Toll/Railway-Gate Queue Blips (bright red = stopped in block, amber-white = flowing)
+                val (trafficBuf, trafficCount) = ThrissurTrafficSystem.getReadSnapshot()
+                val blipRadius = 2.1.dp.toPx()
+                val queuedRadius = 2.8.dp.toPx()
+                for (tIdx in 0 until trafficCount) {
+                    val tv = trafficBuf[tIdx]
+                    val dx = tv.cx - bx
+                    val dz = tv.cz - bz
+                    if (dx * dx + dz * dz > maxWorldRSq) continue
+                    val sx = cx + (dx * cosH - dz * sinH) * mapScale
+                    val sy = cy - (dx * sinH + dz * cosH) * mapScale
+                    if (sx < -6f || sx > w + 6f || sy < -6f || sy > h + 6f) continue
+                    val isBlocked = tv.isQueued || tv.brakeGlow > 0.5f
+                    drawCircle(
+                        color = if (isBlocked) Color(0xFFFF3B30) else Color(0xFFFDE68A),
+                        radius = if (isBlocked) queuedRadius else blipRadius,
+                        center = Offset(sx, sy)
+                    )
+                }
+
                 // Red 3D faceted navigation arrowhead pointing straight forward
                 val tipY = cy - 15.dp.toPx()
                 val baseY = cy + 9.dp.toPx()
                 val notchY = cy + 3.dp.toPx()
                 val halfW = 9.5.dp.toPx()
 
-                val leftFacet = Path().apply {
-                    moveTo(cx, tipY)
-                    lineTo(cx - halfW, baseY)
-                    lineTo(cx, notchY)
-                    close()
-                }
-                val rightFacet = Path().apply {
-                    moveTo(cx, tipY)
-                    lineTo(cx, notchY)
-                    lineTo(cx + halfW, baseY)
-                    close()
-                }
+                leftFacet.reset()
+                leftFacet.moveTo(cx, tipY)
+                leftFacet.lineTo(cx - halfW, baseY)
+                leftFacet.lineTo(cx, notchY)
+                leftFacet.close()
+
+                rightFacet.reset()
+                rightFacet.moveTo(cx, tipY)
+                rightFacet.lineTo(cx, notchY)
+                rightFacet.lineTo(cx + halfW, baseY)
+                rightFacet.close()
+
                 drawPath(leftFacet, color = Color(0xFFD62828))
                 drawPath(rightFacet, color = Color(0xFFFF4D4D))
             }
@@ -1322,6 +1384,7 @@ internal fun BottomSpeedFuelBar(
                 Text(
                     text = speedInt.toString(),
                     color = Color.White,
+                    fontFamily = JetBrainsMonoFamily,
                     fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.testTag("speed_value_text")
@@ -1330,6 +1393,7 @@ internal fun BottomSpeedFuelBar(
                 Text(
                     text = "km/h",
                     color = Color(0xFFE2E8F0),
+                    fontFamily = OutfitDisplayFamily,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(bottom = 2.dp)
@@ -1345,6 +1409,7 @@ internal fun BottomSpeedFuelBar(
             Text(
                 text = "$rpm",
                 color = Color.White,
+                fontFamily = JetBrainsMonoFamily,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.testTag("rpm_value_text")
@@ -1352,8 +1417,10 @@ internal fun BottomSpeedFuelBar(
             Text(
                 text = "RPM",
                 color = Color(0xFF94A3B8),
+                fontFamily = OutfitDisplayFamily,
                 fontSize = 8.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.4.sp
             )
         }
 
@@ -1370,8 +1437,10 @@ internal fun BottomSpeedFuelBar(
             Text(
                 text = gearText,
                 color = ActiveOrangeStart,
+                fontFamily = OutfitDisplayFamily,
                 fontSize = 10.sp,
-                fontWeight = FontWeight.ExtraBold
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.5.sp
             )
         }
 
@@ -1401,6 +1470,7 @@ internal fun BottomSpeedFuelBar(
             Text(
                 text = "${fuelLiters.roundToInt()} L",
                 color = Color.White,
+                fontFamily = JetBrainsMonoFamily,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold
             )

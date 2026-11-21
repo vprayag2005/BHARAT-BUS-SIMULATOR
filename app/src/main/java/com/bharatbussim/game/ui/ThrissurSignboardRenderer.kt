@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import com.bharatbussim.game.model.Vec3
+import com.bharatbussim.game.ui.theme.PremiumFonts
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
@@ -276,14 +277,24 @@ internal fun DrawScope.drawProjectiveSignboardQuad(
 private fun createSignTitlePaint(colorInt: Int = android.graphics.Color.WHITE): Paint =
     Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = colorInt
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        typeface = PremiumFonts.displayTypefaceFor("", bold = true)
+        letterSpacing = 0.03f
         textAlign = Paint.Align.CENTER
     }
 
 private fun createSignSubPaint(colorInt: Int = android.graphics.Color.WHITE): Paint =
     Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = colorInt
-        typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+        typeface = PremiumFonts.uiTypefaceFor("", bold = true)
+        letterSpacing = 0.02f
+        textAlign = Paint.Align.CENTER
+    }
+
+private fun createSignMonoPaint(colorInt: Int = android.graphics.Color.WHITE): Paint =
+    Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = colorInt
+        typeface = PremiumFonts.monoTypeface(bold = true)
+        letterSpacing = 0.02f
         textAlign = Paint.Align.CENTER
     }
 
@@ -297,12 +308,17 @@ private fun drawFittedText(
     paint: Paint
 ) {
     if (text.isBlank()) return
+    val savedTypeface = paint.typeface
+    if (PremiumFonts.containsMalayalam(text)) {
+        paint.typeface = PremiumFonts.displayTypefaceFor(text, bold = true)
+    }
     paint.textSize = baseTextSize
     val measured = paint.measureText(text)
     if (measured > maxWidth && measured > 1f) {
         paint.textSize = (baseTextSize * (maxWidth / measured)).coerceAtLeast(10f)
     }
     canvas.drawText(text, x, y, paint)
+    paint.typeface = savedTypeface
 }
 
 /**
@@ -426,15 +442,26 @@ private fun sectorRouteHeaderForRoad(roadId: String, uniqueIndex: Int, isReverse
         "ROAD_SAKTHAN_TO_SWARAJ" -> Pair(secCode, if (!isReverse) "M.O. ROAD • NORTHBOUND TO ROUND" else "M.O. ROAD • SOUTHBOUND TO SAKTHAN")
         "ROAD_SAKTHAN_STAND_ENTRY" -> Pair(secCode, "SAKTHAN TERMINAL & TCR LINK ROAD")
         "ROAD_STATION_ROAD" -> Pair(secCode, "RAILWAY STATION ROAD (TCR CORRIDOR)")
-        "ROAD_SWARAJ_TO_VADAKKE" -> Pair("SH 22 • $secCode", "SHORANUR ROAD • VADAKKE STAND")
+        "ROAD_RAILWAY_STATION_ACCESS" -> Pair(secCode, "RAILWAY STATION AVENUE • ENTRY CORRIDOR")
+        "ROAD_RAILWAY_STATION_EXIT" -> Pair(secCode, "RAILWAY STATION EXIT • STATION BOULEVARD")
+        "ROAD_SWARAJ_TO_VADAKKE" -> Pair("SH 22 • $secCode", "SHORANUR ROAD • VADAKKE ENTRY")
+        "ROAD_VADAKKE_STAND_EXIT" -> Pair("SH 22 • $secCode", "VADAKKE EXIT LOOP • SHORANUR RD")
+        "ROAD_THRISSUR_TO_SHORANUR" -> Pair("SH 22 • $secCode", if (!isReverse) "THRISSUR - WADAKKANCHERY - SHORANUR HWY" else "SHORANUR - WADAKKANCHERY - THRISSUR HWY")
+        "ROAD_SHORANUR_TERMINAL_ENTRY", "ROAD_SHORANUR_TERMINAL_EXIT" -> Pair("SH 22 • $secCode", "SHORANUR BUS TERMINAL CORRIDOR")
+        "ROAD_SHORANUR_STATION_ENTRY", "ROAD_SHORANUR_STATION_EXIT" -> Pair("SH 22 • $secCode", "SHORANUR JUNCTION RAILWAY STATION (SRR)")
         "ROAD_SWARAJ_TO_WEST_FORT" -> Pair("SH 75 • $secCode", "M.G. ROAD • WEST FORT CORRIDOR")
         "ROAD_WEST_FORT_TO_KANJANI" -> Pair("SH 75 • $secCode", "THRISSUR - KANJANI - GURUVAYUR HWY")
+        "ROAD_SH69_THRISSUR_MUTHUVARA_GURUVAYUR" -> Pair("SH 69 • $secCode", if (!isReverse) "THRISSUR - MUTHUVARA - GURUVAYUR HWY" else "GURUVAYUR - MUTHUVARA - THRISSUR HWY")
         "ROAD_KANJANI_TO_GURUVAYUR_CHAVAKKAD" -> Pair("SH 75 • $secCode", "GURUVAYUR - CHAVAKKAD CORRIDOR")
         "ROAD_SH61_TRIPRAYAR_TO_KANJANI" -> Pair("SH 61 • $secCode", "TRIPRAYAR - KANJANI STATE HIGHWAY")
-        "ROAD_NH66_CHAVAKKAD_TO_TRIPRAYAR" -> Pair("NH 66 • $secCode", "COASTAL NATIONAL HIGHWAY 66")
+        "ROAD_NH66_CHAVAKKAD_TO_TRIPRAYAR", "ROAD_NH66_TRIPRAYAR_TO_KOTTAPURAM" -> Pair("NH 66 • $secCode", "COASTAL NATIONAL HIGHWAY 66")
         "ROAD_SWARAJ_TO_MANNUTHY" -> Pair("SH 51 • $secCode", "EAST FORT - MANNUTHY ARTERIAL")
-        "ROAD_MANNUTHY_TO_PEECHI_DAM" -> Pair("SH 51 • $secCode", "MANNUTHY - PEECHI DAM ROAD")
+        "ROAD_MANNUTHY_TO_PEECHI_DAM" -> Pair("SH 51 • $secCode", "MANNUTHY - PEECHI DAM FOREST ROAD")
         "ROAD_NH544_MANNUTHY_TO_PALIYEKKARA" -> Pair("NH 544 • $secCode", "MANNUTHY - PALIYEKKARA 6-LANE NH")
+        "ROAD_NH544_MANNUTHY_TO_KUTHIRAN" -> Pair("NH 544 • $secCode", "MANNUTHY - KUTHIRAN 6-LANE EXPRESSWAY")
+        "ROAD_NH544_KUTHIRAN_LEFT_TUBE" -> Pair("NH 544 • TUBE L", "KUTHIRAN TUNNEL • 3-LANE EASTBOUND")
+        "ROAD_NH544_KUTHIRAN_RIGHT_TUBE" -> Pair("NH 544 • TUBE R", "KUTHIRAN TUNNEL • 3-LANE WESTBOUND")
+        "ROAD_NH544_KUTHIRAN_EAST_PALAKKAD" -> Pair("NH 544 • $secCode", "KUTHIRAN EAST - PALAKKAD EXPRESSWAY")
         "ROAD_SAKTHAN_TO_OLLUR" -> Pair("NH LINK • $secCode", "SAKTHAN - OLLUR - NH 544 LINK")
         "ROAD_PUTHANPALLI_LINK" -> Pair(secCode, "HIGH ROAD • PUTHANPALLI CORRIDOR")
         else -> Pair(secCode, "THRISSUR CITY CORRIDOR")
@@ -466,7 +493,7 @@ private fun deriveReverseDirectionSpec(spec: KeralaRoadSignSpec, uniqueIndex: In
                 travelDir = 1
             )
         }
-        "ROAD_STATION_ROAD" -> if (spec.travelDir >= 0) {
+        "ROAD_STATION_ROAD", "ROAD_RAILWAY_STATION_ACCESS", "ROAD_RAILWAY_STATION_EXIT" -> if (spec.travelDir >= 0) {
             spec.copy(
                 headerTitle = hdrTitle,
                 straightDest = KeralaSignDestination("റെയിൽവേ സ്റ്റേഷൻ", "Railway Station", "RIGHT", "0.1 KM"),
@@ -483,7 +510,7 @@ private fun deriveReverseDirectionSpec(spec: KeralaRoadSignSpec, uniqueIndex: In
                 travelDir = 1
             )
         }
-        "ROAD_SWARAJ_TO_VADAKKE" -> if (spec.travelDir >= 0) {
+        "ROAD_SWARAJ_TO_VADAKKE", "ROAD_VADAKKE_STAND_EXIT" -> if (spec.travelDir >= 0) {
             spec.copy(
                 headerTitle = hdrTitle,
                 straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "UP", "1.1 KM"),
@@ -495,8 +522,25 @@ private fun deriveReverseDirectionSpec(spec: KeralaRoadSignSpec, uniqueIndex: In
             spec.copy(
                 headerTitle = hdrTitle,
                 straightDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "UP", "0.3 KM"),
-                leftDest = KeralaSignDestination("സ്റ്റാൻഡ് എൻട്രി", "Stand Entry", "LEFT", "0.2 KM"),
+                leftDest = KeralaSignDestination("സ്റ്റാൻഡ് എക്സിറ്റ്", "Stand Exit", "LEFT", "0.2 KM"),
                 rightDest = KeralaSignDestination("ഷൊർണ്ണൂർ SH 22", "Shoranur", "UP", "28 KM"),
+                travelDir = 1
+            )
+        }
+        "ROAD_THRISSUR_TO_SHORANUR" -> if (spec.travelDir >= 0) {
+            spec.copy(
+                headerTitle = hdrTitle,
+                straightDest = KeralaSignDestination("തൃശ്ശൂർ • സ്വരാജ് റൗണ്ട്", "Thrissur City", "UP", "28 KM"),
+                leftDest = KeralaSignDestination("വടക്കാഞ്ചേരി", "Wadakkanchery", "UP", "12 KM"),
+                rightDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "RIGHT", "26 KM"),
+                travelDir = -1
+            )
+        } else {
+            spec.copy(
+                headerTitle = hdrTitle,
+                straightDest = KeralaSignDestination("ഷൊർണ്ണൂർ ജംഗ്ഷൻ", "Shoranur Jn (SRR)", "UP", "16 KM"),
+                leftDest = KeralaSignDestination("ഷൊർണ്ണൂർ ടെർമിനൽ", "Shoranur Stand", "RIGHT", "15 KM"),
+                rightDest = KeralaSignDestination("വടക്കാഞ്ചേരി ROB", "Wadakkanchery", "UP", "2 KM"),
                 travelDir = 1
             )
         }
@@ -514,6 +558,23 @@ private fun deriveReverseDirectionSpec(spec: KeralaRoadSignSpec, uniqueIndex: In
                 straightDest = KeralaSignDestination("കാഞ്ഞാണി SH 75", "Kanjani", "UP", "11.4 KM"),
                 leftDest = KeralaSignDestination("ഗുരുവായൂർ", "Guruvayur", "UP", "16.1 KM"),
                 rightDest = KeralaSignDestination("ചാവക്കാട് ബീച്ച്", "Chavakkad Beach", "LEFT", "16.5 KM"),
+                travelDir = 1
+            )
+        }
+        "ROAD_SH69_THRISSUR_MUTHUVARA_GURUVAYUR" -> if (spec.travelDir >= 0) {
+            spec.copy(
+                headerTitle = hdrTitle,
+                straightDest = KeralaSignDestination("തൃശ്ശൂർ • വെസ്റ്റ് ഫോർട്ട്", "Thrissur West Fort", "UP", "14 KM"),
+                leftDest = KeralaSignDestination("മുതുവറ LC-14", "Muthuvara LC", "UP", "4 KM"),
+                rightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "UP", "15 KM"),
+                travelDir = -1
+            )
+        } else {
+            spec.copy(
+                headerTitle = hdrTitle,
+                straightDest = KeralaSignDestination("ഗുരുവായൂർ SH 69", "Guruvayur", "UP", "22 KM"),
+                leftDest = KeralaSignDestination("മുതുവറ LC-14", "Muthuvara LC", "UP", "2 KM"),
+                rightDest = KeralaSignDestination("അമല നഗർ • മുണ്ടൂർ", "Amala Nagar", "UP", "6 KM"),
                 travelDir = 1
             )
         }
@@ -712,14 +773,12 @@ internal fun createIndianRailwaysStationSignSpec(
     }
 
     val safeTextW = w - (emblemR * 4.6f) - 72f
-    val malPaint = createSignTitlePaint(titleColorInt).apply {
-        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
-    }
+    val malPaint = createSignTitlePaint(titleColorInt)
     val engPaint = createSignTitlePaint(titleColorInt).apply {
-        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+        letterSpacing = 0.05f
     }
-    val subPaint = createSignTitlePaint(subColorInt).apply {
-        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+    val subPaint = createSignSubPaint(subColorInt).apply {
+        letterSpacing = 0.04f
     }
 
     drawFittedText(
@@ -794,8 +853,7 @@ private fun bakeRoundaboutDiagramBitmap(
         style = Paint.Style.FILL
     }
     canvas.drawRoundRect(RectF(18f, 17f, 134f, 52f), 8f, 8f, pillPaint)
-    val pillTextPaint = createSignTitlePaint(0xFF0F172A.toInt()).apply {
-        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+    val pillTextPaint = createSignMonoPaint(0xFF0F172A.toInt()).apply {
         textAlign = Paint.Align.CENTER
     }
     drawFittedText(canvas, secBadge, 76f, 41f, 108f, 20f, pillTextPaint)
@@ -916,8 +974,7 @@ private fun bakeStacked3PanelBitmap(
         style = Paint.Style.FILL
     }
     canvas.drawRoundRect(RectF(18f, 17f, 156f, 52f), 8f, 8f, pillPaint)
-    val pillTextPaint = createSignTitlePaint(0xFF0F172A.toInt()).apply {
-        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+    val pillTextPaint = createSignMonoPaint(0xFF0F172A.toInt()).apply {
         textAlign = Paint.Align.CENTER
     }
     drawFittedText(canvas, secBadge, 87f, 41f, 130f, 20f, pillTextPaint)
@@ -941,15 +998,13 @@ private fun bakeStacked3PanelBitmap(
 
     val malPaint = createSignSubPaint(0xFFFEF08A.toInt()).apply {
         textAlign = Paint.Align.LEFT
-        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
     }
     val engPaint = createSignTitlePaint(android.graphics.Color.WHITE).apply {
         textAlign = Paint.Align.LEFT
-        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+        letterSpacing = 0.03f
     }
-    val distPaint = createSignTitlePaint(android.graphics.Color.WHITE).apply {
+    val distPaint = createSignMonoPaint(android.graphics.Color.WHITE).apply {
         textAlign = Paint.Align.RIGHT
-        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
     }
     val arrowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.WHITE
@@ -1018,8 +1073,7 @@ private fun bakeOverheadGantryBitmap(
         style = Paint.Style.FILL
     }
     canvas.drawRoundRect(RectF(18f, 16f, 184f, 52f), 8f, 8f, pillPaint)
-    val pillTextPaint = createSignTitlePaint(0xFF0F172A.toInt()).apply {
-        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+    val pillTextPaint = createSignMonoPaint(0xFF0F172A.toInt()).apply {
         textAlign = Paint.Align.CENTER
     }
     drawFittedText(canvas, secBadge, 101f, 41f, 154f, 21f, pillTextPaint)
@@ -1031,9 +1085,8 @@ private fun bakeOverheadGantryBitmap(
     }
     canvas.drawLine(12f, headerBottomY, w - 12f, headerBottomY, dividerPaint)
 
-    val hdrPaint = createSignSubPaint(0xFFFEF08A.toInt()).apply {
+    val hdrPaint = createSignTitlePaint(0xFFFEF08A.toInt()).apply {
         textAlign = Paint.Align.CENTER
-        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
     }
     val hdrText = spec.headerTitle.ifBlank { defaultHdr }
     drawFittedText(canvas, hdrText, (192f + w - 20f) * 0.5f, 42f, w - 220f, 24f, hdrPaint)
@@ -1044,15 +1097,13 @@ private fun bakeOverheadGantryBitmap(
 
     val engPaint = createSignTitlePaint(android.graphics.Color.WHITE).apply {
         textAlign = Paint.Align.LEFT
-        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+        letterSpacing = 0.03f
     }
     val malPaint = createSignSubPaint(0xFFFEF08A.toInt()).apply {
         textAlign = Paint.Align.LEFT
-        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
     }
-    val distPaint = createSignTitlePaint(0xFFFEF08A.toInt()).apply {
+    val distPaint = createSignMonoPaint(0xFFFEF08A.toInt()).apply {
         textAlign = Paint.Align.RIGHT
-        typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
     }
     val arrowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = android.graphics.Color.WHITE

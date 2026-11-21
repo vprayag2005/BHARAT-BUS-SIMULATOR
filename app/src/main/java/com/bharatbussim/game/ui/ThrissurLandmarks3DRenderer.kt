@@ -31,8 +31,10 @@ private val MatTempleGoldDeep = Color(0xFFD97706)
 private val MatGranitePaving = Color(0xFF64748B)
 private val MatGraniteLight = Color(0xFF94A3B8)
 private val MatGraniteDark = Color(0xFF475569)
-private val MatMaidanGrass = Color(0xFF4F6239)
-private val MatMaidanGrassUpper = Color(0xFF586E40)
+private val MatMaidanGrass = Color(0xFF28722B)
+private val MatMaidanGrassUpper = Color(0xFF338A35)
+private val MatMaidanGrassCrown = Color(0xFF3F9E3C)
+private val MatMaidanGrassDeep = Color(0xFF1F5D23)
 private val MatMaidanPathEarthy = Color(0xFF7D6B57)
 private val MatTerminalConcrete = Color(0xFF2B3037)
 private val MatRoadMarkingYellow = Color(0xFFFACC15)
@@ -70,16 +72,46 @@ internal fun DrawScope.drawThrissurLandmarkGroundPlazas(
     roads: List<ThrissurOsmRoad>
 ) {
     drawSwarajRoundGroundPlaza(rig, path, camEye, roads)
+    ShoranurRailwaySystem.run { drawRailwayCorridorBallastGround(rig, path, camEye) }
     drawThrissurRailwayStationGround(rig, path, camEye)
     drawVadakkeBusStandGround(rig, path, camEye)
-    drawPaliyekkaraTollPlazaGround(rig, path, camEye)
-    drawGuruvayurTempleAndStandGround(rig, path, camEye)
+    drawWadakkancheryRobAndTownGround(rig, path, camEye)
+    drawShoranurTerminalYard(rig, path, camEye)
+    drawShoranurStationYard(rig, path, camEye)
+    Zone2Nh544KuthiranRenderer.run { drawZone2GroundPlazas(rig, path, camEye) }
+    Zone3Nh544SouthRenderer.run { drawZone3GroundPlazas(rig, path, camEye, roads) }
+    Zone4KoleRailHeritageRenderer.run { drawZone4GroundPlazas(rig, path, camEye, roads) }
+    Zone5Nh66CoastalRenderer.run { drawZone5GroundPlazas(rig, path, camEye, roads) }
+    PuthanpallyBasilicaRenderer.run { drawPuthanpallyGroundPlaza(rig, path, camEye) }
     drawChavakkadBeachGround(rig, path, camEye)
     drawTriprayarBeachGround(rig, path, camEye)
 }
 
+internal fun DrawScope.drawAllLandmarkGroundPlazasUnconditional(
+    rig: CameraRig,
+    path: Path,
+    roads: List<ThrissurOsmRoad>
+) {
+    drawSwarajRoundGroundPlaza(rig, path, Vec3(3.1f, 2f, 18.0f), roads)
+    ShoranurRailwaySystem.run { drawRailwayCorridorBallastGround(rig, path, Vec3(0f, 2f, 1500f)) }
+    drawThrissurRailwayStationGround(rig, path, Vec3(-92f, 2f, -138f))
+    drawVadakkeBusStandGround(rig, path, Vec3(-42f, 2f, 185f))
+    drawWadakkancheryRobAndTownGround(rig, path, Vec3(92f, 8f, 1680f))
+    drawShoranurTerminalYard(rig, path, Vec3(160f, 2f, 3075f))
+    drawShoranurStationYard(rig, path, Vec3(45f, 2f, 3238f))
+    Zone2Nh544KuthiranRenderer.run { drawZone2GroundPlazas(rig, path, Vec3(2600f, 2f, 1140f)) }
+    Zone3Nh544SouthRenderer.run { drawZone3GroundPlazas(rig, path, Vec3(1400f, 2f, -3200f), roads) }
+    Zone4KoleRailHeritageRenderer.run { drawZone4GroundPlazas(rig, path, Vec3(-1645f, 2f, 610f), roads) }
+    Zone5Nh66CoastalRenderer.run { drawAllZone5GroundPlazasUnconditional(rig, path, roads) }
+    PuthanpallyBasilicaRenderer.run { drawPuthanpallyGroundPlaza(rig, path, Vec3(PuthanpallyBasilicaRenderer.CENTER_X, 2f, -126f)) }
+    drawChavakkadBeachGround(rig, path, Vec3(-4600f, 2f, 1080f))
+    drawTriprayarBeachGround(rig, path, Vec3(-2320f, 2f, -2410f))
+}
+
 internal fun collectThrissurLandmarkSceneFaces(
     camEye: Vec3,
+    camFwd: Vec3,
+    context: android.content.Context?,
     roads: List<ThrissurOsmRoad>,
     manikandanalSignal: TrafficSignalAspect,
     outFaces: MutableList<QuadFace3D>
@@ -88,12 +120,82 @@ internal fun collectThrissurLandmarkSceneFaces(
     collectThrissurRailwayStationFaces(camEye, outFaces)
     collectManikandanalSignalAndStreetPropsFaces(camEye, manikandanalSignal, outFaces)
     collectVadakkeBusStandFaces(camEye, outFaces)
-    collectPaliyekkaraTollFaces(camEye, outFaces)
-    collectGuruvayurFaces(camEye, outFaces)
+    collectWadakkancheryRobAndTownFaces(camEye, outFaces)
+    collectRailwayViaductFaces(camEye, outFaces)
+    if (hypot(160f - camEye.x, 3075f - camEye.z) < 650f) {
+        collectAllShoranurTerminalStaticFaces(outFaces)
+    }
+    collectShoranurStationSceneFaces(camEye, outFaces)
+    Zone2Nh544KuthiranRenderer.collectZone2FacesNearCamera(camEye, roads, outFaces)
+    Zone3Nh544SouthRenderer.collectZone3FacesNearCamera(camEye, roads, outFaces)
+    Zone4KoleRailHeritageRenderer.collectZone4FacesNearCamera(camEye, roads, outFaces)
+    Zone5Nh66CoastalRenderer.collectZone5FacesNearCamera(camEye, roads, outFaces)
+    PuthanpallyBasilicaRenderer.collectPuthanpallyFacesNearCamera(camEye, outFaces)
+    HighwayWBeamGuardrailRenderer.collectGuardrailFacesNearCamera(camEye, roads, outFaces)
     collectChavakkadFaces(camEye, outFaces)
     collectTriprayarFaces(camEye, outFaces)
     collectRoadsideSceneryFaces(camEye, roads, outFaces)
     collectNhaiSignboardFaces(camEye, roads, outFaces)
+}
+
+internal fun collectAllStaticLandmarkAndSignFaces(
+    roads: List<ThrissurOsmRoad>,
+    outFaces: MutableList<QuadFace3D>
+) {
+    collectSwarajRoundFaces(Vec3(3.1f, 2f, 18.0f), roads, outFaces)
+    collectThrissurRailwayStationFaces(Vec3(-92f, 2f, -138f), outFaces)
+    outFaces.addAll(getOrBuildManikandanalMastFaces())
+    collectVadakkeBusStandFaces(Vec3(-42f, 2f, 185f), outFaces)
+    collectAllWadakkancheryRobStaticFaces(outFaces)
+    collectAllRailwayViaductStaticFaces(outFaces)
+    collectAllShoranurTerminalStaticFaces(outFaces)
+    collectAllShoranurStationStaticFaces(outFaces)
+    Zone2Nh544KuthiranRenderer.collectAllZone2StaticFaces(roads, outFaces)
+    Zone3Nh544SouthRenderer.collectAllZone3StaticFaces(roads, outFaces)
+    Zone4KoleRailHeritageRenderer.collectAllZone4StaticFaces(roads, outFaces)
+    Zone5Nh66CoastalRenderer.collectAllZone5StaticFaces(roads, outFaces)
+    PuthanpallyBasilicaRenderer.collectAllPuthanpallyStaticFaces(outFaces)
+    HighwayWBeamGuardrailRenderer.collectAllStaticGuardrailFaces(roads, outFaces)
+    collectChavakkadFaces(Vec3(-4600f, 2f, 1080f), outFaces)
+    collectTriprayarFaces(Vec3(-2320f, 2f, -2410f), outFaces)
+    val signs = getOrBuildSignRenderCache(roads)
+    val clusters = cachedRoadsideClusters ?: buildRoadsideSceneryCache(roads, signs).also { cachedRoadsideClusters = it }
+    for (c in clusters) {
+        outFaces.addAll(c.faces)
+    }
+    for (s in signs) {
+        outFaces.addAll(s.faces)
+    }
+}
+
+internal fun collectManikandanalDynamicSignalFaces(
+    manikandanalSignal: TrafficSignalAspect,
+    outFaces: MutableList<QuadFace3D>
+) {
+    val sigSouthZ = -63.20f
+    val sigNorthZ = -62.80f
+    val isRed = manikandanalSignal == TrafficSignalAspect.Red
+    val isAmber = manikandanalSignal == TrafficSignalAspect.Amber
+    val isGreen = manikandanalSignal == TrafficSignalAspect.Green
+
+    val redCol = if (isRed) Color(0xFFFF1E1E) else Color(0xFF450A0A)
+    val amberCol = if (isAmber) Color(0xFFFACC15) else Color(0xFF422006)
+    val greenCol = if (isGreen) Color(0xFF22C55E) else Color(0xFF052E16)
+
+    for (headX in floatArrayOf(19.9f, 23.4f)) {
+        outFaces.add(QuadFace3D(Vec3(headX - 0.16f, 6.26f, sigSouthZ), Vec3(headX + 0.16f, 6.26f, sigSouthZ), Vec3(headX + 0.16f, 6.58f, sigSouthZ), Vec3(headX - 0.16f, 6.58f, sigSouthZ), redCol, biasDist = -1.50f))
+        outFaces.add(QuadFace3D(Vec3(headX - 0.16f, 5.90f, sigSouthZ), Vec3(headX + 0.16f, 5.90f, sigSouthZ), Vec3(headX + 0.16f, 6.22f, sigSouthZ), Vec3(headX - 0.16f, 6.22f, sigSouthZ), amberCol, biasDist = -1.50f))
+        outFaces.add(QuadFace3D(Vec3(headX - 0.16f, 5.54f, sigSouthZ), Vec3(headX + 0.16f, 5.54f, sigSouthZ), Vec3(headX + 0.16f, 5.86f, sigSouthZ), Vec3(headX - 0.16f, 5.86f, sigSouthZ), greenCol, biasDist = -1.50f))
+        outFaces.add(QuadFace3D(Vec3(headX + 0.16f, 6.26f, sigNorthZ), Vec3(headX - 0.16f, 6.26f, sigNorthZ), Vec3(headX - 0.16f, 6.58f, sigNorthZ), Vec3(headX + 0.16f, 6.58f, sigNorthZ), redCol, biasDist = -1.50f))
+        outFaces.add(QuadFace3D(Vec3(headX + 0.16f, 5.90f, sigNorthZ), Vec3(headX - 0.16f, 5.90f, sigNorthZ), Vec3(headX - 0.16f, 6.22f, sigNorthZ), Vec3(headX + 0.16f, 6.22f, sigNorthZ), amberCol, biasDist = -1.50f))
+        outFaces.add(QuadFace3D(Vec3(headX + 0.16f, 5.54f, sigNorthZ), Vec3(headX - 0.16f, 5.54f, sigNorthZ), Vec3(headX - 0.16f, 5.86f, sigNorthZ), Vec3(headX + 0.16f, 5.86f, sigNorthZ), greenCol, biasDist = -1.50f))
+    }
+
+    val pedX = 9.6f
+    val pedStandCol = if (!isRed) Color(0xFFFF1E1E) else Color(0xFF3F1111)
+    val pedWalkCol = if (isRed) Color(0xFF22C55E) else Color(0xFF0A2E1A)
+    outFaces.add(QuadFace3D(Vec3(pedX - 0.15f, 2.92f, sigSouthZ), Vec3(pedX + 0.15f, 2.92f, sigSouthZ), Vec3(pedX + 0.15f, 3.26f, sigSouthZ), Vec3(pedX - 0.15f, 3.26f, sigSouthZ), pedStandCol, biasDist = -1.50f))
+    outFaces.add(QuadFace3D(Vec3(pedX - 0.15f, 2.52f, sigSouthZ), Vec3(pedX + 0.15f, 2.52f, sigSouthZ), Vec3(pedX + 0.15f, 2.86f, sigSouthZ), Vec3(pedX - 0.15f, 2.86f, sigSouthZ), pedWalkCol, biasDist = -1.50f))
 }
 
 private fun addSingleBoxFaces(
@@ -550,18 +652,26 @@ private val MatWalkwayAsphaltGrey = Color(0xFF737B84)
 private val MatWalkwayBorder = Color(0xFF949CA6)
 private val MatTreeTrunkBark = Color(0xFF4A2F1D)
 private val MatTreeAerialRoot = Color(0xFF5A3A24)
-private val MatTreeCanopyShadow = Color(0xFF284622)
-private val MatTreeCanopyMid = Color(0xFF3E6332)
-private val MatTreeCanopyCrown = Color(0xFF527D42)
+private val MatTreeCanopyShadow = Color(0xFF1A4F1E)
+private val MatTreeCanopyMid = Color(0xFF28732C)
+private val MatTreeCanopyCrown = Color(0xFF39923A)
 private val MatCastIronBollard = Color(0xFF1E293B)
+private val MatVilakkumadamLampGlow = Color(0xFFF59E0B)
+
+private fun maidanHillY(wx: Float, wz: Float): Float {
+    val dist = hypot(wx - 3.1f, wz - 18.0f)
+    if (dist >= 57.5f) return 0.36f
+    val t = ((57.5f - dist) / (57.5f - 21.0f)).coerceIn(0f, 1f)
+    return 0.38f + t * (1.15f - 0.38f)
+}
 
 private fun isInsideMaidanNadaOpening(pt: Vec3, tcx: Float, tcz: Float): Boolean {
     val dx = pt.x - tcx
     val dz = pt.z - tcz
-    if (dz < -14.0f && abs(dx - 3.5f) < 4.5f) return true
-    if (dz > 14.0f && abs(dx - 1.5f) < 4.5f) return true
-    if (dx < -14.0f && abs(dz - (-3.5f)) < 5.5f) return true
-    if (dx > 14.0f && abs(dz - (-2.5f)) < 4.5f) return true
+    if (dz < -18.0f && abs(dx) < 4.5f) return true
+    if (dz > 18.0f && abs(dx) < 4.5f) return true
+    if (dx < -18.0f && abs(dz) < 4.5f) return true
+    if (dx > 18.0f && abs(dz) < 4.5f) return true
     return false
 }
 
@@ -600,32 +710,62 @@ private fun DrawScope.drawSwarajRoundGroundPlaza(
     roads: List<ThrissurOsmRoad>
 ) {
     val cx = 3.1f
-    val cz = 9.5f
-    if (hypot(camEye.x - cx, camEye.z - cz) > 380f) return
+    val cz = 18.0f
+    if (hypot(camEye.x - cx, camEye.z - cz) > 420f) return
 
-    val tcx = 1.8f
-    val tcz = 4.5f
+    val tcx = 3.1f
+    val tcz = 18.0f
 
     val swarajRoad = roads.firstOrNull { it.id == "ROAD_SWARAJ_ROUND" }
     val frames = swarajRoad?.frames
 
-    // 1. Thekkinkadu Maidan (65-Acre Sacred Hillock): Rolling grassy mound (#4F6239 to #586E40)
+    // 1. Thekkinkadu Maidan: Multi-tiered Lush Emerald Grassy Hillock (R = 57.5m -> 38.0m -> 21.0m)
     if (frames != null && frames.size >= 4) {
-        val centerTop = Vec3(cx, 1.05f, cz)
+        val rMid = 38.0f
+        val rPlateau = 21.0f
+        val centerPeak = Vec3(cx, 1.15f, cz)
+
         for (i in 0 until frames.size - 1) {
             val f0 = frames[i]
             val f1 = frames[i + 1]
-            val inOff0 = f0.halfWidthM + 1.45f
-            val inOff1 = f1.halfWidthM + 1.45f
-            val p0 = Vec3(f0.pos.x + f0.right.x * inOff0, 0.42f, f0.pos.z + f0.right.z * inOff0)
-            val p1 = Vec3(f1.pos.x + f1.right.x * inOff1, 0.42f, f1.pos.z + f1.right.z * inOff1)
-            val sectorCol = if ((i and 1) == 0) MatMaidanGrass else MatMaidanGrassUpper
-            if (rig.buildClippedQuadPath(path, centerTop, p0, p1, centerTop)) {
-                drawPath(path, sectorCol)
+            val inOff0 = f0.halfWidthM + 1.05f
+            val inOff1 = f1.halfWidthM + 1.05f
+            val outer0 = Vec3(f0.pos.x + f0.right.x * inOff0, 0.38f, f0.pos.z + f0.right.z * inOff0)
+            val outer1 = Vec3(f1.pos.x + f1.right.x * inOff1, 0.38f, f1.pos.z + f1.right.z * inOff1)
+
+            val d0x = outer0.x - cx; val d0z = outer0.z - cz
+            val len0 = hypot(d0x, d0z).coerceAtLeast(1f)
+            val ux0 = d0x / len0; val uz0 = d0z / len0
+
+            val d1x = outer1.x - cx; val d1z = outer1.z - cz
+            val len1 = hypot(d1x, d1z).coerceAtLeast(1f)
+            val ux1 = d1x / len1; val uz1 = d1z / len1
+
+            val mid0 = Vec3(cx + ux0 * rMid, 0.80f, cz + uz0 * rMid)
+            val mid1 = Vec3(cx + ux1 * rMid, 0.80f, cz + uz1 * rMid)
+            val top0 = Vec3(cx + ux0 * rPlateau, 1.15f, cz + uz0 * rPlateau)
+            val top1 = Vec3(cx + ux1 * rPlateau, 1.15f, cz + uz1 * rPlateau)
+
+            val outerCol = when (i % 3) {
+                0 -> MatMaidanGrassDeep
+                1 -> MatMaidanGrass
+                else -> MatMaidanGrassUpper
+            }
+            val midCol = if ((i and 1) == 0) MatMaidanGrass else MatMaidanGrassUpper
+            val crownCol = if ((i and 1) == 0) MatMaidanGrassUpper else MatMaidanGrassCrown
+
+            if (rig.buildClippedQuadPath(path, outer0, outer1, mid1, mid0)) {
+                drawPath(path, outerCol)
+            }
+            if (rig.buildClippedQuadPath(path, mid0, mid1, top1, top0)) {
+                drawPath(path, midCol)
+            }
+            if (rig.buildClippedQuadPath(path, top0, top1, centerPeak, centerPeak)) {
+                drawPath(path, crownCol)
             }
         }
 
-        // Outer Border: 2.0m wide paved pedestrian sidewalk tiled in alternating grey and terracotta pavers
+        // Outer Border: 2.0m wide paved pedestrian sidewalk tiled in alternating terracotta and stone pavers
         for (i in 0 until frames.size - 1) {
             val f0 = frames[i]
             val f1 = frames[i + 1]
@@ -645,49 +785,55 @@ private fun DrawScope.drawSwarajRoundGroundPlaza(
         }
     }
 
-    // 2. Upper Rolling Grassy Mound Crown (#586E40)
+    // 2. Curved Pedestrian Park Promenade Ring inside Thekkinkadu Maidan (laterite stone jogging track)
+    drawMaidanArcWalkway(rig, path, cx, cz, 45.2f, 47.2f, 8f, 82f, 14, 0.65f, MatMaidanPathEarthy)
+    drawMaidanArcWalkway(rig, path, cx, cz, 45.2f, 47.2f, 98f, 172f, 14, 0.65f, MatMaidanPathEarthy)
+    drawMaidanArcWalkway(rig, path, cx, cz, 45.2f, 47.2f, 188f, 262f, 14, 0.65f, MatMaidanPathEarthy)
+    drawMaidanArcWalkway(rig, path, cx, cz, 45.2f, 47.2f, 278f, 352f, 14, 0.65f, MatMaidanPathEarthy)
+
+    // 3. Outer Granite & Laterite Pradakshinapatha Courtyard Platform around Vadakkumnathan Temple Wall
+    val wR = 17.0f
     if (rig.buildClippedQuadPath(
             path,
-            Vec3(tcx - 24.5f, 0.78f, tcz - 23.5f),
-            Vec3(tcx + 25.5f, 0.78f, tcz - 23.5f),
-            Vec3(tcx + 26.5f, 0.78f, tcz + 27.5f),
-            Vec3(tcx - 23.5f, 0.78f, tcz + 27.5f)
+            Vec3(tcx - wR - 2.8f, 1.16f, tcz - wR - 2.8f),
+            Vec3(tcx + wR + 2.8f, 1.16f, tcz - wR - 2.8f),
+            Vec3(tcx + wR + 2.8f, 1.16f, tcz + wR + 2.8f),
+            Vec3(tcx - wR - 2.8f, 1.16f, tcz + wR + 2.8f)
         )
     ) {
-        drawPath(path, MatMaidanGrassUpper)
+        drawPath(path, MatGranitePaving)
     }
 
-    // 3. Earthy Reddish Laterite Stone Pedestrian Paths (Nadappatha)
-    drawMaidanArcWalkway(rig, path, cx, cz, 25.2f, 27.0f, -148f, 12f, 20, 0.62f, MatMaidanNadappatha)
-    drawMaidanArcWalkway(rig, path, cx, cz, 29.2f, 30.8f, -142f, 8f, 20, 0.56f, MatMaidanLateriteSoil)
-    drawMaidanArcWalkway(rig, path, cx, cz, 24.5f, 26.3f, 102f, 196f, 16, 0.62f, MatMaidanNadappatha)
-    drawMaidanArcWalkway(rig, path, cx, cz, 28.5f, 30.2f, 106f, 192f, 16, 0.56f, MatMaidanLateriteSoil)
-    drawMaidanArcWalkway(rig, path, cx + 18.0f, cz - 14.5f, 4.5f, 5.8f, 0f, 360f, 16, 0.58f, MatMaidanNadappatha)
-    drawMaidanArcWalkway(rig, path, cx + 18.0f, cz - 14.5f, 7.8f, 9.0f, -60f, 200f, 14, 0.56f, MatMaidanLateriteSoil)
-
-    // 4. Outer Pradakshinapatha Laterite Stone Walkway Ring around Sree Vadakkumnathan Temple Wall
-    val wR = 13.5f
+    // 4. Stepped Sacred Temple Pond (Vadakkumnathan Kulam) in SW Maidan Lawn (X = -33..-20, Z = -18..-5)
     if (rig.buildClippedQuadPath(
             path,
-            Vec3(tcx - wR - 2.6f, 0.96f, tcz - wR - 2.6f),
-            Vec3(tcx + wR + 2.6f, 0.96f, tcz - wR - 2.6f),
-            Vec3(tcx + wR + 2.6f, 0.96f, tcz + wR + 2.6f),
-            Vec3(tcx - wR - 2.6f, 0.96f, tcz + wR + 2.6f)
+            Vec3(-33.4f, 0.72f, -18.4f),
+            Vec3(-19.6f, 0.72f, -18.4f),
+            Vec3(-19.6f, 0.72f, -4.6f),
+            Vec3(-33.4f, 0.72f, -4.6f)
         )
     ) {
-        drawPath(path, MatMaidanNadappatha)
+        drawPath(path, MatLateriteStone)
     }
-
-    // 5. Sacred Temple Pond (Vadakkumnathan Kulam)
     if (rig.buildClippedQuadPath(
             path,
-            Vec3(tcx - 2.5f, 0.88f, tcz + wR + 4.0f),
-            Vec3(tcx + 5.5f, 0.88f, tcz + wR + 4.0f),
-            Vec3(tcx + 5.5f, 0.88f, tcz + wR + 11.5f),
-            Vec3(tcx - 2.5f, 0.88f, tcz + wR + 11.5f)
+            Vec3(-32.2f, 0.76f, -17.2f),
+            Vec3(-20.8f, 0.76f, -17.2f),
+            Vec3(-20.8f, 0.76f, -5.8f),
+            Vec3(-32.2f, 0.76f, -5.8f)
         )
     ) {
-        drawPath(path, MatTemplePondWater)
+        drawPath(path, MatLateriteStepTop)
+    }
+    if (rig.buildClippedQuadPath(
+            path,
+            Vec3(-31.2f, 0.79f, -16.2f),
+            Vec3(-21.8f, 0.79f, -16.2f),
+            Vec3(-21.8f, 0.79f, -6.8f),
+            Vec3(-31.2f, 0.79f, -6.8f)
+        )
+    ) {
+        drawPath(path, Color(0xFF0B6E78))
     }
 }
 
@@ -772,6 +918,225 @@ private fun addAncientBanyanTreeWithAalthara3D(
     }
 }
 
+private fun addKeralaTempleGopuram3D(
+    faces: MutableList<QuadFace3D>,
+    gx: Float,
+    gz: Float,
+    baseY: Float,
+    eastWestAxis: Boolean
+) {
+    // Open portal piers flanking the cardinal walkway (4.4m clear passage)
+    val pierOffset = 3.2f
+    val pierHalfSpan = 1.15f
+    val pierHalfDepth = 1.95f
+    val pierH = 3.85f
+    for (s in floatArrayOf(-1f, 1f)) {
+        if (eastWestAxis) {
+            val pz = gz + s * pierOffset
+            addBoxFaces(faces, gx - pierHalfDepth, baseY, pz - pierHalfSpan, gx + pierHalfDepth, baseY + 0.65f, pz + pierHalfSpan, MatLateriteStepTop, MatLateriteStone)
+            addBoxFaces(faces, gx - pierHalfDepth + 0.1f, baseY + 0.65f, pz - pierHalfSpan + 0.08f, gx + pierHalfDepth - 0.1f, baseY + pierH, pz + pierHalfSpan - 0.08f, MatKeralaCreamWall, MatKeralaWhitewash)
+            // Carved teak pillar pilasters facing the portal
+            addBoxFaces(faces, gx - 1.5f, baseY + 0.65f, pz - s * pierHalfSpan, gx + 1.5f, baseY + pierH, pz - s * (pierHalfSpan + 0.14f), MatTeakWoodCarved, MatTeakWoodDeep)
+        } else {
+            val px = gx + s * pierOffset
+            addBoxFaces(faces, px - pierHalfSpan, baseY, gz - pierHalfDepth, px + pierHalfSpan, baseY + 0.65f, gz + pierHalfDepth, MatLateriteStepTop, MatLateriteStone)
+            addBoxFaces(faces, px - pierHalfSpan + 0.08f, baseY + 0.65f, gz - pierHalfDepth + 0.1f, px + pierHalfSpan - 0.08f, baseY + pierH, gz + pierHalfDepth - 0.1f, MatKeralaCreamWall, MatKeralaWhitewash)
+            addBoxFaces(faces, px - s * pierHalfSpan, baseY + 0.65f, gz - 1.5f, px - s * (pierHalfSpan + 0.14f), baseY + pierH, gz + 1.5f, MatTeakWoodCarved, MatTeakWoodDeep)
+        }
+    }
+
+    val spanW = if (eastWestAxis) 2.25f else 4.95f
+    val spanD = if (eastWestAxis) 4.95f else 2.25f
+
+    // Portal Lintel Architrave & Carved Teakwood Attic Cornice
+    addBoxFaces(faces, gx - spanW, baseY + pierH - 0.35f, gz - spanD, gx + spanW, baseY + pierH + 0.25f, gz + spanD, MatTeakWoodCarved, MatTeakWoodDeep)
+
+    // Tier 1 Terracotta Pitched Kerala Roof
+    addPitchedKeralaRoof(
+        faces,
+        minX = gx - spanW - 0.75f,
+        maxX = gx + spanW + 0.75f,
+        minZ = gz - spanD - 0.75f,
+        maxZ = gz + spanD + 0.75f,
+        baseY = baseY + pierH + 0.18f,
+        ridgeY = baseY + pierH + 2.35f,
+        insetX = if (eastWestAxis) 1.35f else 1.85f,
+        insetZ = if (eastWestAxis) 1.85f else 1.35f,
+        roofColor = MatTerracottaTile,
+        eaveColor = MatTerracottaRoofDark
+    )
+
+    // Tier 2 Recessed Clerestory & Teak Lattice Gallery
+    val uW = if (eastWestAxis) 1.30f else 3.15f
+    val uD = if (eastWestAxis) 3.15f else 1.30f
+    addBoxFaces(faces, gx - uW, baseY + pierH + 2.20f, gz - uD, gx + uW, baseY + pierH + 3.85f, gz + uD, MatKeralaWhitewash, MatKeralaCreamWall)
+    addBoxFaces(faces, gx - uW - 0.12f, baseY + pierH + 2.65f, gz - uD - 0.12f, gx + uW + 0.12f, baseY + pierH + 3.30f, gz + uD + 0.12f, MatTeakWoodCarved, MatTeakWoodDeep)
+
+    // Tier 2 Crown Terracotta Roof + 3 Golden Kalasham Finials
+    addPitchedKeralaRoof(
+        faces,
+        minX = gx - uW - 0.65f,
+        maxX = gx + uW + 0.65f,
+        minZ = gz - uD - 0.65f,
+        maxZ = gz + uD + 0.65f,
+        baseY = baseY + pierH + 3.78f,
+        ridgeY = baseY + pierH + 5.75f,
+        insetX = if (eastWestAxis) uW + 0.45f else 1.25f,
+        insetZ = if (eastWestAxis) 1.25f else uD + 0.45f,
+        roofColor = MatTerracottaTile,
+        eaveColor = MatTeakWoodCarved
+    )
+    for (kOff in floatArrayOf(-1.55f, 0f, 1.55f)) {
+        val kx = if (eastWestAxis) gx else gx + kOff
+        val kz = if (eastWestAxis) gz + kOff else gz
+        addCylinderFrustumFaces(faces, kx, kz, baseY + pierH + 5.75f, baseY + pierH + 6.55f, 0.16f, 0.03f, MatTempleGold, MatTempleGoldDeep, sides = 8)
+    }
+}
+
+private fun addVadakkumnathanTempleComplex3D(
+    faces: MutableList<QuadFace3D>,
+    tcx: Float,
+    tcz: Float,
+    baseY: Float
+) {
+    val wR = 17.0f
+    val gateHalf = 3.5f
+
+    // 1. Continuous Stepped Granite Courtyard Apron Border around Chuttumathil (38.8m x 38.8m)
+    addBoxFaces(
+        faces,
+        tcx - wR - 2.4f, baseY - 0.35f, tcz - wR - 2.4f,
+        tcx + wR + 2.4f, baseY, tcz + wR + 2.4f,
+        MatGranitePaving, MatLateriteStone, MatLateriteStone
+    )
+
+    // 2. Outer Chuttumathil Perimeter Wall + Vilakkumadam Brass Lamp Gallery (with 4 x 7m Cardinal Gateways)
+    fun addChuttumathilWallBar(minX: Float, minZ: Float, maxX: Float, maxZ: Float) {
+        addBoxFaces(faces, minX, baseY, minZ, maxX, baseY + 0.65f, maxZ, MatLateriteStepTop, MatLateriteStone)
+        addBoxFaces(faces, minX + 0.05f, baseY + 0.65f, minZ + 0.05f, maxX - 0.05f, baseY + 2.85f, maxZ - 0.05f, MatKeralaCreamWall, MatKeralaWhitewash)
+        // Warm Vilakkumadam brass oil-lamp band on exterior faces
+        addBoxFaces(faces, minX - 0.04f, baseY + 1.45f, minZ - 0.04f, maxX + 0.04f, baseY + 1.92f, maxZ + 0.04f, MatTeakWoodDeep, MatVilakkumadamLampGlow)
+        // Overhanging terracotta coping roof
+        addBoxFaces(faces, minX - 0.25f, baseY + 2.85f, minZ - 0.25f, maxX + 0.25f, baseY + 3.25f, maxZ + 0.25f, MatTerracottaTile, MatTerracottaRoofDark)
+    }
+    // South Chuttumathil segments
+    addChuttumathilWallBar(tcx - wR, tcz - wR, tcx - gateHalf, tcz - wR + 1.05f)
+    addChuttumathilWallBar(tcx + gateHalf, tcz - wR, tcx + wR, tcz - wR + 1.05f)
+    // North Chuttumathil segments
+    addChuttumathilWallBar(tcx - wR, tcz + wR - 1.05f, tcx - gateHalf, tcz + wR)
+    addChuttumathilWallBar(tcx + gateHalf, tcz + wR - 1.05f, tcx + wR, tcz + wR)
+    // West Chuttumathil segments
+    addChuttumathilWallBar(tcx - wR, tcz - wR + 1.05f, tcx - wR + 1.05f, tcz - gateHalf)
+    addChuttumathilWallBar(tcx - wR, tcz + gateHalf, tcx - wR + 1.05f, tcz + wR - 1.05f)
+    // East Chuttumathil segments
+    addChuttumathilWallBar(tcx + wR - 1.05f, tcz - wR + 1.05f, tcx + wR, tcz - gateHalf)
+    addChuttumathilWallBar(tcx + wR - 1.05f, tcz + gateHalf, tcx + wR, tcz + wR - 1.05f)
+
+    // 3. Four 2-Tier Kerala Padippura Gopurams (West, East, North, South)
+    addKeralaTempleGopuram3D(faces, tcx - wR, tcz, baseY, eastWestAxis = true)
+    addKeralaTempleGopuram3D(faces, tcx + wR, tcz, baseY, eastWestAxis = true)
+    addKeralaTempleGopuram3D(faces, tcx, tcz - wR, baseY, eastWestAxis = false)
+    addKeralaTempleGopuram3D(faces, tcx, tcz + wR, baseY, eastWestAxis = false)
+
+    // 4. Inner Nalambalam Cloister Ring (wIn = 11.4m, pitched terracotta cloister roof + courtyard veranda)
+    val wIn = 11.4f
+    val nGate = 2.4f
+    fun addNalambalamWing(minX: Float, minZ: Float, maxX: Float, maxZ: Float) {
+        addBoxFaces(faces, minX, baseY, minZ, maxX, baseY + 0.45f, maxZ, MatGranitePaving, MatLateriteStone)
+        addBoxFaces(faces, minX + 0.15f, baseY + 0.45f, minZ + 0.15f, maxX - 0.15f, baseY + 2.65f, maxZ - 0.15f, MatKeralaCreamWall, MatKeralaWhitewash)
+        addPitchedKeralaRoof(
+            faces,
+            minX = minX - 0.35f, maxX = maxX + 0.35f,
+            minZ = minZ - 0.35f, maxZ = maxZ + 0.35f,
+            baseY = baseY + 2.60f, ridgeY = baseY + 3.85f,
+            insetX = if ((maxX - minX) < (maxZ - minZ)) (maxX - minX) * 0.45f else 0.7f,
+            insetZ = if ((maxZ - minZ) < (maxX - minX)) (maxZ - minZ) * 0.45f else 0.7f,
+            roofColor = MatTerracottaTile, eaveColor = MatTeakWoodCarved
+        )
+    }
+    addNalambalamWing(tcx - wIn, tcz - wIn, tcx - nGate, tcz - wIn + 2.1f)
+    addNalambalamWing(tcx + nGate, tcz - wIn, tcx + wIn, tcz - wIn + 2.1f)
+    addNalambalamWing(tcx - wIn, tcz + wIn - 2.1f, tcx - nGate, tcz + wIn)
+    addNalambalamWing(tcx + nGate, tcz + wIn - 2.1f, tcx + wIn, tcz + wIn)
+    addNalambalamWing(tcx - wIn, tcz - wIn + 2.1f, tcx - wIn + 2.1f, tcz - nGate)
+    addNalambalamWing(tcx - wIn, tcz + nGate, tcx - wIn + 2.1f, tcz + wIn - 2.1f)
+    addNalambalamWing(tcx + wIn - 2.1f, tcz - wIn + 2.1f, tcx + wIn, tcz - nGate)
+    addNalambalamWing(tcx + wIn - 2.1f, tcz + nGate, tcx + wIn, tcz + wIn - 2.1f)
+
+    // 5. Central Iconic Circular Vatta-Sreekovil (Vadakkumnathan Sanctum, 16-sided stepped plinth & double conical copper/terracotta roof)
+    // Stepped Laterite & Granite Adhishthanam Base
+    addCylinderFrustumFaces(faces, tcx, tcz, baseY, baseY + 0.60f, 5.45f, 5.20f, MatLateriteStone, MatLateriteStepTop, sides = 16)
+    addCylinderFrustumFaces(faces, tcx, tcz, baseY + 0.60f, baseY + 1.25f, 4.95f, 4.75f, MatGraniteDark, MatGranitePaving, sides = 16)
+    // Whitewashed Cylindrical Sanctum Wall Drum + Golden Cornice Band
+    addCylinderFrustumFaces(faces, tcx, tcz, baseY + 1.25f, baseY + 4.35f, 4.40f, 4.40f, MatKeralaWhitewash, MatKeralaCreamWall, sides = 16)
+    addCylinderFrustumFaces(faces, tcx, tcz, baseY + 3.85f, baseY + 4.35f, 4.52f, 4.52f, MatTeakWoodCarved, MatTempleGoldDeep, sides = 16)
+    // Carved Mukhamandapam Porch facing West (main Vadakkumnathan shrine) & East
+    addBoxFaces(faces, tcx - 5.9f, baseY + 0.55f, tcz - 1.55f, tcx - 4.1f, baseY + 3.85f, tcz + 1.55f, MatTeakWoodCarved, MatKeralaCreamWall)
+    addPitchedKeralaRoof(faces, tcx - 6.3f, tcx - 3.9f, tcz - 1.9f, tcz + 1.9f, baseY + 3.80f, baseY + 5.10f, 0.8f, 0.9f, MatCopperRoof, MatTempleGoldDeep)
+    // Lower Conical Kerala Terracotta Roof
+    addCylinderFrustumFaces(faces, tcx, tcz, baseY + 4.20f, baseY + 6.95f, 6.15f, 2.85f, MatTerracottaTile, MatTerracottaRoofDark, sides = 16)
+    // Recessed Clerestory Neck
+    addCylinderFrustumFaces(faces, tcx, tcz, baseY + 6.85f, baseY + 7.65f, 2.55f, 2.55f, MatTeakWoodCarved, MatTempleGoldDeep, sides = 16)
+    // Upper Conical Copper Roof
+    addCylinderFrustumFaces(faces, tcx, tcz, baseY + 7.50f, baseY + 10.35f, 3.65f, 0.42f, MatCopperRoof, MatCopperRoofDark, sides = 16)
+    // Golden Thazhikakudam Spire
+    addCylinderFrustumFaces(faces, tcx, tcz, baseY + 10.35f, baseY + 10.95f, 0.48f, 0.30f, MatTempleGoldDeep, MatTempleGold, sides = 12)
+    addCylinderFrustumFaces(faces, tcx, tcz, baseY + 10.95f, baseY + 12.15f, 0.26f, 0.04f, MatTempleGold, MatTempleGold, sides = 12)
+
+    // 6. Flanking Inner Shrines (Sankaranarayana North & Sri Rama South) + Copper Namaskara Mandapam
+    for (sOff in floatArrayOf(-6.6f, 6.6f)) {
+        val sz = tcz + sOff
+        addBoxFaces(faces, tcx - 1.85f, baseY, sz - 1.65f, tcx + 1.85f, baseY + 2.55f, sz + 1.65f, MatKeralaCreamWall, MatKeralaWhitewash)
+        addPitchedKeralaRoof(faces, tcx - 2.35f, tcx + 2.35f, sz - 2.15f, sz + 2.15f, baseY + 2.50f, baseY + 4.35f, 1.35f, 1.25f, MatCopperRoof, MatCopperRoofDark)
+        addCylinderFrustumFaces(faces, tcx, sz, baseY + 4.35f, baseY + 5.05f, 0.16f, 0.03f, MatTempleGold, sides = 8)
+    }
+    // Copper-roofed Namaskara Mandapam (4-pillar ceremonial square pavilion west of Sreekovil)
+    val nmX = tcx - 7.6f
+    for (px in floatArrayOf(nmX - 1.15f, nmX + 1.15f)) {
+        for (pz in floatArrayOf(tcz - 1.15f, tcz + 1.15f)) {
+            addCylinderFrustumFaces(faces, px, pz, baseY + 0.35f, baseY + 2.45f, 0.16f, 0.13f, MatGraniteDark, sides = 8)
+        }
+    }
+    addBoxFaces(faces, nmX - 1.45f, baseY, tcz - 1.45f, nmX + 1.45f, baseY + 0.38f, tcz + 1.45f, MatGranitePaving, MatLateriteStone)
+    addPitchedKeralaRoof(faces, nmX - 1.85f, nmX + 1.85f, tcz - 1.85f, tcz + 1.85f, baseY + 2.40f, baseY + 4.05f, 1.55f, 1.55f, MatCopperRoof, MatTempleGoldDeep)
+
+    // 7. Koothambalam (Traditional Temple Theatre Pavilion in NW Inner Compound)
+    val kx = tcx - 7.5f
+    val kz = tcz + 6.8f
+    addBoxFaces(faces, kx - 2.5f, baseY, kz - 2.2f, kx + 2.5f, baseY + 0.65f, kz + 2.2f, MatLateriteStepTop, MatLateriteStone)
+    addBoxFaces(faces, kx - 2.2f, baseY + 0.65f, kz - 1.9f, kx + 2.2f, baseY + 2.75f, kz + 1.9f, MatTeakWoodCarved, MatKeralaCreamWall)
+    addPitchedKeralaRoof(faces, kx - 3.0f, kx + 3.0f, kz - 2.6f, kz + 2.6f, baseY + 2.70f, baseY + 5.10f, 1.3f, 1.9f, MatCopperRoof, MatTerracottaRoofDark)
+
+    // 8. Anakottil (Tall 6-Pillar Ceremonial Elephant Portico just outside West Gopuram)
+    val akMinX = tcx - wR - 7.2f
+    val akMaxX = tcx - wR - 0.6f
+    val akMinZ = tcz - 3.4f
+    val akMaxZ = tcz + 3.4f
+    addBoxFaces(faces, akMinX, baseY - 0.25f, akMinZ, akMaxX, baseY + 0.12f, akMaxZ, MatGranitePaving, MatLateriteStone)
+    for (px in floatArrayOf(akMinX + 0.55f, (akMinX + akMaxX) * 0.5f, akMaxX - 0.55f)) {
+        for (pz in floatArrayOf(akMinZ + 0.55f, akMaxZ - 0.55f)) {
+            addCylinderFrustumFaces(faces, px, pz, baseY + 0.12f, baseY + 4.45f, 0.28f, 0.24f, MatKeralaCreamWall, MatLateriteStone, sides = 8)
+        }
+    }
+    addPitchedKeralaRoof(faces, akMinX - 0.45f, akMaxX + 0.45f, akMinZ - 0.55f, akMaxZ + 0.55f, baseY + 4.40f, baseY + 6.75f, 1.85f, 2.4f, MatTerracottaTile, MatTeakWoodCarved)
+    for (fx in floatArrayOf(akMinX + 2.0f, akMaxX - 2.0f)) {
+        addCylinderFrustumFaces(faces, fx, tcz, baseY + 6.75f, baseY + 7.45f, 0.15f, 0.03f, MatTempleGold, sides = 8)
+    }
+
+    // 9. Golden Dwajasthambam (Flagstaff) & Granite Deepastambham (Lamp Pillar) on Main West & East Axes
+    val flagX = tcx - wR - 8.6f
+    addBoxFaces(faces, flagX - 0.95f, baseY - 0.20f, tcz - 0.95f, flagX + 0.95f, baseY + 0.75f, tcz + 0.95f, MatGranitePaving, MatLateriteStone)
+    addCylinderFrustumFaces(faces, flagX, tcz, baseY + 0.75f, baseY + 10.8f, 0.26f, 0.12f, MatTempleGoldDeep, MatTempleGold, sides = 12)
+    addCylinderFrustumFaces(faces, flagX, tcz, baseY + 10.8f, baseY + 11.45f, 0.34f, 0.06f, MatTempleGold, sides = 12)
+
+    val deepaX = tcx + wR + 2.2f
+    addBoxFaces(faces, deepaX - 0.85f, baseY - 0.10f, tcz - 0.85f, deepaX + 0.85f, baseY + 0.70f, tcz + 0.85f, MatGraniteDark, MatLateriteStone)
+    addCylinderFrustumFaces(faces, deepaX, tcz, baseY + 0.70f, baseY + 5.60f, 0.24f, 0.14f, MatGranitePaving, MatTempleGold, sides = 10)
+    for (tierY in floatArrayOf(2.4f, 3.3f, 4.2f, 5.1f)) {
+        addCylinderFrustumFaces(faces, deepaX, tcz, baseY + tierY, baseY + tierY + 0.16f, 0.56f, 0.42f, MatTempleGoldDeep, MatVilakkumadamLampGlow, sides = 10)
+    }
+}
+
 private var cachedSwarajRoundFaces: List<QuadFace3D>? = null
 
 private fun collectSwarajRoundFaces(
@@ -780,10 +1145,10 @@ private fun collectSwarajRoundFaces(
     outFaces: MutableList<QuadFace3D>
 ) {
     val cx = 3.1f
-    val cz = 9.5f
+    val cz = 18.0f
     val dx = camEye.x - cx
     val dz = camEye.z - cz
-    if (dx * dx + dz * dz > 215f * 215f) return
+    if (dx * dx + dz * dz > 260f * 260f) return
 
     val existing = cachedSwarajRoundFaces
     if (existing != null) {
@@ -791,15 +1156,15 @@ private fun collectSwarajRoundFaces(
         return
     }
 
-    val tcx = 1.8f
-    val tcz = 4.5f
-    val wR = 13.5f
-    val templeBaseY = 1.10f
+    val tcx = 3.1f
+    val tcz = 18.0f
+    val wR = 17.0f
+    val templeBaseY = 1.16f
 
-    val faces = ArrayList<QuadFace3D>(2200)
+    val faces = ArrayList<QuadFace3D>(3600)
     val swarajFrames = roads.firstOrNull { it.id == "ROAD_SWARAJ_ROUND" }?.frames
 
-    // A. INNER SHOULDER: 1.2m High Continuous Weathered Laterite Stone Boundary Wall (Chuttumathil, #8B3A22)
+    // A. INNER SHOULDER: 1.2m High Continuous Weathered Laterite Stone Boundary Wall
     //    & OUTER BORDER: Cylindrical Cast-Iron Ornamental Bollards & Chain-Link Railings
     if (swarajFrames != null && swarajFrames.size >= 4) {
         for (i in 0 until swarajFrames.size - 1) {
@@ -870,7 +1235,7 @@ private fun collectSwarajRoundFaces(
         }
     }
 
-    // B. 4 LATERITE NADAPPATHA AVENUES CONNECTING SWARAJ ROUND TO THE 4 GOPURAMS
+    // B. 4 CARDINAL LATERITE NADAPPATHA AVENUES CONNECTING R=57.5m PORTALS TO THE 4 GOPURAMS
     fun addNadappathaAvenue(vRoadL: Vec3, vRoadR: Vec3, vGateR: Vec3, vGateL: Vec3) {
         faces.add(
             QuadFace3D(
@@ -882,182 +1247,59 @@ private fun collectSwarajRoundFaces(
         )
     }
 
-    addNadappathaAvenue(Vec3(tcx + 0.5f, 0.08f, cz - 36.5f), Vec3(tcx + 5.5f, 0.08f, cz - 36.5f), Vec3(tcx + 5.0f, templeBaseY, tcz - wR), Vec3(tcx + 1.0f, templeBaseY, tcz - wR))
-    addNadappathaAvenue(Vec3(tcx + 3.2f, 0.08f, cz + 38.0f), Vec3(tcx - 1.8f, 0.08f, cz + 38.0f), Vec3(tcx - 1.5f, templeBaseY, tcz + wR), Vec3(tcx + 2.5f, templeBaseY, tcz + wR))
-    addNadappathaAvenue(Vec3(cx - 37.0f, 0.08f, tcz - 0.2f), Vec3(cx - 37.0f, 0.08f, tcz - 2.6f), Vec3(tcx - wR - 1.5f, templeBaseY, tcz - 2.4f), Vec3(tcx - wR - 1.5f, templeBaseY, tcz - 0.4f))
-    addNadappathaAvenue(Vec3(cx - 37.0f, 0.08f, tcz - 4.2f), Vec3(cx - 37.0f, 0.08f, tcz - 6.6f), Vec3(tcx - wR - 1.5f, templeBaseY, tcz - 6.4f), Vec3(tcx - wR - 1.5f, templeBaseY, tcz - 4.4f))
-    addNadappathaAvenue(Vec3(cx - 25.5f, 0.48f, cz + 26.5f), Vec3(cx - 23.2f, 0.48f, cz + 27.5f), Vec3(tcx - wR - 1.2f, templeBaseY, tcz + 1.5f), Vec3(tcx - wR - 3.2f, templeBaseY, tcz + 0.5f))
-    addNadappathaAvenue(Vec3(cx + 36.5f, 0.08f, tcz - 4.8f), Vec3(cx + 36.5f, 0.08f, tcz - 0.2f), Vec3(tcx + wR, templeBaseY, tcz - 0.5f), Vec3(tcx + wR, templeBaseY, tcz - 4.5f))
-
-    // C. SREE VADAKKUMNATHAN TEMPLE COMPOUND
-    addBoxFaces(faces, tcx - wR + 0.4f, 0.55f, tcz - wR + 0.4f, tcx + wR - 0.4f, templeBaseY, tcz + wR - 0.4f, MatGranitePaving, MatLateriteStone, bias = 4.5f)
-
-    fun addMaryadaWallSegment(minX: Float, minZ: Float, maxX: Float, maxZ: Float, isNorthSouth: Boolean) {
-        addBoxFaces(faces, minX, templeBaseY, minZ, maxX, templeBaseY + 1.55f, maxZ, MatKeralaWhitewash, MatKeralaWhitewash, MatKeralaCreamWall)
-        addBoxFaces(faces, minX, templeBaseY + 1.55f, minZ, maxX, templeBaseY + 2.45f, maxZ, MatLateriteStone, MatLateriteStone, MatLateriteDark)
-        val overhang = 0.26f
-        addPitchedKeralaRoof(
-            faces,
-            minX - overhang, maxX + overhang,
-            minZ - overhang, maxZ + overhang,
-            baseY = templeBaseY + 2.40f,
-            ridgeY = templeBaseY + 2.95f,
-            insetX = if (isNorthSouth) 0.12f else (maxX - minX) * 0.45f,
-            insetZ = if (isNorthSouth) (maxZ - minZ) * 0.45f else 0.12f,
-            roofColor = MatTerracottaTile
-        )
-    }
-
-    addMaryadaWallSegment(tcx - wR, tcz - wR, tcx - 0.8f, tcz - wR + 0.85f, isNorthSouth = true)
-    addMaryadaWallSegment(tcx + 6.8f, tcz - wR, tcx + wR, tcz - wR + 0.85f, isNorthSouth = true)
-    addMaryadaWallSegment(tcx - wR, tcz + wR - 0.85f, tcx - 3.3f, tcz + wR, isNorthSouth = true)
-    addMaryadaWallSegment(tcx + 4.3f, tcz + wR - 0.85f, tcx + wR, tcz + wR, isNorthSouth = true)
-    addMaryadaWallSegment(tcx - wR, tcz - wR, tcx - wR + 0.85f, tcz - 7.2f, isNorthSouth = false)
-    addMaryadaWallSegment(tcx - wR, tcz + 0.4f, tcx - wR + 0.85f, tcz + wR, isNorthSouth = false)
-    addMaryadaWallSegment(tcx + wR - 0.85f, tcz - wR, tcx + wR, tcz - 6.3f, isNorthSouth = false)
-    addMaryadaWallSegment(tcx + wR - 0.85f, tcz + 1.3f, tcx + wR, tcz + wR, isNorthSouth = false)
-
-    fun addAuthenticVadakkumnathanGopuram(
-        gx: Float,
-        gz: Float,
-        halfW: Float,
-        halfD: Float,
-        facesNorthSouth: Boolean
-    ) {
-        val y0 = templeBaseY
-        addBoxFaces(faces, gx - halfW - 0.45f, y0, gz - halfD - 0.45f, gx + halfW + 0.45f, y0 + 0.42f, gz + halfD + 0.45f, MatKeralaWhitewash, MatLateriteStone, MatGraniteDark)
-        addBoxFaces(faces, gx - halfW - 0.22f, y0 + 0.42f, gz - halfD - 0.22f, gx + halfW + 0.22f, y0 + 0.88f, gz + halfD + 0.22f, MatKeralaWhitewash, MatKeralaWhitewash, MatKeralaCreamWall)
-
-        if (facesNorthSouth) {
-            val doorHalfW = 1.10f
-            addBoxFaces(faces, gx - halfW, y0 + 0.88f, gz - halfD, gx - doorHalfW, y0 + 3.65f, gz + halfD, MatTeakWoodCarved, MatKeralaWhitewash, MatKeralaWhitewash)
-            addBoxFaces(faces, gx + doorHalfW, y0 + 0.88f, gz - halfD, gx + halfW, y0 + 3.65f, gz + halfD, MatTeakWoodCarved, MatKeralaWhitewash, MatKeralaWhitewash)
-            addBoxFaces(faces, gx - doorHalfW, y0 + 0.88f, gz - halfD + 0.20f, gx + doorHalfW, y0 + 3.65f, gz + halfD - 0.20f, MatTeakWoodDeep, MatTeakWoodDeep, MatTeakWoodDeep)
-        } else {
-            val doorHalfD = 1.10f
-            addBoxFaces(faces, gx - halfW, y0 + 0.88f, gz - halfD, gx + halfW, y0 + 3.65f, gz - doorHalfD, MatTeakWoodCarved, MatKeralaWhitewash, MatKeralaWhitewash)
-            addBoxFaces(faces, gx - halfW, y0 + 0.88f, gz + doorHalfD, gx + halfW, y0 + 3.65f, gz + halfD, MatTeakWoodCarved, MatKeralaWhitewash, MatKeralaWhitewash)
-            addBoxFaces(faces, gx - halfW + 0.20f, y0 + 0.88f, gz - doorHalfD, gx + halfW - 0.20f, y0 + 3.65f, gz + doorHalfD, MatTeakWoodDeep, MatTeakWoodDeep, MatTeakWoodDeep)
-        }
-
-        addPitchedKeralaRoof(faces, gx - halfW - 1.10f, gx + halfW + 1.10f, gz - halfD - 1.10f, gz + halfD + 1.10f, y0 + 3.50f, y0 + 5.45f, 1.20f, 1.20f, MatTerracottaTile, MatTeakWoodCarved)
-        addBoxFaces(faces, gx - halfW * 0.80f, y0 + 5.30f, gz - halfD * 0.80f, gx + halfW * 0.80f, y0 + 7.05f, gz + halfD * 0.80f, MatTeakWoodCarved, MatTeakWoodCarved, MatTeakWoodCarved)
-        addPitchedKeralaRoof(faces, gx - halfW * 1.02f, gx + halfW * 1.02f, gz - halfD * 1.02f, gz + halfD * 1.02f, y0 + 6.90f, y0 + 8.95f, 1.10f, 1.10f, MatTerracottaRoofDark, MatTeakWoodCarved)
-        addPitchedKeralaRoof(
-            faces,
-            gx - halfW * 0.80f, gx + halfW * 0.80f,
-            gz - halfD * 0.80f, gz + halfD * 0.80f,
-            baseY = y0 + 8.80f, ridgeY = y0 + 11.40f,
-            insetX = if (facesNorthSouth) halfW * 0.26f else halfW * 0.70f,
-            insetZ = if (facesNorthSouth) halfD * 0.70f else halfD * 0.26f,
-            roofColor = MatTerracottaTile,
-            eaveColor = MatTeakWoodCarved
-        )
-        val mukW = if (facesNorthSouth) 1.35f else halfW * 0.74f
-        val mukD = if (facesNorthSouth) halfD * 0.74f else 1.35f
-        addPitchedKeralaRoof(
-            faces,
-            gx - mukW, gx + mukW,
-            gz - mukD, gz + mukD,
-            baseY = y0 + 8.40f, ridgeY = y0 + 11.05f,
-            insetX = if (facesNorthSouth) mukW * 0.85f else 0.20f,
-            insetZ = if (facesNorthSouth) 0.20f else mukD * 0.85f,
-            roofColor = MatTeakWoodCarved,
-            eaveColor = MatTempleGoldDeep
-        )
-        // Cylindrical Golden Brass Finials (Stupika / Thazhikakkudam, #FACC15)
-        for (finialOff in floatArrayOf(-1.2f, 0f, 1.2f)) {
-            val fx = if (facesNorthSouth) gx + finialOff else gx
-            val fz = if (facesNorthSouth) gz else gz + finialOff
-            addCylinderFrustumFaces(faces, fx, fz, y0 + 11.30f, y0 + 12.25f, 0.22f, 0.04f, MatTempleGold, sides = 6)
-        }
-    }
-
-    addAuthenticVadakkumnathanGopuram(tcx + 3.0f, tcz - wR, halfW = 3.9f, halfD = 2.35f, facesNorthSouth = true)
-    addAuthenticVadakkumnathanGopuram(tcx + 0.5f, tcz + wR, halfW = 3.9f, halfD = 2.35f, facesNorthSouth = true)
-    addAuthenticVadakkumnathanGopuram(tcx - wR, tcz - 3.4f, halfW = 2.35f, halfD = 3.9f, facesNorthSouth = false)
-    addAuthenticVadakkumnathanGopuram(tcx + wR, tcz - 2.5f, halfW = 2.35f, halfD = 3.9f, facesNorthSouth = false)
-
-    // Inner Circular Sanctum Sanctorum (Vatta Sreekovil, 18m diameter) with Conical Copper Roof & Golden Stupika
-    val sreekovilCx = tcx + 1.0f
-    val sreekovilCz = tcz + 1.2f
-    val vattaRadius = 9.0f
-    addCylinderFrustumFaces(faces, sreekovilCx, sreekovilCz, templeBaseY + 0.05f, templeBaseY + 3.85f, vattaRadius * 0.88f, vattaRadius * 0.88f, MatKeralaWhitewash, sides = 16)
-    addCylinderFrustumFaces(faces, sreekovilCx, sreekovilCz, templeBaseY + 3.70f, templeBaseY + 9.65f, vattaRadius, 0.38f, MatCopperRoof, MatTempleGold, sides = 16)
-    addCylinderFrustumFaces(faces, sreekovilCx, sreekovilCz, templeBaseY + 9.60f, templeBaseY + 11.45f, 0.45f, 0.05f, MatTempleGold, sides = 8)
-
-    // Koothambalam (Temple Dance Theatre) with Sloped Copper-Ridged Hipped Roof
-    addBoxFaces(faces, tcx - 12.2f, templeBaseY + 0.05f, tcz + 1.5f, tcx - 8.2f, templeBaseY + 0.75f, tcz + 9.8f, MatGraniteLight, MatKeralaWhitewash, MatGraniteDark)
-    addBoxFaces(faces, tcx - 11.9f, templeBaseY + 0.75f, tcz + 1.8f, tcx - 8.5f, templeBaseY + 3.10f, tcz + 9.5f, MatTeakWoodCarved, MatTeakWoodCarved, MatTeakWoodDeep)
-    addPitchedKeralaRoof(faces, tcx - 12.6f, tcx - 7.8f, tcz + 1.1f, tcz + 10.2f, templeBaseY + 2.95f, templeBaseY + 7.10f, 2.1f, 2.6f, MatCopperRoof, MatTeakWoodCarved)
-
-    // Courtyard Artifacts: Cylindrical 21m Golden Flagstaff (Kodimaram) & 9m 7-Tiered Circular Bronze Deepastambhams
-    val kodiX = tcx - 8.5f
-    val kodiZ = tcz - 3.4f
-    addCylinderFrustumFaces(faces, kodiX, kodiZ, templeBaseY, templeBaseY + 1.40f, 0.85f, 0.65f, MatKeralaWhitewash, sides = 8)
-    addCylinderFrustumFaces(faces, kodiX, kodiZ, templeBaseY + 1.40f, templeBaseY + 21.0f, 0.28f, 0.14f, MatTempleGold, sides = 8)
-    for (ringIdx in 1..8) {
-        val ry = templeBaseY + ringIdx * 2.2f
-        addCylinderFrustumFaces(faces, kodiX, kodiZ, ry, ry + 0.20f, 0.38f, 0.38f, MatTempleGoldDeep, sides = 8)
-    }
-
-    for ((dpX, dpZ) in arrayOf(Pair(tcx + 3.0f, tcz - wR - 3.2f), Pair(tcx - 10.5f, tcz - 3.4f))) {
-        addCylinderFrustumFaces(faces, dpX, dpZ, templeBaseY, templeBaseY + 9.0f, 0.28f, 0.14f, MatCopperRoof, sides = 8)
-        for (tier in 1..7) {
-            val ty = templeBaseY + tier * 1.12f
-            val tr = (1.15f - tier * 0.10f).coerceAtLeast(0.36f)
-            addCylinderFrustumFaces(faces, dpX, dpZ, ty, ty + 0.18f, tr, tr * 0.85f, MatTempleGold, sides = 8)
-        }
-    }
-
-    // D. GIANT ANCIENT BANYAN TREES WITH 12-SIDED CIRCULAR AALTHARA PLATFORMS + ORGANIC TEAK & MAHOGANY GROVE
-    addAncientBanyanTreeWithAalthara3D(faces, bx = tcx + 8.5f, bz = tcz - 24.5f, baseY = 0.46f, aaltharaRadius = 3.2f, crownRadius = 6.2f, treeHeight = 13.8f)
-    addAncientBanyanTreeWithAalthara3D(faces, bx = tcx - 24.5f, bz = tcz - 8.5f, baseY = 0.46f, aaltharaRadius = 3.2f, crownRadius = 6.2f, treeHeight = 13.8f)
-    addAncientBanyanTreeWithAalthara3D(faces, bx = tcx - 5.2f, bz = tcz + 23.5f, baseY = 0.48f, aaltharaRadius = 2.9f, crownRadius = 5.6f, treeHeight = 12.8f)
-    addAncientBanyanTreeWithAalthara3D(faces, bx = tcx + 22.5f, bz = tcz + 3.5f, baseY = 0.48f, aaltharaRadius = 2.9f, crownRadius = 5.6f, treeHeight = 12.8f)
-
-    val maidanTrees = arrayOf(
-        floatArrayOf(tcx - 16.5f, tcz - 12.5f, 4.4f, 10.2f),
-        floatArrayOf(tcx - 12.0f, tcz - 17.5f, 4.8f, 10.8f),
-        floatArrayOf(tcx - 5.5f, tcz - 17.8f, 4.5f, 10.4f),
-        floatArrayOf(tcx + 11.2f, tcz - 17.5f, 4.6f, 10.4f),
-        floatArrayOf(tcx + 16.8f, tcz - 9.8f, 4.4f, 9.8f),
-        floatArrayOf(tcx + 16.5f, tcz + 11.2f, 5.0f, 11.2f),
-        floatArrayOf(tcx + 10.5f, tcz + 17.2f, 4.6f, 10.4f),
-        floatArrayOf(tcx + 6.5f, tcz + 22.5f, 4.4f, 9.8f),
-        floatArrayOf(tcx - 12.2f, tcz + 16.5f, 5.0f, 11.0f),
-        floatArrayOf(tcx - 17.5f, tcz + 10.2f, 4.6f, 10.2f),
-        floatArrayOf(tcx - 17.5f, tcz + 3.8f, 4.4f, 9.8f),
-        floatArrayOf(tcx - 14.8f, tcz + 21.5f, 4.2f, 9.5f),
-        floatArrayOf(cx + 12.0f, cz + 25.0f, 4.5f, 10.2f),
-        floatArrayOf(cx + 19.5f, cz + 24.5f, 4.8f, 10.6f),
-        floatArrayOf(cx + 24.5f, cz + 18.0f, 4.4f, 9.8f),
-        floatArrayOf(cx + 18.0f, cz - 14.5f, 4.6f, 10.2f),
-        floatArrayOf(cx - 24.5f, cz - 19.5f, 4.4f, 9.8f),
-        floatArrayOf(cx - 28.5f, cz + 14.5f, 4.2f, 9.5f),
-        floatArrayOf(cx - 20.5f, cz + 27.5f, 4.4f, 9.8f)
+    val rimDist = 57.5f
+    // South Avenue (-Z)
+    addNadappathaAvenue(
+        Vec3(tcx - 2.3f, 0.40f, cz - rimDist),
+        Vec3(tcx + 2.3f, 0.40f, cz - rimDist),
+        Vec3(tcx + 2.3f, templeBaseY, tcz - wR),
+        Vec3(tcx - 2.3f, templeBaseY, tcz - wR)
     )
-    for (t in maidanTrees) {
-        addRealisticMaidanTree3D(faces, t[0], t[1], 0.52f, t[2], t[3])
+    // North Avenue (+Z)
+    addNadappathaAvenue(
+        Vec3(tcx + 2.3f, 0.40f, cz + rimDist),
+        Vec3(tcx - 2.3f, 0.40f, cz + rimDist),
+        Vec3(tcx - 2.3f, templeBaseY, tcz + wR),
+        Vec3(tcx + 2.3f, templeBaseY, tcz + wR)
+    )
+    // West Avenue (-X, leads through Anakottil to West Gopuram)
+    addNadappathaAvenue(
+        Vec3(cx - rimDist, 0.40f, tcz + 2.3f),
+        Vec3(cx - rimDist, 0.40f, tcz - 2.3f),
+        Vec3(tcx - wR - 7.2f, templeBaseY, tcz - 2.3f),
+        Vec3(tcx - wR - 7.2f, templeBaseY, tcz + 2.3f)
+    )
+    // East Avenue (+X)
+    addNadappathaAvenue(
+        Vec3(cx + rimDist, 0.40f, tcz - 2.3f),
+        Vec3(cx + rimDist, 0.40f, tcz + 2.3f),
+        Vec3(tcx + wR, templeBaseY, tcz + 2.3f),
+        Vec3(tcx + wR, templeBaseY, tcz - 2.3f)
+    )
+
+    // C. VADAKKUMNATHAN TEMPLE COMPLEX (34m x 34m Chuttumathil, 4 Gopurams, 2-Tier Circular Vatta-Sreekovil, Koothambalam, Anakottil)
+    addVadakkumnathanTempleComplex3D(faces, tcx, tcz, templeBaseY)
+
+    // D. 4 ANCIENT BANYAN TREES (AALMARAM) WITH 12-SIDED DRESSED LATERITE AALTHARA PLATFORMS IN THE 4 QUADRANT LAWNS
+    val banyans = arrayOf(
+        floatArrayOf(29.5f, -10.5f, 3.4f, 6.8f, 14.5f),
+        floatArrayOf(30.0f, 45.5f, 3.2f, 6.4f, 13.8f),
+        floatArrayOf(-24.5f, 45.0f, 3.4f, 6.6f, 14.2f),
+        floatArrayOf(-22.5f, -23.5f, 3.1f, 6.2f, 13.2f)
+    )
+    for (b in banyans) {
+        val bx = b[0]
+        val bz = b[1]
+        addAncientBanyanTreeWithAalthara3D(
+            faces = faces,
+            bx = bx,
+            bz = bz,
+            baseY = maidanHillY(bx, bz) - 0.08f,
+            aaltharaRadius = b[2],
+            crownRadius = b[3],
+            treeHeight = b[4]
+        )
     }
-
-    // E. SWARAJ ROUND OUTER RING LANDMARKS (Paramekkavu Temple & Heritage Arcades with Pitched Kerala Roofs)
-    //    Strictly placed >= 16m outside ROAD_SWARAJ_ROUND and 100% clear of all radial roads & bellmouths!
-    addBoxFaces(faces, 72.5f, 0.06f, 14.0f, 73.4f, 2.60f, 34.0f, MatTerracottaTile, MatKeralaWhitewash, MatLateriteStone)
-    addBoxFaces(faces, 71.8f, 0.06f, 18.5f, 77.5f, 4.40f, 27.5f, MatTeakWoodCarved, MatKeralaWhitewash, MatKeralaCreamWall)
-    addPitchedKeralaRoof(faces, 70.8f, 78.5f, 17.5f, 28.5f, 4.25f, 6.80f, 1.4f, 1.4f, MatTerracottaTile)
-    addPitchedKeralaRoof(faces, 71.6f, 77.7f, 18.3f, 27.7f, 6.65f, 9.40f, 2.4f, 2.2f, MatTerracottaRoofDark)
-    addCylinderFrustumFaces(faces, 70.2f, 23.0f, 0.06f, 12.50f, 0.36f, 0.18f, MatTempleGold, sides = 8)
-
-    // NE Heritage Commercial Block (East of Shoranur Road at X=25 and North of Swaraj Round at Z=56)
-    addBoxFaces(faces, 44.0f, 0.06f, 72.0f, 64.0f, 8.40f, 82.0f, MatTerracottaRoofDark, MatCoffeeHouseRed, MatCoffeeHouseRed)
-    addPitchedKeralaRoof(faces, 43.2f, 64.8f, 71.2f, 82.8f, 8.25f, 10.60f, 3.2f, 3.8f, MatTerracottaTile)
-    // WNW Heritage Commercial Block (West of Swaraj Round at X=-52 and North of M.G. Road at Z=0)
-    addBoxFaces(faces, -76.5f, 0.06f, 16.0f, -66.0f, 8.20f, 38.0f, MatArcadeRoofSlate, MatArcadeCream, MatArcadeSandstone)
-    addPitchedKeralaRoof(faces, -77.2f, -65.3f, 15.3f, 38.7f, 8.10f, 10.10f, 4.2f, 3.5f, MatTerracottaTile)
-    // NW Heritage Commercial Block (West of Shoranur Road and North of Swaraj Round)
-    addBoxFaces(faces, -52.0f, 0.06f, 76.0f, -22.0f, 7.60f, 86.0f, MatTerracottaRoofDark, MatKeralaCreamWall, MatKeralaWhitewash)
-    addPitchedKeralaRoof(faces, -52.8f, -21.2f, 75.2f, 86.8f, 7.50f, 9.40f, 3.5f, 4.0f, MatTerracottaTile)
 
     if (swarajFrames != null) {
         cachedSwarajRoundFaces = faces
@@ -1076,7 +1318,7 @@ private fun addPerimeterCompoundWallSegment(
     maxX: Float,
     maxZ: Float,
     wallColor: Color = MatKeralaCreamWall,
-    pilasterColor: Color = MatTcrBrickArch,
+    pilasterColor: Color = MatLateriteStone,
     copingColor: Color = MatTerracottaTile
 ) {
     // Dressed Laterite Plinth Base (Y = 0.06m .. 0.45m)
@@ -1105,745 +1347,23 @@ private fun addPerimeterCompoundWallSegment(
 }
 
 // ============================================================================
-// 1B. ZONE 1.3: THRISSUR CENTRAL RAILWAY STATION (TCR) & EXPRESS TRAIN
-//     Strictly positioned at Z = -236.0m .. -68.0m, X = -68.0m .. -26.5m
-//     (More than 50m South of M.G. Road / ROAD_SWARAJ_TO_WEST_FORT and completely West of Station Road!)
+// 1B. ZONE 1.3: THRISSUR RAILWAY STATION
+//     Delegated to ThrissurRailwayStation3DModel.kt (X = -98.0..-64.0m, Z = -204.0..-62.0m)
 // ============================================================================
-
-private val MatTcrStuccoCream = Color(0xFFEAE4D7)
-private val MatTcrBrickArch = Color(0xFF991B1B)
-private val MatTcrLouverWood = Color(0xFF4A2C18)
-private val MatIrDarkBlue = Color(0xFF1E3A8A)
-private val MatIrCoachBlue = Color(0xFF1D4ED8)
-private val MatLhbCrimson = Color(0xFFB91C1C)
-private val MatLhbSilverBand = Color(0xFFCBD5E1)
-private val MatBallastBasalt = Color(0xFF334155)
-private val MatPscSleeper = Color(0xFF94A3B8)
-private val MatUic60SteelRail = Color(0xFFE2E8F0)
-private val MatWap7Cream = Color(0xFFF8FAFC)
-private val MatWap7Crimson = Color(0xFFDC2626)
 
 private fun DrawScope.drawThrissurRailwayStationGround(
     rig: CameraRig,
     path: Path,
     camEye: Vec3
 ) {
-    if (hypot(camEye.x - (-36f), camEye.z - (-130f)) > 390f) return
-
-    // 1. Expansive Station Forecourt Concrete Plaza (X = -37.8m..-26.5m, Z = -182.0m..-72.0m)
-    //    connecting flush with ROAD_STATION_ROAD (centered at X = -18.65m) through the open Forecourt Gate (Z = -152m..-108m)
-    if (rig.buildClippedQuadPath(
-            path,
-            Vec3(-37.8f, 0.058f, -182.0f),
-            Vec3(-26.5f, 0.058f, -182.0f),
-            Vec3(-26.5f, 0.058f, -72.0f),
-            Vec3(-37.8f, 0.058f, -72.0f)
-        )
-    ) {
-        drawPath(path, MatTerminalConcrete)
-    }
-    // Forecourt gate apron connecting compound gate (X = -26.5m) to Station Road edge (X = -18.6m) across Z = -152.0m..-108.0m
-    if (rig.buildClippedQuadPath(
-            path,
-            Vec3(-26.8f, 0.059f, -152.0f),
-            Vec3(-18.6f, 0.059f, -152.0f),
-            Vec3(-18.6f, 0.059f, -108.0f),
-            Vec3(-26.8f, 0.059f, -108.0f)
-        )
-    ) {
-        drawPath(path, Color(0xFF242A32))
-    }
-
-    // 2. Paved Granite Concourse Walkway Apron along the Station Verandah (X = -37.2m..-31.4m, Z = -176.0m..-78.0m)
-    if (rig.buildClippedQuadPath(
-            path,
-            Vec3(-37.2f, 0.060f, -176.0f),
-            Vec3(-31.4f, 0.060f, -176.0f),
-            Vec3(-31.4f, 0.060f, -78.0f),
-            Vec3(-37.2f, 0.060f, -78.0f)
-        )
-    ) {
-        drawPath(path, MatGranitePaving)
-    }
-
-    // 3. Hot-Mix Asphalt Porte-Cochère Drop-Off & Bus/Taxi Pick-Up Carriageway Loop (X = -31.4m..-26.8m, Z = -156.0m..-104.0m)
-    if (rig.buildClippedQuadPath(
-            path,
-            Vec3(-31.4f, 0.061f, -156.0f),
-            Vec3(-26.8f, 0.061f, -156.0f),
-            Vec3(-26.8f, 0.061f, -104.0f),
-            Vec3(-31.4f, 0.061f, -104.0f)
-        )
-    ) {
-        drawPath(path, Color(0xFF242A32))
-    }
-
-    // 4. Yellow Thermoplastic Drop-Off Lane Lines & Pedestrian Zebra Crossings in the Station Forecourt (Z = -150m..-110m)
-    if (hypot(camEye.x - (-29f), camEye.z - (-130f)) < 165f) {
-        for (laneX in floatArrayOf(-31.1f, -27.2f)) {
-            rig.projectSegmentClipped(
-                Vec3(laneX, 0.063f, -150.0f),
-                Vec3(laneX, 0.063f, -110.0f)
-            )?.let { seg ->
-                drawLine(MatRoadMarkingYellow, seg.first, seg.second, strokeWidth = 2.4f)
-            }
-        }
-        // Pedestrian Zebra Crossing Bars right in front of the Main Station Entrance Porch (Z = -130.0m)
-        var zx = -31.0f
-        while (zx <= -27.2f) {
-            if (rig.buildClippedQuadPath(
-                    path,
-                    Vec3(zx, 0.064f, -131.2f),
-                    Vec3(zx + 0.45f, 0.064f, -131.2f),
-                    Vec3(zx + 0.45f, 0.064f, -128.8f),
-                    Vec3(zx, 0.064f, -128.8f)
-                )
-            ) {
-                drawPath(path, MatRoadMarkingWhite)
-            }
-            zx += 0.90f
-        }
-    }
-
-    // 5. Basalt Ballast Bed strictly South of Z = -69.0m (Z = -236.0m .. -69.0m, 100% clear of M.G. Road!)
-    if (rig.buildClippedQuadPath(
-            path,
-            Vec3(-67.0f, 0.060f, -236.0f),
-            Vec3(-47.5f, 0.060f, -236.0f),
-            Vec3(-47.5f, 0.060f, -69.0f),
-            Vec3(-67.0f, 0.060f, -69.0f)
-        )
-    ) {
-        drawPath(path, MatBallastBasalt)
-    }
-
-    // 6. Broad-Gauge UIC-60 Steel Rails (1.676m gauge) on Prestressed Concrete (PSC) Sleepers (Z = -235.0m .. -69.5m)
-    for (trackCenterX in floatArrayOf(-53.0f, -60.0f)) {
-        if (hypot(camEye.x - trackCenterX, camEye.z - (-145f)) < 185f) {
-            var sz = -234.0f
-            while (sz <= -70.0f) {
-                rig.projectSegmentClipped(
-                    Vec3(trackCenterX - 1.35f, 0.063f, sz),
-                    Vec3(trackCenterX + 1.35f, 0.063f, sz)
-                )?.let { seg ->
-                    drawLine(MatPscSleeper, seg.first, seg.second, strokeWidth = 2.0f)
-                }
-                sz += 2.2f
-            }
-        }
-        for (railOff in floatArrayOf(-0.84f, 0.84f)) {
-            rig.projectSegmentClipped(
-                Vec3(trackCenterX + railOff, 0.066f, -235.5f),
-                Vec3(trackCenterX + railOff, 0.066f, -69.5f)
-            )?.let { seg ->
-                drawLine(MatUic60SteelRail, seg.first, seg.second, strokeWidth = 2.6f)
-            }
-        }
-    }
+    drawThrissurModernStationYard(rig, path, camEye)
 }
-
-/**
- * Builds a sculpted 3D Indian Railways WAP-7 Electric Locomotive (Royapuram/Erode Livery)
- * with tapered aerodynamic cab noses, 5-panel cambered roof crown, Co-Co 6-axle bogies with 3D wheelsets,
- * cowcatcher, wrap-around windshields, and raised double-arm diamond pantograph.
- */
-private fun addSculptedWap7Locomotive3D(
-    faces: MutableList<QuadFace3D>,
-    cx: Float,
-    zRear: Float,
-    zFront: Float
-) {
-    val hw = 1.58f
-    val noseLen = 1.45f
-    val zBody0 = zRear + noseLen
-    val zBody1 = zFront - noseLen
-
-    // 1. Twin Co-Co 3-Axle Heavy Bogies & 6 Wheelsets with Primary Springs (Y = 0.08m .. 1.15m)
-    for (bogieZ in floatArrayOf(zRear + 4.2f, zFront - 4.2f)) {
-        addBoxFaces(faces, cx - 1.36f, 0.36f, bogieZ - 2.6f, cx + 1.36f, 1.12f, bogieZ + 2.6f, MatCastIronBollard, MatCastIronBollard)
-        for (axleOff in floatArrayOf(-1.85f, 0f, 1.85f)) {
-            val az = bogieZ + axleOff
-            for (wx in floatArrayOf(cx - 1.42f, cx + 1.42f)) {
-                addBoxFaces(faces, wx - 0.08f, 0.08f, az - 0.52f, wx + 0.08f, 1.04f, az + 0.52f, MatGraniteDark, Color(0xFF111827))
-            }
-        }
-    }
-    // Underframe main transformer & air reservoirs between bogies
-    addBoxFaces(faces, cx - 1.28f, 0.42f, zRear + 6.8f, cx + 1.28f, 1.15f, zFront - 6.8f, MatGraniteDark, MatCastIronBollard)
-
-    // 2. Front & Rear Slanted Sloped Steel Cowcatchers (Cattle Guards) & Buffer Beams with Yellow Hazard Chevrons
-    faces.add(QuadFace3D(Vec3(cx - 1.48f, 0.22f, zFront + 0.35f), Vec3(cx + 1.48f, 0.22f, zFront + 0.35f), Vec3(cx + 1.54f, 0.88f, zFront), Vec3(cx - 1.54f, 0.88f, zFront), MatWap7Crimson))
-    faces.add(QuadFace3D(Vec3(cx + 1.48f, 0.22f, zRear - 0.35f), Vec3(cx - 1.48f, 0.22f, zRear - 0.35f), Vec3(cx - 1.54f, 0.88f, zRear), Vec3(cx + 1.54f, 0.88f, zRear), MatWap7Crimson))
-    addBoxFaces(faces, cx - 1.56f, 0.88f, zFront - 0.25f, cx + 1.56f, 1.22f, zFront + 0.12f, MatRoadMarkingYellow, MatWap7Crimson)
-    addBoxFaces(faces, cx - 1.56f, 0.88f, zRear - 0.12f, cx + 1.56f, 1.22f, zRear + 0.25f, MatRoadMarkingYellow, MatWap7Crimson)
-
-    // 3. Main Sculpted Locomotive Body Shell (Z = zBody0 .. zBody1) with Royapuram/Erode White-Cream & Bold Crimson Waist Band
-    addBoxFaces(faces, cx - hw, 1.15f, zBody0, cx + hw, 1.82f, zBody1, MatWap7Cream, MatWap7Cream)
-    addBoxFaces(faces, cx - hw - 0.02f, 1.82f, zBody0, cx + hw + 0.02f, 2.52f, zBody1, MatWap7Crimson, MatWap7Crimson)
-    addBoxFaces(faces, cx - hw, 2.52f, zBody0, cx + hw, 3.72f, zBody1, MatWap7Cream, MatWap7Cream)
-
-    // Side machine-room cooling grille louvers & porthole windows along both flanks
-    var gz = zBody0 + 1.8f
-    while (gz <= zBody1 - 1.8f) {
-        addBoxFaces(faces, cx - hw - 0.03f, 2.68f, gz - 0.55f, cx + hw + 0.03f, 3.32f, gz + 0.55f, MatGraniteDark, MatArcadeGlass)
-        gz += 2.4f
-    }
-
-    // 4. Tapered Aerodynamic Front & Rear Cab Noses with Recessed Twin Windshields & Twin Projector Headlamps
-    val noseW = hw * 0.84f
-    // Front tapered lower nose (Y = 1.15m .. 2.52m, Z = zBody1 .. zFront)
-    faces.add(QuadFace3D(Vec3(cx - noseW, 1.15f, zFront), Vec3(cx + noseW, 1.15f, zFront), Vec3(cx + noseW, 2.52f, zFront), Vec3(cx - noseW, 2.52f, zFront), MatWap7Crimson))
-    faces.add(QuadFace3D(Vec3(cx + hw, 1.15f, zBody1), Vec3(cx + noseW, 1.15f, zFront), Vec3(cx + noseW, 2.52f, zFront), Vec3(cx + hw, 2.52f, zBody1), MatWap7Cream))
-    faces.add(QuadFace3D(Vec3(cx - noseW, 1.15f, zFront), Vec3(cx - hw, 1.15f, zBody1), Vec3(cx - hw, 2.52f, zBody1), Vec3(cx - noseW, 2.52f, zFront), MatWap7Cream))
-    // Front raked upper cab & twin windshields (Y = 2.52m .. 3.72m)
-    faces.add(QuadFace3D(Vec3(cx - noseW, 2.52f, zFront), Vec3(cx + noseW, 2.52f, zFront), Vec3(cx + hw * 0.88f, 3.72f, zBody1 + 0.35f), Vec3(cx - hw * 0.88f, 3.72f, zBody1 + 0.35f), MatWap7Cream))
-    for (winSide in floatArrayOf(-0.62f, 0.62f)) {
-        faces.add(
-            QuadFace3D(
-                Vec3(cx + winSide - 0.46f, 2.68f, zFront - 0.14f),
-                Vec3(cx + winSide + 0.46f, 2.68f, zFront - 0.14f),
-                Vec3(cx + winSide + 0.44f, 3.46f, zBody1 + 0.48f),
-                Vec3(cx + winSide - 0.44f, 3.46f, zBody1 + 0.48f),
-                MatArcadeGlass, biasDist = -0.05f
-            )
-        )
-    }
-    // Illuminated twin front halogen headlamps + top marker light
-    for (hlX in floatArrayOf(-0.82f, 0.82f)) {
-        addBoxFaces(faces, cx + hlX - 0.22f, 1.92f, zFront - 0.04f, cx + hlX + 0.22f, 2.18f, zFront + 0.06f, Color(0xFFFEF08A), Color(0xFFFFFBEB))
-    }
-
-    // Rear tapered cab nose (Z = zRear .. zBody0)
-    faces.add(QuadFace3D(Vec3(cx + noseW, 1.15f, zRear), Vec3(cx - noseW, 1.15f, zRear), Vec3(cx - noseW, 2.52f, zRear), Vec3(cx + noseW, 2.52f, zRear), MatWap7Crimson))
-    faces.add(QuadFace3D(Vec3(cx + noseW, 2.52f, zRear), Vec3(cx - noseW, 2.52f, zRear), Vec3(cx - hw * 0.88f, 3.72f, zBody0 - 0.35f), Vec3(cx + hw * 0.88f, 3.72f, zBody0 - 0.35f), MatWap7Cream))
-
-    // 5. 3-Strip Cambered Roof Crown (Y = 3.72m .. 4.18m) & High-Voltage Raised Double-Arm Diamond Pantograph
-    addArchedCanopyRoofFaces(faces, cx - hw, cx + hw, zBody0, zBody1, 3.72f, 0.44f, MatGraniteDark, MatGraniteDark, archAlongX = true)
-    // Raised front pantograph at zFront - 3.6m touching the 25kV contact wire at Y = 5.95m
-    val pantoZ = zFront - 3.8f
-    addBoxFaces(faces, cx - 0.75f, 4.12f, pantoZ - 0.85f, cx + 0.75f, 4.32f, pantoZ + 0.85f, MatGraniteLight, MatWap7Crimson)
-    faces.add(QuadFace3D(Vec3(cx - 0.55f, 4.32f, pantoZ), Vec3(cx + 0.55f, 4.32f, pantoZ), Vec3(cx + 0.35f, 5.15f, pantoZ - 0.95f), Vec3(cx - 0.35f, 5.15f, pantoZ - 0.95f), MatWap7Crimson))
-    faces.add(QuadFace3D(Vec3(cx - 0.35f, 5.15f, pantoZ - 0.95f), Vec3(cx + 0.35f, 5.15f, pantoZ - 0.95f), Vec3(cx + 0.65f, 5.95f, pantoZ), Vec3(cx - 0.65f, 5.95f, pantoZ), MatWap7Crimson))
-    addBoxFaces(faces, cx - 0.95f, 5.90f, pantoZ - 0.18f, cx + 0.95f, 5.98f, pantoZ + 0.18f, MatUic60SteelRail, MatUic60SteelRail)
-}
-
-/**
- * Builds a sculpted full-scale Indian Railways Express Passenger Coach (with curved tumblehome lower skirt,
- * cambered arched corrugated roof, rooftop AC condenser pods, 8 individual recessed solar-glass windows per side,
- * recessed end boarding doors, twin Fiat/ICF bogies with wheelsets, and flexible black vestibule gangway bellows).
- */
-private fun addSculptedExpressCoach3D(
-    faces: MutableList<QuadFace3D>,
-    cx: Float,
-    z0: Float,
-    z1: Float,
-    isLhbLivery: Boolean
-) {
-    val hw = 1.56f
-    val bodyCol = if (isLhbLivery) MatLhbCrimson else MatIrCoachBlue
-    val upperCol = if (isLhbLivery) MatLhbSilverBand else MatIrDarkBlue
-    val stripeCol = if (isLhbLivery) MatWap7Cream else MatRoadMarkingYellow
-
-    // 1. Twin 2-Axle Fiat/ICF Bogies with Wheelsets & Underframe Battery/Air-Brake Cylinders
-    for (bogieZ in floatArrayOf(z0 + 2.8f, z1 - 2.8f)) {
-        addBoxFaces(faces, cx - 1.32f, 0.32f, bogieZ - 1.55f, cx + 1.32f, 1.08f, bogieZ + 1.55f, MatCastIronBollard, MatCastIronBollard)
-        for (axOff in floatArrayOf(-1.05f, 1.05f)) {
-            for (wx in floatArrayOf(cx - 1.38f, cx + 1.38f)) {
-                addBoxFaces(faces, wx - 0.08f, 0.08f, bogieZ + axOff - 0.46f, wx + 0.08f, 0.96f, bogieZ + axOff + 0.46f, MatGraniteDark, Color(0xFF111827))
-            }
-        }
-    }
-    addBoxFaces(faces, cx - 1.15f, 0.48f, z0 + 4.8f, cx + 1.15f, 1.08f, z1 - 4.8f, MatCastIronBollard, MatGraniteDark)
-
-    // 2. Sculpted Multi-Tier Coach Body Shell (Lower Skirt -> Waist Band -> Window Belt -> Cantrail)
-    addBoxFaces(faces, cx - hw * 0.92f, 0.92f, z0, cx + hw * 0.92f, 1.18f, z1, MatGraniteDark, MatCastIronBollard)
-    addBoxFaces(faces, cx - hw, 1.18f, z0, cx + hw, 2.22f, z1, bodyCol, bodyCol)
-    addBoxFaces(faces, cx - hw - 0.015f, 2.22f, z0, cx + hw + 0.015f, 2.40f, z1, stripeCol, stripeCol)
-    addBoxFaces(faces, cx - hw, 2.40f, z0, cx + hw, 3.48f, z1, upperCol, upperCol)
-    addBoxFaces(faces, cx - hw - 0.015f, 3.48f, z0, cx + hw + 0.015f, 3.62f, z1, stripeCol, stripeCol)
-
-    // 3. 8 Individual Recessed Tinted Solar-Glass Windows per Side + End Boarding Doors
-    val winStart = z0 + 1.9f
-    val winEnd = z1 - 1.9f
-    val winStep = (winEnd - winStart) / 7f
-    for (wIdx in 0..7) {
-        val wz = winStart + wIdx * winStep
-        addBoxFaces(
-            faces,
-            cx - hw - 0.03f, 2.52f, wz - 0.56f,
-            cx + hw + 0.03f, 3.26f, wz + 0.56f,
-            topCol = MatUic60SteelRail,
-            sideCol = MatArcadeGlass,
-            frontBackCol = MatArcadeGlass
-        )
-    }
-    // End boarding doors with footsteps at z0 + 0.75m and z1 - 0.75m
-    for (dz in floatArrayOf(z0 + 0.72f, z1 - 0.72f)) {
-        addBoxFaces(faces, cx - hw - 0.02f, 1.18f, dz - 0.42f, cx + hw + 0.02f, 3.38f, dz + 0.42f, MatGraniteDark, Color(0xFF0F172A))
-    }
-
-    // 4. Cambered Arched Corrugated Coach Roof (Y = 3.62m .. 4.08m) + Rooftop AC Condenser Pods
-    addArchedCanopyRoofFaces(faces, cx - hw, cx + hw, z0, z1, 3.62f, 0.42f, MatGranitePaving, MatGraniteDark, archAlongX = true)
-    for (acZ in floatArrayOf(z0 + 3.5f, z1 - 3.5f)) {
-        addBoxFaces(faces, cx - 0.92f, 3.98f, acZ - 1.4f, cx + 0.92f, 4.18f, acZ + 1.4f, MatGraniteLight, MatGranitePaving)
-    }
-
-    // 5. Flexible Black Accordion Vestibule Gangway Bellows at Coach End (z0 - 0.55m .. z0)
-    addBoxFaces(faces, cx - 0.95f, 1.25f, z0 - 0.58f, cx + 0.95f, 3.55f, z0 + 0.05f, MatHazardBlack, MatHazardBlack)
-}
-
-private var cachedTcrStationFaces: List<QuadFace3D>? = null
 
 private fun collectThrissurRailwayStationFaces(
     camEye: Vec3,
     outFaces: MutableList<QuadFace3D>
 ) {
-    val dx = camEye.x - (-36f)
-    val dz = camEye.z - (-130f)
-    if (dx * dx + dz * dz > 280f * 280f) return
-
-    val existing = cachedTcrStationFaces
-    if (existing != null) {
-        outFaces.addAll(existing)
-        return
-    }
-
-    val built = ArrayList<QuadFace3D>(4600)
-
-    // =========================================================================
-    // 0. HERITAGE PERIMETER COMPOUND WALL ENCLOSING THRISSUR RAILWAY STATION
-    //    (X = -68.0m..-26.5m, Z = -236.0m..-68.5m — 100% South of M.G. Road & West of Station Road!)
-    //    With wide 44m Forecourt Entrance/Exit Opening at Z = -152.0m..-108.0m!
-    // =========================================================================
-    // North Compound Wall at Z = -68.5m (X = -68.0m .. -26.5m)
-    addPerimeterCompoundWallSegment(built, -68.0f, -69.1f, -26.5f, -68.4f, MatTcrStuccoCream, MatTcrBrickArch, MatTerracottaTile)
-    // South Compound Wall at Z = -236.0m (X = -68.0m .. -26.5m)
-    addPerimeterCompoundWallSegment(built, -68.0f, -236.4f, -26.5f, -235.7f, MatTcrStuccoCream, MatTcrBrickArch, MatTerracottaTile)
-    // West Compound Wall behind Platform 2 at X = -68.0m (Z = -236.0m .. -68.5m)
-    addPerimeterCompoundWallSegment(built, -68.4f, -236.0f, -67.7f, -68.5f, MatTcrStuccoCream, MatTcrBrickArch, MatTerracottaTile)
-    // East Roadside Compound Wall along Station Road at X = -26.5m:
-    // South section (Z = -236.0m .. -152.0m) & North section (Z = -108.0m .. -68.5m), plus Central Divider Pier (Z = -133.0m .. -127.0m)
-    // leaving South Forecourt ENTRY Gate (Z = -152.0m .. -133.0m, 19m wide!) & North Forecourt EXIT Gate (Z = -127.0m .. -108.0f, 19m wide!)
-    addPerimeterCompoundWallSegment(built, -26.8f, -236.0f, -26.1f, -152.0f, MatTcrStuccoCream, MatTcrBrickArch, MatTerracottaTile)
-    addPerimeterCompoundWallSegment(built, -26.8f, -133.0f, -26.1f, -127.0f, MatTcrStuccoCream, MatTcrBrickArch, MatTerracottaTile)
-    addPerimeterCompoundWallSegment(built, -26.8f, -108.0f, -26.1f, -68.5f, MatTcrStuccoCream, MatTcrBrickArch, MatTerracottaTile)
-
-    // Ornate Masonry Gate Pillars at the Station Forecourt Entry & Exit Gates (X = -26.45m)
-    for (gateZ in floatArrayOf(-152.0f, -133.0f, -127.0f, -108.0f)) {
-        addBoxFaces(built, -27.15f, 0.06f, gateZ - 0.65f, -25.75f, 1.10f, gateZ + 0.65f, MatGranitePaving, MatLateriteDark)
-        addBoxFaces(built, -26.95f, 1.10f, gateZ - 0.52f, -25.95f, 6.80f, gateZ + 0.52f, MatKeralaWhitewash, MatTcrBrickArch, MatTcrStuccoCream)
-        addPitchedKeralaRoof(built, -27.25f, -25.65f, gateZ - 0.85f, gateZ + 0.85f, 6.75f, 7.75f, 0.65f, 0.65f, MatTerracottaTile, MatTeakWoodCarved)
-    }
-
-    // =========================================================================
-    // 1. ARCHITECTURAL SHOWPIECE: THRISSUR CENTRAL RAILWAY STATION (TCR)
-    //    Indo-Saracenic & Kerala-Colonial Two-Storey Main Terminal Building
-    //    (X = -45.8m..-36.6m, Z = -175.0m..-85.0m, centered at Z = -130.0m)
-    // =========================================================================
-
-    // A. Stepped Dressed Granite & Laterite Plinth Base (Y = 0.06m .. 0.68m) + Grand Entrance Steps
-    addBoxFaces(built, -46.2f, 0.06f, -176.0f, -36.2f, 0.68f, -84.0f, MatGranitePaving, MatLateriteDark, MatGraniteDark)
-    // Wide granite entrance steps under the Central Porte-Cochère (Z = -138.5m .. -121.5m)
-    addBoxFaces(built, -36.2f, 0.06f, -138.5f, -34.2f, 0.26f, -121.5f, MatPromenadeTile, MatGraniteDark)
-    addBoxFaces(built, -36.2f, 0.26f, -137.5f, -35.0f, 0.48f, -122.5f, MatPromenadeTile, MatGraniteDark)
-
-    // B. Main Two-Storey Station Concourse Core Block (X = -45.8m .. -37.0m, Y = 0.68m .. 7.15m)
-    addBoxFaces(built, -45.8f, 0.68f, -175.0f, -37.0f, 4.10f, -85.0f, MatTerracottaRoofDark, MatTcrStuccoCream, MatTcrStuccoCream)
-    // Projecting Mid-Level Cornice & Sun-Breaker Chajja (Y = 4.10m .. 4.48m)
-    addBoxFaces(built, -46.1f, 4.10f, -175.6f, -36.3f, 4.48f, -84.4f, MatTcrBrickArch, MatKeralaWhitewash, MatTcrBrickArch)
-    // First-Floor Heritage Gallery Core (Y = 4.48m .. 7.15m)
-    addBoxFaces(built, -45.8f, 4.48f, -175.0f, -37.0f, 7.15f, -85.0f, MatTerracottaRoofDark, MatTcrStuccoCream, MatTcrStuccoCream)
-    // Upper Roofline Cornice Frieze (Y = 7.00m .. 7.28m)
-    addBoxFaces(built, -46.1f, 7.00f, -175.6f, -36.4f, 7.28f, -84.4f, MatTcrBrickArch, MatKeralaWhitewash, MatTcrBrickArch)
-
-    // C. Deep Ground-Floor Colonial Arched Verandah Colonnade & First-Floor Louvered Arched Windows (13 Bays)
-    var archZ = -166.0f
-    while (archZ <= -94.0f) {
-        val isPorteBay = archZ in -138.0f..-122.0f
-        // Twin-fluted octagonal colonial columns with granite plinths and cream capitals along X = -36.65m
-        addCylinderFrustumFaces(built, -36.65f, archZ - 2.7f, 0.68f, 1.18f, 0.36f, 0.30f, MatTcrBrickArch, sides = 8)
-        addCylinderFrustumFaces(built, -36.65f, archZ - 2.7f, 1.18f, 3.45f, 0.28f, 0.25f, MatKeralaWhitewash, sides = 8)
-        addCylinderFrustumFaces(built, -36.65f, archZ - 2.7f, 3.45f, 3.85f, 0.26f, 0.38f, MatTcrBrickArch, sides = 8)
-
-        // Ground-floor red-brick arch spandrel + contrasting white keystone block at arch crown
-        addBoxFaces(built, -37.12f, 3.35f, archZ - 2.7f, -36.50f, 4.10f, archZ + 2.7f, MatTcrBrickArch, MatTcrBrickArch)
-        addBoxFaces(built, -37.16f, 3.25f, archZ - 0.32f, -36.42f, 4.14f, archZ + 0.32f, MatKeralaWhitewash, MatKeralaWhitewash)
-
-        // Ground-floor recessed glazed ticket hall / waiting room windows & teakwood arched doorways
-        val gfCol = if (isPorteBay) MatTeakWoodDeep else MatArcadeGlass
-        addBoxFaces(built, -37.08f, 0.95f, archZ - 1.65f, -36.82f, 3.25f, archZ + 1.65f, MatTcrBrickArch, gfCol)
-        if (!isPorteBay) {
-            addBoxFaces(built, -36.80f, 0.68f, archZ - 2.15f, -36.52f, 1.38f, archZ + 2.15f, MatKeralaWhitewash, MatTcrBrickArch)
-        }
-
-        // First-floor arched window surround in exposed red brick + teakwood louvers + white keystone
-        addBoxFaces(built, -37.15f, 4.78f, archZ - 1.35f, -36.72f, 6.68f, archZ + 1.35f, MatTcrBrickArch, MatTcrBrickArch)
-        addBoxFaces(built, -37.18f, 4.92f, archZ - 1.05f, -36.68f, 6.45f, archZ + 1.05f, MatTeakWoodCarved, MatTcrLouverWood)
-        addBoxFaces(built, -37.20f, 6.38f, archZ - 0.28f, -36.62f, 6.78f, archZ + 0.28f, MatKeralaWhitewash, MatKeralaWhitewash)
-        addBoxFaces(built, -37.14f, 4.48f, archZ - 2.85f, -36.68f, 7.00f, archZ - 2.35f, MatKeralaWhitewash, MatKeralaWhitewash)
-
-        archZ += 6.0f
-    }
-
-    // D. Symmetric Projecting South & North Heritage Gable Wing Pavilions (Z = -175.5m..-163.5m and Z = -96.5m..-84.5m)
-    for ((wZ0, wZ1) in arrayOf(Pair(-175.5f, -163.5f), Pair(-96.5f, -84.5f))) {
-        val wMidZ = (wZ0 + wZ1) * 0.5f
-        addBoxFaces(built, -46.0f, 0.68f, wZ0, -35.2f, 7.45f, wZ1, MatTerracottaRoofDark, MatTcrStuccoCream, MatTcrStuccoCream)
-        for (pz in floatArrayOf(wZ0 + 0.45f, wZ1 - 0.45f)) {
-            addBoxFaces(built, -35.6f, 0.68f, pz - 0.45f, -34.95f, 7.45f, pz + 0.45f, MatTcrBrickArch, MatTcrBrickArch)
-        }
-        for (wzOff in floatArrayOf(-3.2f, 0f, 3.2f)) {
-            addBoxFaces(built, -35.35f, 1.15f, wMidZ + wzOff - 0.95f, -34.98f, 3.65f, wMidZ + wzOff + 0.95f, MatTcrBrickArch, MatArcadeGlass)
-            addBoxFaces(built, -35.35f, 4.75f, wMidZ + wzOff - 0.95f, -34.98f, 6.75f, wMidZ + wzOff + 0.95f, MatTcrBrickArch, MatTcrLouverWood)
-        }
-        addPitchedKeralaRoof(built, -46.5f, -34.4f, wZ0 - 0.6f, wZ1 + 0.6f, 7.35f, 10.35f, 0.8f, 4.2f, MatTerracottaTile, MatTeakWoodCarved)
-    }
-
-    // E. Main Multi-Slope Mangalore-Tiled Station Roof (Y = 7.15m .. 9.85m) + Decorative Roof Dormers
-    addPitchedKeralaRoof(built, -46.5f, -36.0f, -175.5f, -84.5f, 7.15f, 9.85f, 3.6f, 4.2f, MatTerracottaTile, MatTcrLouverWood)
-    for (dormerZ in floatArrayOf(-153.0f, -144.0f, -116.0f, -107.0f)) {
-        addPitchedKeralaRoof(built, -38.8f, -35.8f, dormerZ - 2.4f, dormerZ + 2.4f, 7.25f, 8.95f, 0.3f, 1.8f, MatTerracottaRoofDark, MatTeakWoodCarved)
-    }
-
-    // F. Grand Double-Height Central Porte-Cochère Arrival Porch (X = -37.0m..-30.6m, Z = -141.0m..-119.0m)
-    //    Columns stand on the raised granite verandah apron (X = -31.8m) so the asphalt drop-off lane (X = -31.4m..-26.8m) is 100% obstacle-free!
-    for (pz in floatArrayOf(-139.2f, -133.2f, -126.8f, -120.8f)) {
-        addBoxFaces(built, -32.35f, 0.06f, pz - 0.65f, -31.35f, 0.88f, pz + 0.65f, MatGranitePaving, MatLateriteDark)
-        addCylinderFrustumFaces(built, -31.85f, pz, 0.88f, 5.08f, 0.38f, 0.32f, MatKeralaWhitewash, sides = 8)
-        addCylinderFrustumFaces(built, -31.85f, pz, 4.75f, 5.12f, 0.44f, 0.48f, MatTcrBrickArch, sides = 8)
-    }
-    addBoxFaces(built, -37.0f, 4.82f, -141.0f, -28.6f, 5.08f, -119.0f, MatTerracottaTile, MatTcrStuccoCream, MatTcrBrickArch)
-    addBoxFaces(built, -37.0f, 6.40f, -141.0f, -28.6f, 6.56f, -119.0f, MatTerracottaTile, MatTcrBrickArch, MatTcrBrickArch)
-    addPitchedKeralaRoof(built, -37.2f, -28.0f, -141.8f, -118.2f, 6.48f, 8.55f, 1.2f, 3.4f, MatTerracottaTile, MatTeakWoodCarved)
-    addPitchedKeralaRoof(built, -33.5f, -27.8f, -133.8f, -126.2f, 7.10f, 9.25f, 0.25f, 3.1f, MatTerracottaRoofDark, MatTempleGoldDeep)
-
-    // G. 19-Meter Multi-Stage Heritage Station Clock Tower (X = -40.2m, Z = -130.0m, Y = 8.80m .. 19.20m)
-    //    with 4 Working Analog Clock Dials on East, West, South & North Faces!
-    val ctX = -40.2f
-    val ctZ = -130.0f
-    addBoxFaces(built, ctX - 2.65f, 8.80f, ctZ - 2.65f, ctX + 2.65f, 12.00f, ctZ + 2.65f, MatTcrBrickArch, MatTcrBrickArch, MatTcrBrickArch)
-    addBoxFaces(built, ctX - 2.85f, 12.00f, ctZ - 2.85f, ctX + 2.85f, 12.42f, ctZ + 2.85f, MatKeralaWhitewash, MatKeralaWhitewash, MatKeralaWhitewash)
-    addBoxFaces(built, ctX - 2.35f, 12.42f, ctZ - 2.35f, ctX + 2.35f, 15.10f, ctZ + 2.35f, MatTcrBrickArch, MatTcrStuccoCream, MatTcrStuccoCream)
-    addBoxFaces(built, ctX - 2.65f, 15.10f, ctZ - 2.65f, ctX + 2.65f, 15.45f, ctZ + 2.65f, MatKeralaWhitewash, MatKeralaWhitewash, MatKeralaWhitewash)
-    val tcrClockDialSpec = createClockDialSignSpec("TCR_CLOCK_TOWER_DIAL", 0xFF991B1B.toInt())
-    // East Clock Dial (+X, facing Station Road & M.O. Road)
-    built.add(
-        QuadFace3D(
-            Vec3(ctX + 2.42f, 12.75f, ctZ + 1.00f),
-            Vec3(ctX + 2.42f, 12.75f, ctZ - 1.00f),
-            Vec3(ctX + 2.42f, 14.75f, ctZ - 1.00f),
-            Vec3(ctX + 2.42f, 14.75f, ctZ + 1.00f),
-            baseColor = MatTcrBrickArch,
-            biasDist = -1.50f,
-            signboard = tcrClockDialSpec
-        )
-    )
-    // West Clock Dial (-X, facing Platforms 1 & 2)
-    built.add(
-        QuadFace3D(
-            Vec3(ctX - 2.42f, 12.75f, ctZ - 1.00f),
-            Vec3(ctX - 2.42f, 12.75f, ctZ + 1.00f),
-            Vec3(ctX - 2.42f, 14.75f, ctZ + 1.00f),
-            Vec3(ctX - 2.42f, 14.75f, ctZ - 1.00f),
-            baseColor = MatTcrBrickArch,
-            biasDist = -1.50f,
-            signboard = tcrClockDialSpec
-        )
-    )
-    // South Clock Dial (-Z, facing Sakthan Stand / South Approach)
-    built.add(
-        QuadFace3D(
-            Vec3(ctX - 1.00f, 12.75f, ctZ - 2.42f),
-            Vec3(ctX + 1.00f, 12.75f, ctZ - 2.42f),
-            Vec3(ctX + 1.00f, 14.75f, ctZ - 2.42f),
-            Vec3(ctX - 1.00f, 14.75f, ctZ - 2.42f),
-            baseColor = MatTcrBrickArch,
-            biasDist = -1.50f,
-            signboard = tcrClockDialSpec
-        )
-    )
-    // North Clock Dial (+Z, facing Swaraj Round / North Approach)
-    built.add(
-        QuadFace3D(
-            Vec3(ctX + 1.00f, 12.75f, ctZ + 2.42f),
-            Vec3(ctX - 1.00f, 12.75f, ctZ + 2.42f),
-            Vec3(ctX - 1.00f, 14.75f, ctZ + 2.42f),
-            Vec3(ctX + 1.00f, 14.75f, ctZ + 2.42f),
-            baseColor = MatTcrBrickArch,
-            biasDist = -1.50f,
-            signboard = tcrClockDialSpec
-        )
-    )
-    addPitchedKeralaRoof(built, ctX - 3.05f, ctX + 3.05f, ctZ - 3.05f, ctZ + 3.05f, 15.42f, 17.95f, 2.75f, 2.75f, MatTerracottaTile, MatTeakWoodCarved)
-    addCylinderFrustumFaces(built, ctX, ctZ, 17.90f, 19.25f, 0.22f, 0.04f, MatTempleGold, sides = 8)
-
-    // =========================================================================
-    // 1B-EXT. HIGH-VISIBILITY EXTERIOR 3D RAILWAY STATION BOARDS (INDIAN RAILWAYS BLUE/GOLD THEME)
-    //         Distinct Royal Navy Blue (#1E3A8A), Mustard Gold (#FACC15) & Crimson (#991B1B) with "IR" Seal!
-    // =========================================================================
-
-    // BOARD 1: Massive 38-Meter Rooftop Sky-Fascia 3D Signboard crowning the Main Station Roof
-    //          (X = -36.15f, Y = 9.55m .. 11.75m, Z = -149.0m .. -111.0m)
-    for (trussZ in floatArrayOf(-147.0f, -139.0f, -121.0f, -113.0f)) {
-        addBoxFaces(built, -37.2f, 8.60f, trussZ - 0.18f, -36.35f, 9.55f, trussZ + 0.18f, MatGraniteDark, MatGraniteLight)
-    }
-    val tcrSkyRoofSign = createIndianRailwaysStationSignSpec(
-        cacheKey = "TCR_ROOFTOP_SKY_FASCIA_3D_SIGN_V3",
-        bgColorInt = 0xFF1E3A8A.toInt(),
-        borderColorInt = 0xFFFACC15.toInt(),
-        accentBandColorInt = 0xFF991B1B.toInt(),
-        malTitle = "തൃശ്ശൂർ റെയിൽവേ സ്റ്റേഷൻ",
-        engTitle = "THRISSUR RAILWAY STATION • त्रिशूर",
-        subTitle = "ദക്ഷിണ റെയിൽവേ • SOUTHERN RAILWAY — STATION CODE: TCR • SEC-01",
-        titleColorInt = android.graphics.Color.WHITE,
-        subColorInt = 0xFFFACC15.toInt(),
-        isDoubleSided = true,
-        bmpWidth = 1024,
-        bmpHeight = 240,
-        badgeLabel = "IR",
-        badgeBgColorInt = 0xFFB91C1C.toInt()
-    )
-    built.add(
-        QuadFace3D(
-            Vec3(-36.15f, 9.55f, -111.0f),
-            Vec3(-36.15f, 9.55f, -149.0f),
-            Vec3(-36.15f, 11.75f, -149.0f),
-            Vec3(-36.15f, 11.75f, -111.0f),
-            baseColor = MatIrDarkBlue,
-            biasDist = -2.20f,
-            signboard = tcrSkyRoofSign
-        )
-    )
-
-    // BOARD 2: 3-Sided Porte-Cochère Drop-Off Canopy Fascia Signboards (East, South & North Faces!)
-    val tcrPorteFrontSign = createIndianRailwaysStationSignSpec(
-        cacheKey = "TCR_PORTE_COCHERE_EAST_SIGN_V3",
-        bgColorInt = 0xFF1E3A8A.toInt(),
-        borderColorInt = 0xFFFACC15.toInt(),
-        accentBandColorInt = 0xFF0F172A.toInt(),
-        malTitle = "തൃശ്ശൂർ  •  THRISSUR  •  त्रिशूर",
-        engTitle = "THRISSUR CENTRAL RAILWAY STATION (TCR)",
-        subTitle = "MAIN ENTRANCE • TICKET CONCOURSE • PLATFORMS 1 - 4 • SEC-01",
-        titleColorInt = 0xFFFACC15.toInt(),
-        subColorInt = android.graphics.Color.WHITE,
-        isDoubleSided = true,
-        bmpWidth = 960,
-        bmpHeight = 220,
-        badgeLabel = "IR",
-        badgeBgColorInt = 0xFFB91C1C.toInt()
-    )
-    // East Face of Porte-Cochère (+X, facing Station Road & M.O. Road)
-    built.add(
-        QuadFace3D(
-            Vec3(-28.42f, 5.08f, -119.6f),
-            Vec3(-28.42f, 5.08f, -140.4f),
-            Vec3(-28.42f, 6.42f, -140.4f),
-            Vec3(-28.42f, 6.42f, -119.6f),
-            baseColor = MatIrDarkBlue,
-            biasDist = -2.20f,
-            signboard = tcrPorteFrontSign
-        )
-    )
-    val tcrPorteSideSign = createIndianRailwaysStationSignSpec(
-        cacheKey = "TCR_PORTE_COCHERE_SIDE_SIGN_V3",
-        bgColorInt = 0xFF1E3A8A.toInt(),
-        borderColorInt = 0xFFFACC15.toInt(),
-        accentBandColorInt = 0xFF991B1B.toInt(),
-        malTitle = "തൃശ്ശൂർ റെയിൽവേ സ്റ്റേഷൻ",
-        engTitle = "THRISSUR RAILWAY STATION (TCR)",
-        subTitle = "DROP-OFF PORCH • ENTRY TO PLATFORMS 1 - 4 • SEC-01",
-        titleColorInt = android.graphics.Color.WHITE,
-        subColorInt = 0xFFFACC15.toInt(),
-        isDoubleSided = true,
-        bmpWidth = 768,
-        bmpHeight = 220,
-        badgeLabel = "IR",
-        badgeBgColorInt = 0xFFB91C1C.toInt()
-    )
-    // South Face of Porte-Cochère (-Z, facing Northbound drivers on Station Road!)
-    built.add(
-        QuadFace3D(
-            Vec3(-36.8f, 5.08f, -141.18f),
-            Vec3(-28.6f, 5.08f, -141.18f),
-            Vec3(-28.6f, 6.42f, -141.18f),
-            Vec3(-36.8f, 6.42f, -141.18f),
-            baseColor = MatIrDarkBlue,
-            biasDist = -2.20f,
-            signboard = tcrPorteSideSign
-        )
-    )
-    // North Face of Porte-Cochère (+Z, facing Southbound drivers coming from Swaraj Round!)
-    built.add(
-        QuadFace3D(
-            Vec3(-28.6f, 5.08f, -118.82f),
-            Vec3(-36.8f, 5.08f, -118.82f),
-            Vec3(-36.8f, 6.42f, -118.82f),
-            Vec3(-28.6f, 6.42f, -118.82f),
-            baseColor = MatIrDarkBlue,
-            biasDist = -2.20f,
-            signboard = tcrPorteSideSign
-        )
-    )
-
-    // BOARD 3: Station Compound Forecourt ENTRY & EXIT Overhead Gate Portals along X = -26.45m
-    //          (Lower lintel beam + upper cap beam only — no solid box across 5.34m..6.72m!)
-    addBoxFaces(built, -26.75f, 5.10f, -152.0f, -26.15f, 5.34f, -133.0f, MatTerracottaTile, MatIrDarkBlue, MatTcrBrickArch)
-    addBoxFaces(built, -26.75f, 6.72f, -152.0f, -26.15f, 6.94f, -133.0f, MatTerracottaTile, MatIrDarkBlue, MatTcrBrickArch)
-    addBoxFaces(built, -26.75f, 5.10f, -127.0f, -26.15f, 5.34f, -108.0f, MatTerracottaTile, MatIrDarkBlue, MatTcrBrickArch)
-    addBoxFaces(built, -26.75f, 6.72f, -127.0f, -26.15f, 6.94f, -108.0f, MatTerracottaTile, MatIrDarkBlue, MatTcrBrickArch)
-
-    val tcrEntryGateSign = createIndianRailwaysStationSignSpec(
-        cacheKey = "TCR_FORECOURT_ENTRY_GATE_SIGN_V3",
-        bgColorInt = 0xFF1E3A8A.toInt(),
-        borderColorInt = 0xFFFACC15.toInt(),
-        accentBandColorInt = 0xFF047857.toInt(),
-        malTitle = "⬅ സ്റ്റേഷൻ പ്രവേശനം • STATION ENTRY",
-        engTitle = "THRISSUR RAILWAY STATION (TCR) — IN • SEC-01",
-        subTitle = "DROP-OFF PORCH • PREPAID AUTO & BUS BAY • PLATFORMS 1–4",
-        titleColorInt = 0xFFFACC15.toInt(),
-        subColorInt = android.graphics.Color.WHITE,
-        isDoubleSided = true,
-        bmpWidth = 896,
-        bmpHeight = 220,
-        badgeLabel = "IR",
-        badgeBgColorInt = 0xFFB91C1C.toInt()
-    )
-    built.add(
-        QuadFace3D(
-            Vec3(-26.45f, 5.34f, -133.5f),
-            Vec3(-26.45f, 5.34f, -151.5f),
-            Vec3(-26.45f, 6.72f, -151.5f),
-            Vec3(-26.45f, 6.72f, -133.5f),
-            baseColor = MatIrDarkBlue,
-            biasDist = -2.20f,
-            signboard = tcrEntryGateSign
-        )
-    )
-    val tcrExitGateSign = createIndianRailwaysStationSignSpec(
-        cacheKey = "TCR_FORECOURT_EXIT_GATE_SIGN_V3",
-        bgColorInt = 0xFF1E3A8A.toInt(),
-        borderColorInt = 0xFFFACC15.toInt(),
-        accentBandColorInt = 0xFF991B1B.toInt(),
-        malTitle = "➡ പുറത്തേക്ക് • STATION EXIT",
-        engTitle = "TO SWARAJ ROUND / SAKTHAN STAND — OUT • SEC-01",
-        subTitle = "दक्षिण रेलवे • SOUTHERN RAILWAY — THRISSUR CENTRAL (TCR)",
-        titleColorInt = android.graphics.Color.WHITE,
-        subColorInt = 0xFFFACC15.toInt(),
-        isDoubleSided = true,
-        bmpWidth = 896,
-        bmpHeight = 220,
-        badgeLabel = "IR",
-        badgeBgColorInt = 0xFFB91C1C.toInt()
-    )
-    built.add(
-        QuadFace3D(
-            Vec3(-26.45f, 5.34f, -108.5f),
-            Vec3(-26.45f, 5.34f, -126.5f),
-            Vec3(-26.45f, 6.72f, -126.5f),
-            Vec3(-26.45f, 6.72f, -108.5f),
-            baseColor = MatIrDarkBlue,
-            biasDist = -2.20f,
-            signboard = tcrExitGateSign
-        )
-    )
-
-    // BOARD 4: Classic Indian Railways Mustard-Yellow & Black Monument Nameboard on Central Gate Island (X = -26.45m, Z = -132.5m..-127.5m)
-    val tcrYellowMonumentSpec = createIndianRailwaysStationSignSpec(
-        cacheKey = "TCR_YELLOW_IR_MONUMENT_BOARD_V3",
-        bgColorInt = 0xFFFACC15.toInt(),
-        borderColorInt = 0xFF0F172A.toInt(),
-        accentBandColorInt = 0xFF991B1B.toInt(),
-        malTitle = "തൃശ്ശൂർ • THRISSUR • त्रिशूर",
-        engTitle = "THRISSUR RAILWAY STATION (TCR)",
-        subTitle = "STATION CODE: TCR • SEC-01 • PIN: 680001 • MSL +2.83 M",
-        titleColorInt = 0xFF0F172A.toInt(),
-        subColorInt = android.graphics.Color.WHITE,
-        isDoubleSided = true,
-        bmpWidth = 864,
-        bmpHeight = 220,
-        badgeLabel = "IR",
-        badgeBgColorInt = 0xFFB91C1C.toInt()
-    )
-    for (postZ in floatArrayOf(-132.2f, -127.8f)) {
-        addCylinderFrustumFaces(built, -26.45f, postZ, 2.30f, 3.10f, 0.14f, 0.14f, MatHazardBlack, sides = 6)
-    }
-    addBoxFaces(built, -26.62f, 2.92f, -132.8f, -26.28f, 3.10f, -127.2f, MatCastIronBollard, MatRoadMarkingYellow, MatCastIronBollard)
-    addBoxFaces(built, -26.62f, 4.80f, -132.8f, -26.28f, 4.94f, -127.2f, MatCastIronBollard, MatRoadMarkingYellow, MatCastIronBollard)
-    built.add(
-        QuadFace3D(
-            Vec3(-26.45f, 3.10f, -127.4f),
-            Vec3(-26.45f, 3.10f, -132.6f),
-            Vec3(-26.45f, 4.80f, -132.6f),
-            Vec3(-26.45f, 4.80f, -127.4f),
-            baseColor = MatRoadMarkingYellow,
-            biasDist = -2.20f,
-            signboard = tcrYellowMonumentSpec
-        )
-    )
-
-    // H. 22-Meter Station Forecourt High-Mast LED Floodlight Tower on Raised Verandah Apron (X = -32.8m, Z = -160.0m)
-    val stMastX = -32.8f
-    val stMastZ = -160.0f
-    addCylinderFrustumFaces(built, stMastX, stMastZ, 0.06f, 0.85f, 0.78f, 0.65f, MatRoadMarkingYellow, sides = 8)
-    addCylinderFrustumFaces(built, stMastX, stMastZ, 0.85f, 21.8f, 0.28f, 0.14f, MatGraniteLight, sides = 8)
-    addCylinderFrustumFaces(built, stMastX, stMastZ, 21.6f, 22.1f, 1.35f, 1.35f, MatCastIronBollard, Color(0xFFFEF08A), sides = 10)
-
-    // 2. Full-Length 164m Platform 1 (X = -50.8m..-45.8m) & Platform 2 (X = -67.2m..-62.5m) strictly across Z = -234.0m..-70.0m
-    //    (100% South of M.G. Road / ROAD_SWARAJ_TO_WEST_FORT!)
-    for ((pMinX, pMaxX) in arrayOf(Pair(-50.8f, -45.8f), Pair(-67.2f, -62.5f))) {
-        addBoxFaces(built, pMinX, 0.06f, -234.0f, pMaxX, 0.82f, -70.0f, MatGranitePaving, MatGraniteDark, MatGraniteDark)
-        val edgeX = if (pMinX > -56f) pMinX else pMaxX - 0.45f
-        addBoxFaces(built, edgeX, 0.82f, -234.0f, edgeX + 0.45f, 0.85f, -70.0f, MatRoadMarkingYellow, MatRoadMarkingYellow)
-
-        val midPx = (pMinX + pMaxX) * 0.5f
-        var colZ = -226.0f
-        while (colZ <= -76.0f) {
-            addCylinderFrustumFaces(built, midPx, colZ, 0.82f, 5.15f, 0.18f, 0.16f, MatGraniteLight, sides = 8)
-            colZ += 15.0f
-        }
-        addArchedCanopyRoofFaces(built, pMinX - 0.35f, pMaxX + 0.35f, -232.0f, -72.0f, 5.10f, 0.68f, MatIrDarkBlue, MatGraniteDark, archAlongX = true)
-    }
-
-    // 3. 25 kV AC Overhead Catenary Electrification Portals every 32m strictly within Z = -230.0m..-72.0m
-    var mastZ = -230.0f
-    while (mastZ <= -72.0f) {
-        for (mastX in floatArrayOf(-50.4f, -62.9f)) {
-            addCylinderFrustumFaces(built, mastX, mastZ, 0.82f, 7.45f, 0.16f, 0.14f, MatGraniteLight, sides = 6)
-        }
-        addBoxFaces(built, -62.9f, 6.65f, mastZ - 0.12f, -50.4f, 6.90f, mastZ + 0.12f, MatPromenadeTile, MatGraniteLight)
-        mastZ += 31.5f
-    }
-    for (wireX in floatArrayOf(-53.0f, -60.0f)) {
-        addBoxFaces(built, wireX - 0.04f, 5.95f, -234.0f, wireX + 0.04f, 6.02f, -70.0f, MatCopperRoof, MatCopperRoof)
-        addBoxFaces(built, wireX - 0.03f, 6.62f, -234.0f, wireX + 0.03f, 6.68f, -70.0f, MatCopperRoof, MatCopperRoof)
-    }
-
-    // 4. Covered Steel Truss Foot Over Bridge (FOB) with Arched Blue Roof spanning across all tracks (Z = -114.5m..-110.8m)
-    addBoxFaces(built, -66.8f, 6.40f, -114.5f, -46.0f, 8.40f, -110.8f, MatIrDarkBlue, MatGranitePaving, MatIrDarkBlue)
-    addArchedCanopyRoofFaces(built, -67.0f, -45.8f, -114.8f, -110.5f, 8.40f, 0.55f, MatIrDarkBlue, MatGraniteDark, archAlongX = false)
-    addBoxFaces(built, -48.2f, 0.82f, -114.5f, -46.0f, 8.40f, -107.5f, MatIrDarkBlue, MatGraniteLight, MatIrDarkBlue)
-    addBoxFaces(built, -66.8f, 0.82f, -114.5f, -64.6f, 8.40f, -107.5f, MatIrDarkBlue, MatGraniteLight, MatIrDarkBlue)
-
-    // 5. INDIAN RAILWAYS EXPRESS TRAIN ON PLATFORM 1 (Track 1 at X = -53.0m, strictly within Z = -232.0m..-72.0m!):
-    //    Sculpted Southern Railway WAP-7 Electric Locomotive (Z = -91.0m .. -72.0m) +
-    //    8 Coupled Express Passenger Coaches (Z = -219.6m .. -91.6m)
-    val trainX = -53.0f
-    addSculptedWap7Locomotive3D(built, cx = trainX, zRear = -91.0f, zFront = -72.0f)
-
-    for (coachIdx in 0 until 8) {
-        val cz1 = -91.6f - coachIdx * 16.0f
-        val cz0 = cz1 - 15.4f
-        addSculptedExpressCoach3D(
-            faces = built,
-            cx = trainX,
-            z0 = cz0,
-            z1 = cz1,
-            isLhbLivery = (coachIdx < 4)
-        )
-    }
-
-    cachedTcrStationFaces = built
-    outFaces.addAll(built)
+    collectThrissurModernStationSceneFaces(camEye, outFaces)
 }
 
 // ============================================================================
@@ -1857,23 +1377,23 @@ private var cachedManikandanalMastFaces: List<QuadFace3D>? = null
 private fun getOrBuildManikandanalMastFaces(): List<QuadFace3D> {
     cachedManikandanalMastFaces?.let { return it }
     val built = ArrayList<QuadFace3D>(140)
-    // Placed at X = 8.2m, Z = -54.0m — 11.3m West of M.O. Road centerline (X=19.5m) and 18.5m South of Swaraj Round,
+    // Placed at X = 9.6m, Z = -63.0m — safely West of M.O. Road centerline (X=20.9m) and 7m South of Swaraj outer sidewalk,
     // 100% clear of the Swaraj Round roadway, bellmouth flare, and M.O. Road driving lanes!
-    val postX = 8.2f
-    val postZ = -54.0f
+    val postX = 9.6f
+    val postZ = -63.0f
 
     // Moulded concrete base + tapered cylindrical galvanized steel mast column (0.06m .. 6.65m)
     addCylinderFrustumFaces(built, postX, postZ, 0.06f, 0.65f, 0.34f, 0.28f, MatGraniteDark, sides = 8)
     addCylinderFrustumFaces(built, postX, postZ, 0.65f, 6.68f, 0.18f, 0.14f, MatGraniteLight, sides = 8)
 
-    // Overhead cantilever galvanized steel mast arm at 6.5m height extending Eastward over the M.O. Road northbound lane (X = 8.2f .. 23.5f)
-    addBoxFaces(built, postX, 6.40f, postZ - 0.12f, 23.5f, 6.60f, postZ + 0.12f, MatGraniteLight, MatPromenadeTile)
+    // Overhead cantilever galvanized steel mast arm at 6.5m height extending Eastward over the M.O. Road northbound lane (X = 9.6f .. 24.9f)
+    addBoxFaces(built, postX, 6.40f, postZ - 0.12f, 24.9f, 6.60f, postZ + 0.12f, MatGraniteLight, MatPromenadeTile)
 
     // Two 3-Aspect 300mm Signal Head Backplates with Black Visors & 50mm Yellow Reflective Borders suspended at Y = 5.42m..6.72m
-    for (headX in floatArrayOf(18.5f, 22.0f)) {
+    for (headX in floatArrayOf(19.9f, 23.4f)) {
         addBoxFaces(built, headX - 0.34f, 5.42f, postZ - 0.14f, headX + 0.34f, 6.72f, postZ + 0.14f, MatRoadMarkingYellow, MatHazardBlack)
     }
-    // Pedestrian Signal Head Housing mounted on the roadside vertical post at X = 8.2m (Y = 2.45m .. 3.35m)
+    // Pedestrian Signal Head Housing mounted on the roadside vertical post at X = 9.6m (Y = 2.45m .. 3.35m)
     addBoxFaces(built, postX - 0.30f, 2.45f, postZ - 0.14f, postX + 0.30f, 3.35f, postZ + 0.14f, MatRoadMarkingYellow, MatHazardBlack)
 
     cachedManikandanalMastFaces = built
@@ -1885,14 +1405,14 @@ private fun collectManikandanalSignalAndStreetPropsFaces(
     manikandanalSignal: TrafficSignalAspect,
     outFaces: MutableList<QuadFace3D>
 ) {
-    val dx = camEye.x - 18f
-    val dz = camEye.z - (-54f)
+    val dx = camEye.x - 19f
+    val dz = camEye.z - (-63f)
     if (dx * dx + dz * dz > 180f * 180f) return
 
     outFaces.addAll(getOrBuildManikandanalMastFaces())
 
-    val sigSouthZ = -54.20f
-    val sigNorthZ = -53.80f
+    val sigSouthZ = -63.20f
+    val sigNorthZ = -62.80f
     val isRed = manikandanalSignal == TrafficSignalAspect.Red
     val isAmber = manikandanalSignal == TrafficSignalAspect.Amber
     val isGreen = manikandanalSignal == TrafficSignalAspect.Green
@@ -1901,7 +1421,7 @@ private fun collectManikandanalSignalAndStreetPropsFaces(
     val amberCol = if (isAmber) Color(0xFFFACC15) else Color(0xFF422006)
     val greenCol = if (isGreen) Color(0xFF22C55E) else Color(0xFF052E16)
 
-    for (headX in floatArrayOf(18.5f, 22.0f)) {
+    for (headX in floatArrayOf(19.9f, 23.4f)) {
         // South-facing LED lenses (for Northbound traffic approaching Swaraj Round)
         outFaces.add(QuadFace3D(Vec3(headX - 0.16f, 6.26f, sigSouthZ), Vec3(headX + 0.16f, 6.26f, sigSouthZ), Vec3(headX + 0.16f, 6.58f, sigSouthZ), Vec3(headX - 0.16f, 6.58f, sigSouthZ), redCol, biasDist = -1.50f))
         outFaces.add(QuadFace3D(Vec3(headX - 0.16f, 5.90f, sigSouthZ), Vec3(headX + 0.16f, 5.90f, sigSouthZ), Vec3(headX + 0.16f, 6.22f, sigSouthZ), Vec3(headX - 0.16f, 6.22f, sigSouthZ), amberCol, biasDist = -1.50f))
@@ -1912,7 +1432,7 @@ private fun collectManikandanalSignalAndStreetPropsFaces(
         outFaces.add(QuadFace3D(Vec3(headX + 0.16f, 5.54f, sigNorthZ), Vec3(headX - 0.16f, 5.54f, sigNorthZ), Vec3(headX - 0.16f, 5.86f, sigNorthZ), Vec3(headX + 0.16f, 5.86f, sigNorthZ), greenCol, biasDist = -1.50f))
     }
 
-    val pedX = 8.2f
+    val pedX = 9.6f
     val pedStandCol = if (!isRed) Color(0xFFFF1E1E) else Color(0xFF3F1111)
     val pedWalkCol = if (isRed) Color(0xFF22C55E) else Color(0xFF0A2E1A)
     outFaces.add(QuadFace3D(Vec3(pedX - 0.15f, 2.92f, sigSouthZ), Vec3(pedX + 0.15f, 2.92f, sigSouthZ), Vec3(pedX + 0.15f, 3.26f, sigSouthZ), Vec3(pedX - 0.15f, 3.26f, sigSouthZ), pedStandCol, biasDist = -1.50f))
@@ -2140,10 +1660,7 @@ private fun DrawScope.drawChavakkadBeachGround(
         drawPath(path, MatArabianSeaMid)
     }
 
-    for (foamX in floatArrayOf(-4567.5f, -4576.0f, -4588.0f)) {
-        val seg = rig.projectSegmentClipped(Vec3(foamX, 0.058f, 975.0f), Vec3(foamX, 0.058f, 1185.0f))
-        if (seg != null) drawLine(MatSeaFoamWhite, seg.first, seg.second, strokeWidth = 3.0f)
-    }
+    // Animated breaking surf waves & shoreline foam are rendered dynamically via GPU water shader!
 
     if (rig.buildClippedQuadPath(
             path,
@@ -2212,10 +1729,10 @@ private fun DrawScope.drawTriprayarBeachGround(
 
     if (rig.buildClippedQuadPath(
             path,
-            Vec3(-2239.0f, 0.059f, -2485.0f),
-            Vec3(-2229.0f, 0.059f, -2485.0f),
-            Vec3(-2229.0f, 0.059f, -2335.0f),
-            Vec3(-2239.0f, 0.059f, -2335.0f)
+            Vec3(-2241.5f, 0.059f, -2485.0f),
+            Vec3(-2231.5f, 0.059f, -2485.0f),
+            Vec3(-2231.5f, 0.059f, -2335.0f),
+            Vec3(-2241.5f, 0.059f, -2335.0f)
         )
     ) {
         drawPath(path, MatPromenadeTile)
@@ -2263,18 +1780,15 @@ private fun DrawScope.drawTriprayarBeachGround(
         drawPath(path, MatArabianSeaDeep)
     }
 
-    for (foamX in floatArrayOf(-2291.5f, -2300.0f, -2312.0f)) {
-        val seg = rig.projectSegmentClipped(Vec3(foamX, 0.058f, -2500.0f), Vec3(foamX, 0.058f, -2320.0f))
-        if (seg != null) drawLine(MatSeaFoamWhite, seg.first, seg.second, strokeWidth = 3.0f)
-    }
+    // Animated breaking surf waves & shoreline foam are rendered dynamically via GPU water shader!
 
-    // Triprayar Stand Concrete Terminal Apron
+    // Triprayar Stand Concrete Terminal Apron (set back cleanly East of 22m 6-lane NH 66)
     if (rig.buildClippedQuadPath(
             path,
-            Vec3(-2211.0f, 0.058f, -2456.0f),
+            Vec3(-2208.5f, 0.058f, -2456.0f),
             Vec3(-2176.0f, 0.058f, -2456.0f),
             Vec3(-2176.0f, 0.058f, -2364.0f),
-            Vec3(-2211.0f, 0.058f, -2364.0f)
+            Vec3(-2208.5f, 0.058f, -2364.0f)
         )
     ) {
         drawPath(path, MatTerminalConcrete)
@@ -2310,8 +1824,8 @@ private fun collectTriprayarFaces(
     if (faces == null) {
         val built = ArrayList<QuadFace3D>(280)
 
-        addBoxFaces(built, -2229.8f, 0.06f, -2480.0f, -2229.0f, 0.85f, -2418.0f, MatKeralaWhitewash, MatSeawallGranite)
-        addBoxFaces(built, -2229.8f, 0.06f, -2402.0f, -2229.0f, 0.85f, -2340.0f, MatKeralaWhitewash, MatSeawallGranite)
+        addBoxFaces(built, -2232.3f, 0.06f, -2480.0f, -2231.5f, 0.85f, -2418.0f, MatKeralaWhitewash, MatSeawallGranite)
+        addBoxFaces(built, -2232.3f, 0.06f, -2402.0f, -2231.5f, 0.85f, -2340.0f, MatKeralaWhitewash, MatSeawallGranite)
 
         for (gz in floatArrayOf(-2435.0f, -2385.0f)) {
             addBoxFaces(built, -2256.0f, 0.06f, gz - 4.0f, -2246.0f, 3.2f, gz + 4.0f, MatPromenadeTile, MatKeralaWhitewash)
@@ -2324,12 +1838,12 @@ private fun collectTriprayarFaces(
         addBoxFaces(built, -2304.0f, 0.8f, -2414.0f, -2236.0f, 1.3f, -2406.0f, MatPromenadeTile, MatTeakWoodCarved)
         addBoxFaces(built, -2248.0f, 0.06f, -2356.0f, -2242.0f, 16.5f, -2350.0f, MatTempleGold, MatKeralaWhitewash, MatTerracottaTile)
 
-        // Triprayar Stand Perimeter Wall & Entry / Exit Gate Pillars at X = -2210.8m
-        addBoxFaces(built, -2211.0f, 0.06f, -2456.0f, -2210.2f, 1.35f, -2436.5f, MatKeralaWhitewash, MatLateriteStone)
-        addBoxFaces(built, -2211.0f, 0.06f, -2423.5f, -2210.2f, 1.35f, -2396.5f, MatKeralaWhitewash, MatLateriteStone)
-        addBoxFaces(built, -2211.0f, 0.06f, -2383.5f, -2210.2f, 1.35f, -2364.0f, MatKeralaWhitewash, MatLateriteStone)
+        // Triprayar Stand Perimeter Wall & Entry / Exit Gate Pillars at X = -2208.5m (clear of 22m 6-lane NH 66)
+        addBoxFaces(built, -2208.5f, 0.06f, -2456.0f, -2207.7f, 1.35f, -2436.5f, MatKeralaWhitewash, MatLateriteStone)
+        addBoxFaces(built, -2208.5f, 0.06f, -2423.5f, -2207.7f, 1.35f, -2396.5f, MatKeralaWhitewash, MatLateriteStone)
+        addBoxFaces(built, -2208.5f, 0.06f, -2383.5f, -2207.7f, 1.35f, -2364.0f, MatKeralaWhitewash, MatLateriteStone)
         for (pz in floatArrayOf(-2436.2f, -2423.8f, -2396.2f, -2383.8f)) {
-            addBoxFaces(built, -2211.0f, 0.06f, pz - 0.4f, -2210.2f, 5.8f, pz + 0.4f, MatTerracottaRoofDark, MatTerracottaTile)
+            addBoxFaces(built, -2208.5f, 0.06f, pz - 0.4f, -2207.7f, 5.8f, pz + 0.4f, MatTerracottaRoofDark, MatTerracottaTile)
         }
 
         // Raised Passenger Boarding Platform, Canopy Shelter & Terminal Building
@@ -2814,342 +2328,19 @@ private fun collectPaliyekkaraTollFaces(
 }
 
 // ============================================================================
-// 6. VADAKKE STAND (THRISSUR NORTH BUS STAND) — REBUILT 10-BAY LINEAR TERMINAL
-//    - Single Row of 10 Drive-Through Bus Bays in one line (X = -58.25m..-11.45m, Z = 211.0m..226.0m)
-//    - Rear Circulation Carriageway (Z = 226.5m..236.5m) connected to the Entry Gate (X = -31.5m..-17.5m)
-//    - Front Departure / Exit Apron (Z = 200.5m..211.0m) leading out the Exit Gate (X = -49.5m..-35.5m)
-//    - Full 4-Sided Perimeter Compound Wall + Distinct Emerald-Teal & Mint-Gold Theme Signboards
-// ============================================================================
-
 private fun DrawScope.drawVadakkeBusStandGround(
     rig: CameraRig,
     path: Path,
     camEye: Vec3
 ) {
-    if (hypot(camEye.x - (-35f), camEye.z - 224f) > 360f) return
-
-    // 1. Heavy-Duty Concrete Terminal Yard Apron (X = -64.5m..-6.5m, Z = 200.16m..247.0m)
-    val yardMinX = -64.5f
-    val yardMaxX = -6.5f
-    val yardMinZ = 200.16f
-    val yardMaxZ = 247.0f
-    if (rig.buildClippedQuadPath(
-            path,
-            Vec3(yardMinX, 0.058f, yardMinZ),
-            Vec3(yardMaxX, 0.058f, yardMinZ),
-            Vec3(yardMaxX, 0.058f, yardMaxZ),
-            Vec3(yardMinX, 0.058f, yardMaxZ)
-        )
-    ) {
-        drawPath(path, MatTerminalConcrete)
-    }
-
-    // 2. Dark Hot-Mix Asphalt Circulation Loop:
-    //    - Entry Feeder Lane on East side (X = -29.5m..-7.5m, Z = 200.2m..226.5m)
-    //    - Rear Circulation Carriageway behind the 10 Bays (X = -62.5m..-7.5m, Z = 226.5m..236.2m)
-    //    - Front Departure Concourse leading to Exit Gate (X = -62.5m..-33.5m, Z = 200.2m..211.0m)
-    val loopAsphaltCol = Color(0xFF232830)
-    if (rig.buildClippedQuadPath(
-            path,
-            Vec3(-62.5f, 0.059f, 226.5f),
-            Vec3(-7.5f, 0.059f, 226.5f),
-            Vec3(-7.5f, 0.059f, 236.2f),
-            Vec3(-62.5f, 0.059f, 236.2f)
-        )
-    ) {
-        drawPath(path, loopAsphaltCol)
-    }
-    if (rig.buildClippedQuadPath(
-            path,
-            Vec3(-62.5f, 0.059f, 200.2f),
-            Vec3(-7.5f, 0.059f, 200.2f),
-            Vec3(-7.5f, 0.059f, 211.0f),
-            Vec3(-62.5f, 0.059f, 211.0f)
-        )
-    ) {
-        drawPath(path, loopAsphaltCol)
-    }
-
-    // 3. Single Linear Row of 10 Painted Bus Bays (bIdx in 0..9, Z = 211.0m..226.0m)
-    //    Buses enter from the Rear Circulation Carriageway (Z = 226.5m..236.2m), park facing South (-Z)
-    //    or North (+Z) in a single 10-bus line, and depart cleanly!
-    val bayZ0 = 211.0f
-    val bayZ1 = 226.0f
-    for (bIdx in 0 until 10) {
-        val bx = -58.25f + bIdx * 5.2f
-        val lSeg = rig.projectSegmentClipped(Vec3(bx - 1.90f, 0.062f, bayZ0), Vec3(bx - 1.90f, 0.062f, bayZ1))
-        if (lSeg != null) drawLine(MatRoadMarkingYellow, lSeg.first, lSeg.second, strokeWidth = 2.4f)
-        val rSeg = rig.projectSegmentClipped(Vec3(bx + 1.90f, 0.062f, bayZ0), Vec3(bx + 1.90f, 0.062f, bayZ1))
-        if (rSeg != null) drawLine(MatRoadMarkingYellow, rSeg.first, rSeg.second, strokeWidth = 2.4f)
-        // Stop bar at South front of bay (Z = 211.3m)
-        val stopSeg = rig.projectSegmentClipped(Vec3(bx - 1.90f, 0.062f, bayZ0 + 0.3f), Vec3(bx + 1.90f, 0.062f, bayZ0 + 0.3f))
-        if (stopSeg != null) drawLine(MatRoadMarkingYellow, stopSeg.first, stopSeg.second, strokeWidth = 2.8f)
-    }
-
-    // 4. Rear Circulation Carriageway Dashed White Centerline (Z = 231.4m, X = -60.0m..-10.0m)
-    var dashX = -60.0f
-    while (dashX <= -12.0f) {
-        rig.projectSegmentClipped(Vec3(dashX, 0.063f, 231.4f), Vec3(dashX + 3.0f, 0.063f, 231.4f))?.let { seg ->
-            drawLine(MatRoadMarkingWhite, seg.first, seg.second, strokeWidth = 2.2f)
-        }
-        dashX += 6.0f
-    }
-
-    // 5. Entry Driveway (X = -30.5m..-18.5m) & Exit Driveway (X = -48.5m..-36.5m) Thermoplastic Guide Lines
-    for (driveX in floatArrayOf(-48.5f, -36.5f, -30.5f, -18.5f)) {
-        val seg = rig.projectSegmentClipped(Vec3(driveX, 0.063f, 200.16f), Vec3(driveX, 0.063f, 210.5f))
-        if (seg != null) drawLine(MatRoadMarkingWhite, seg.first, seg.second, strokeWidth = 2.5f)
-    }
+    drawVadakkeModernTerminalYard(rig, path, camEye)
 }
-
-private var cachedVadakkeStandFaces: List<QuadFace3D>? = null
 
 private fun collectVadakkeBusStandFaces(
     camEye: Vec3,
     outFaces: MutableList<QuadFace3D>
 ) {
-    val dx = camEye.x - (-35f)
-    val dz = camEye.z - 224f
-    if (dx * dx + dz * dz > 220f * 220f) return
-
-    var faces = cachedVadakkeStandFaces
-    if (faces == null) {
-        val built = ArrayList<QuadFace3D>(1150)
-
-        // ====================================================================
-        // A. CONTINUOUS 4-SIDED PERIMETER COMPOUND WALL AROUND VADAKKE STAND
-        //    - South Wall (Z = 200.5m): Leaves 14m EXIT Gate (X = -49.5m..-35.5m)
-        //      and 14m ENTRY Gate (X = -31.5m..-17.5m) 100% open!
-        //    - West Wall (X = -64.5m, Z = 200.5m..247.0m)
-        //    - East Wall (X = -6.5m, Z = 200.5m..247.0m)
-        //    - North Wall (Z = 247.0m, X = -64.5m..-6.5m)
-        // ====================================================================
-        addPerimeterCompoundWallSegment(built, -64.5f, 200.5f, -49.8f, 200.5f)
-        addPerimeterCompoundWallSegment(built, -35.2f, 200.5f, -31.8f, 200.5f)
-        addPerimeterCompoundWallSegment(built, -17.2f, 200.5f, -6.5f, 200.5f)
-        addPerimeterCompoundWallSegment(built, -64.5f, 200.5f, -64.5f, 247.0f)
-        addPerimeterCompoundWallSegment(built, -6.5f, 200.5f, -6.5f, 247.0f)
-        addPerimeterCompoundWallSegment(built, -64.5f, 247.0f, -6.5f, 247.0f)
-
-        // ====================================================================
-        // B. SINGLE LINEAR ROW OF 10 BUS BAYS & NARROW PASSENGER BOARDING ISLANDS
-        //    - 10 Bus Bays side-by-side in 1 line: bx = -58.25m + bIdx * 5.2m (bIdx in 0..9)
-        //    - 11 Narrow Passenger Boarding Divider Islands (1.10m wide) at Z = 211.0m..226.0m
-        //    - Full 6.0m vertical clearance under the 10-Bay Canopy Roof!
-        // ====================================================================
-        val vadakkeTealRoof = Color(0xFF065F46)
-        val vadakkeTealDark = Color(0xFF022C22)
-        for (pIdx in 0..10) {
-            val platX = -60.85f + pIdx * 5.2f
-            addBoxFaces(
-                built,
-                platX - 0.55f, 0.06f, 211.0f,
-                platX + 0.55f, 0.30f, 226.0f,
-                MatPromenadeTile, MatRoadMarkingYellow, MatGraniteDark
-            )
-            for (colZ in floatArrayOf(212.2f, 218.5f, 224.8f)) {
-                addCylinderFrustumFaces(built, platX, colZ, 0.30f, 0.92f, 0.30f, 0.24f, MatKeralaWhitewash, sides = 8)
-                addCylinderFrustumFaces(built, platX, colZ, 0.92f, 5.85f, 0.20f, 0.18f, vadakkeTealRoof, sides = 8)
-            }
-        }
-        // 5 Arched Barrel-Vault Canopy Roof Bays spanning all 10 Linear Bus Bays (X = -61.5m..-8.8m, Z = 210.2m..226.8m)
-        val canopySpanW = (-8.8f - (-61.5f)) / 5f
-        for (bay in 0 until 5) {
-            val bx0 = -61.5f + bay * canopySpanW
-            val bx1 = bx0 + canopySpanW
-            addArchedCanopyRoofFaces(
-                built, bx0, bx1, 210.2f, 226.8f, 5.85f, 0.85f,
-                if (bay % 2 == 0) vadakkeTealRoof else MatTerracottaTile,
-                vadakkeTealDark, archAlongX = true
-            )
-        }
-
-        // ====================================================================
-        // C. NORTH PASSENGER TERMINAL CONCOURSE BUILDING BEHIND THE REAR CARRIAGEWAY
-        //    - Located at Z = 236.5m..245.5m so the Rear Circulation Carriageway
-        //      (Z = 226.5m..236.2m) is 100% open & unobstructed behind all 10 bays!
-        // ====================================================================
-        addBoxFaces(built, -61.0f, 0.06f, 236.5f, -10.0f, 0.36f, 245.8f, MatPromenadeTile, MatRoadMarkingYellow, MatGraniteDark)
-        addBoxFaces(built, -59.5f, 0.36f, 238.2f, -11.5f, 4.25f, 245.2f, MatKeralaCreamWall, MatKeralaCreamWall)
-        addBoxFaces(built, -59.0f, 4.25f, 238.5f, -12.0f, 6.95f, 244.9f, vadakkeTealDark, MatArcadeGlass)
-        addPitchedKeralaRoof(built, -60.5f, -10.5f, 237.6f, 245.8f, 6.90f, 9.35f, 3.2f, 3.8f, MatTerracottaTile, MatTeakWoodCarved)
-
-        // ====================================================================
-        // D. VADAKKE STAND ENTRY & EXIT ARCH PORTALS + DISTINCT EMERALD-TEAL THEME BOARDS
-        //    (Distinct from Railway Station Royal Blue & Sakthan Stand Deep Maroon!)
-        // ====================================================================
-        val gateZ = 200.5f
-        for (gx in floatArrayOf(-49.6f, -35.4f, -31.6f, -17.4f)) {
-            addCylinderFrustumFaces(built, gx, gateZ, 0.06f, 1.05f, 0.52f, 0.44f, MatKeralaWhitewash, sides = 8)
-            addCylinderFrustumFaces(built, gx, gateZ, 1.05f, 6.00f, 0.38f, 0.34f, vadakkeTealRoof, sides = 8)
-            addCylinderFrustumFaces(built, gx, gateZ, 6.00f, 7.55f, 0.44f, 0.40f, MatKeralaWhitewash, sides = 8)
-        }
-        // Lower Lintel Beams (5.40..5.68m) & Upper Crown Beams (7.32..7.56m) — no solid box across 5.70..7.30m!
-        addBoxFaces(built, -49.8f, 5.40f, gateZ - 0.32f, -35.2f, 5.68f, gateZ + 0.32f, vadakkeTealDark, vadakkeTealRoof, vadakkeTealDark)
-        addBoxFaces(built, -49.8f, 7.32f, gateZ - 0.32f, -35.2f, 7.56f, gateZ + 0.32f, vadakkeTealDark, vadakkeTealRoof, vadakkeTealDark)
-        addBoxFaces(built, -31.8f, 5.40f, gateZ - 0.32f, -17.2f, 5.68f, gateZ + 0.32f, vadakkeTealDark, vadakkeTealRoof, vadakkeTealDark)
-        addBoxFaces(built, -31.8f, 7.32f, gateZ - 0.32f, -17.2f, 7.56f, gateZ + 0.32f, vadakkeTealDark, vadakkeTealRoof, vadakkeTealDark)
-
-        // 1. Vadakke Stand Main Canopy Rooftop Nameboard (Emerald-Teal & Mint-Gold Theme, Badge "NBS")
-        //    Positioned cleanly above the 5.85m..6.70m arched roof at Y = 6.75m..8.45m so the canopy never occludes it!
-        val vadakkeMainSign = createIndianRailwaysStationSignSpec(
-            cacheKey = "VADAKKE_STAND_MAIN_CANOPY_BOARD_V3",
-            bgColorInt = 0xFF064E3B.toInt(),
-            borderColorInt = 0xFF34D399.toInt(),
-            accentBandColorInt = 0xFF022C22.toInt(),
-            malTitle = "വടക്കേ ബസ് സ്റ്റാൻഡ്, തൃശ്ശൂർ • SEC-04",
-            engTitle = "VADAKKE BUS STAND (NORTH TERMINAL) • THRISSUR",
-            subTitle = "SECTORS 01–10 • SHORANUR (SH 22) • KUNNAMKULAM (SH 69) • GURUVAYUR • OTTAPALAM",
-            titleColorInt = 0xFFFDE047.toInt(),
-            subColorInt = android.graphics.Color.WHITE,
-            isDoubleSided = true,
-            bmpWidth = 1024,
-            bmpHeight = 230,
-            badgeLabel = "NBS",
-            badgeBgColorInt = 0xFF047857.toInt()
-        )
-        // South Face (-Z, facing buses arriving from Swaraj Round North / Shoranur Road)
-        built.add(
-            QuadFace3D(
-                v0 = Vec3(-52.0f, 6.75f, 210.0f),
-                v1 = Vec3(-18.0f, 6.75f, 210.0f),
-                v2 = Vec3(-18.0f, 8.45f, 210.0f),
-                v3 = Vec3(-52.0f, 8.45f, 210.0f),
-                baseColor = vadakkeTealRoof,
-                biasDist = -2.20f,
-                signboard = vadakkeMainSign
-            )
-        )
-        // North Face (+Z, facing the Rear Circulation Carriageway)
-        built.add(
-            QuadFace3D(
-                v0 = Vec3(-18.0f, 6.75f, 227.0f),
-                v1 = Vec3(-52.0f, 6.75f, 227.0f),
-                v2 = Vec3(-52.0f, 8.45f, 227.0f),
-                v3 = Vec3(-18.0f, 8.45f, 227.0f),
-                baseColor = vadakkeTealRoof,
-                biasDist = -2.20f,
-                signboard = vadakkeMainSign
-            )
-        )
-
-        // 1B. Double-Sided Sector & Route Destination Boards along Both Sides (South Z=210.2m & North Z=226.8m) of the 10-Bay Canopy
-        val vadakkeSectorSpecs = arrayOf(
-            Triple("SEC 01–02 • BAYS 1 & 2", "SHORANUR • WADAKKANCHERY (SH 22)", "ഷൊർണൂർ • വടക്കാഞ്ചേരി • MEDICAL COLLEGE"),
-            Triple("SEC 03–04 • BAYS 3 & 4", "KUNNAMKULAM • PATTAMBI (SH 69)", "കുന്നംകുളം • പട്ടാമ്പി • PERUMPILAVU"),
-            Triple("SEC 05–06 • BAYS 5 & 6", "GURUVAYUR • CHAVAKKAD • KOTTAPPADI", "ഗുരുവായൂർ • ചാവക്കാട് • കോട്ടപ്പടി"),
-            Triple("SEC 07–08 • BAYS 7 & 8", "OTTAPALAM • CHERUTHURUTHY • PALAKKAD", "ഒറ്റപ്പാലം • ചെറുതുരുത്തി • പാലക്കാട്"),
-            Triple("SEC 09–10 • BAYS 9 & 10", "SWARAJ ROUND • SAKTHAN • RAILWAY STN", "സ്വരാജ് റൗണ്ട് • ശക്തൻ • റെയിൽവേ സ്റ്റേഷൻ")
-        )
-        for (sIdx in vadakkeSectorSpecs.indices) {
-            val (secHeader, engDest, malDest) = vadakkeSectorSpecs[sIdx]
-            val sx0 = -56.2f + sIdx * 9.0f
-            val sx1 = sx0 + 8.4f
-            val secSign = createIndianRailwaysStationSignSpec(
-                cacheKey = "VADAKKE_SECTOR_BOARD_V3_$sIdx",
-                bgColorInt = 0xFF065F46.toInt(),
-                borderColorInt = 0xFFFDE047.toInt(),
-                accentBandColorInt = 0xFF022C22.toInt(),
-                malTitle = "$secHeader  •  $malDest",
-                engTitle = engDest,
-                subTitle = "VADAKKE STAND SECTOR 0${sIdx * 2 + 1}/0${sIdx * 2 + 2} • DRIVE-THROUGH BAY",
-                titleColorInt = 0xFFFDE047.toInt(),
-                subColorInt = android.graphics.Color.WHITE,
-                isDoubleSided = true,
-                bmpWidth = 768,
-                bmpHeight = 200,
-                badgeLabel = "S${sIdx * 2 + 1}",
-                badgeBgColorInt = 0xFF047857.toInt()
-            )
-            // South Side of Canopy (facing departing lane)
-            built.add(
-                QuadFace3D(
-                    v0 = Vec3(sx0, 4.92f, 210.15f),
-                    v1 = Vec3(sx1, 4.92f, 210.15f),
-                    v2 = Vec3(sx1, 5.72f, 210.15f),
-                    v3 = Vec3(sx0, 5.72f, 210.15f),
-                    baseColor = vadakkeTealRoof,
-                    biasDist = -2.10f,
-                    signboard = secSign
-                )
-            )
-            // North Side of Canopy (facing arriving buses on Rear Circulation Carriageway)
-            built.add(
-                QuadFace3D(
-                    v0 = Vec3(sx1, 4.92f, 226.85f),
-                    v1 = Vec3(sx0, 4.92f, 226.85f),
-                    v2 = Vec3(sx0, 5.72f, 226.85f),
-                    v3 = Vec3(sx1, 5.72f, 226.85f),
-                    baseColor = vadakkeTealRoof,
-                    biasDist = -2.10f,
-                    signboard = secSign
-                )
-            )
-        }
-
-        // 2. Vadakke Stand ENTRY Gate Overhead Signboard (X = -31.3m..-17.7m, Z = 200.5m, single double-sided quad!)
-        val vadakkeEntrySign = createIndianRailwaysStationSignSpec(
-            cacheKey = "VADAKKE_STAND_ENTRY_GATE_BOARD_V3",
-            bgColorInt = 0xFF065F46.toInt(),
-            borderColorInt = 0xFFFDE047.toInt(),
-            accentBandColorInt = 0xFF022C22.toInt(),
-            malTitle = "⬇ ബസ് പ്രവേശനം • BUS ENTRY • SEC-04 ⬇",
-            engTitle = "VADAKKE BUS STAND — ENTRY TO SECTORS 01–10",
-            subTitle = "SH 22 / SH 69 TERMINAL • PROCEED TO REAR CARRIAGEWAY FOR BAYS 1–10",
-            titleColorInt = 0xFFFDE047.toInt(),
-            subColorInt = android.graphics.Color.WHITE,
-            isDoubleSided = true,
-            bmpWidth = 960,
-            bmpHeight = 230,
-            badgeLabel = "IN",
-            badgeBgColorInt = 0xFF059669.toInt()
-        )
-        built.add(
-            QuadFace3D(
-                v0 = Vec3(-31.3f, 5.70f, gateZ),
-                v1 = Vec3(-17.7f, 5.70f, gateZ),
-                v2 = Vec3(-17.7f, 7.30f, gateZ),
-                v3 = Vec3(-31.3f, 7.30f, gateZ),
-                baseColor = vadakkeTealRoof,
-                biasDist = -2.20f,
-                signboard = vadakkeEntrySign
-            )
-        )
-
-        // 3. Vadakke Stand EXIT Gate Overhead Signboard (X = -49.3m..-35.7m, Z = 200.5m, single double-sided quad!)
-        val vadakkeExitSign = createIndianRailwaysStationSignSpec(
-            cacheKey = "VADAKKE_STAND_EXIT_GATE_BOARD_V3",
-            bgColorInt = 0xFF0F766E.toInt(),
-            borderColorInt = 0xFF34D399.toInt(),
-            accentBandColorInt = 0xFF042F2E.toInt(),
-            malTitle = "⬆ പുറത്തേക്ക് • BUS EXIT • SEC-04 ⬆",
-            engTitle = "VADAKKE BUS STAND — EXIT TO SWARAJ ROUND & SH 22",
-            subTitle = "TO SWARAJ ROUND (SEC-01) • SHORANUR (SH 22) • KUNNAMKULAM (SH 69)",
-            titleColorInt = 0xFFFDE047.toInt(),
-            subColorInt = android.graphics.Color.WHITE,
-            isDoubleSided = true,
-            bmpWidth = 960,
-            bmpHeight = 230,
-            badgeLabel = "OUT",
-            badgeBgColorInt = 0xFF0D9488.toInt()
-        )
-        built.add(
-            QuadFace3D(
-                v0 = Vec3(-35.7f, 5.70f, gateZ),
-                v1 = Vec3(-49.3f, 5.70f, gateZ),
-                v2 = Vec3(-49.3f, 7.30f, gateZ),
-                v3 = Vec3(-35.7f, 7.30f, gateZ),
-                baseColor = vadakkeTealRoof,
-                biasDist = -2.20f,
-                signboard = vadakkeExitSign
-            )
-        )
-
-        faces = built
-        cachedVadakkeStandFaces = built
-    }
-
-    outFaces.addAll(faces)
+    collectVadakkeModernTerminalSceneFaces(camEye, outFaces)
 }
 
 // ============================================================================
@@ -3163,6 +2354,7 @@ private class CachedSceneryCluster(
     val faces: List<QuadFace3D>
 )
 
+@Volatile
 private var cachedRoadsideClusters: List<CachedSceneryCluster>? = null
 
 private fun isClearForRoadsideScenery(
@@ -3171,18 +2363,33 @@ private fun isClearForRoadsideScenery(
     roads: List<ThrissurOsmRoad>,
     signPlacements: List<CachedSignRenderItem>
 ): Boolean {
-    if (bx in -82f..62f && bz in -235f..-30f) return false
-    if (hypot(bx - 3.1f, bz - 9.5f) < 88f) return false
-    if (bx in -74f..2f && bz in 190f..258f) return false
+    // Zone 1 uses exclusively genuine Google Drive 3D buildings, trees, and grass via Zone1GDriveEnvironmentRenderer
+    if (bx in -285f..265f && bz in -285f..270f) return false
     if (bx in -2792f..-2560f && bz in 1220f..1342f) return false
     if (bx in -4760f..-4446f && bz in 950f..1210f) return false
     if (bx in -2480f..-2166f && bz in -2520f..-2300f) return false
     if (bx in 945f..1055f && bz in -1870f..-1745f) return false
+    // Thrissur Railway Station (SW), Wadakkanchery ROB & Town, Shoranur Bus Terminal, Shoranur Junction & 2-track Railway Corridor
+    if (bx in -132f..-58f && bz in -232f..-52f) return false
+    if (bx in 50f..150f && bz in 1500f..1970f) return false
+    if (bx in 110f..212f && bz in 3000f..3150f) return false
+    if (bx in -25f..88f && bz in 3130f..3340f) return false
+    if (ShoranurRailwaySystem.isNearRailwayTrack(bx, bz, 16.5f)) return false
+    if (!Zone2Nh544KuthiranRenderer.isPointClearOfZone2Structures(bx, bz)) return false
+    if (!Zone3Nh544SouthRenderer.isPointClearOfZone3Structures(bx, bz)) return false
+    if (!Zone4KoleRailHeritageRenderer.isPointClearOfZone4Structures(bx, bz)) return false
+    if (!Zone5Nh66CoastalRenderer.isPointClearOfZone5Structures(bx, bz)) return false
+    if (!PuthanpallyBasilicaRenderer.isPointClearOfPuthanpally(bx, bz)) return false
+    if (!ThrissurFuelStationSystem.isPointClearOfFuelStations(bx, bz, extraMargin = 6.5f)) return false
 
     if (!isPointClearOfAllRoads(bx, bz, roads, extraMarginM = 11.5f)) return false
 
-    for (s in signPlacements) {
-        if (hypot(bx - s.midX, bz - s.midZ) < 15.0f) return false
+    val minSignSq = 15.0f * 15.0f
+    for (i in 0 until signPlacements.size) {
+        val s = signPlacements[i]
+        val dx = bx - s.midX
+        val dz = bz - s.midZ
+        if (dx * dx + dz * dz < minSignSq) return false
     }
     return true
 }
@@ -3287,22 +2494,22 @@ private val ThrissurAuthenticSignSpecs = listOf(
     // ========================================================================
     // JUNCTION A: M.O. ROAD / RAILWAY STATION LINK / OLLUR LINK / SAKTHAN ENTRY
     // ========================================================================
-    // A0. Full-Width Overhead Gantry on M.O. Road right outside Sakthan Stand Exit (Z ≈ -132m)
+    // A0. Full-Width Overhead Gantry on Sakthan South-East Boundary Exit Road (approaching Ollur / M.O. Road)
     KeralaRoadSignSpec(
         roadId = "ROAD_SAKTHAN_TO_SWARAJ",
-        frameFraction = 0.25f,
+        frameFraction = 0.21f,
         side = 0,
         style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
-        headerTitle = "തൃശ്ശൂർ നഗരം • THRISSUR CITY — M.O. ROAD",
-        straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "SWARAJ ROUND", "UP", "400 M"),
-        leftDest = KeralaSignDestination("റെയിൽവേ സ്റ്റേഷൻ", "RAILWAY STATION", "LEFT", "150 M"),
+        headerTitle = "തൃശ്ശൂർ നഗരം • THRISSUR CITY — SAKTHAN EXIT CORRIDOR",
+        straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "SWARAJ ROUND", "UP", "250 M"),
+        leftDest = KeralaSignDestination("റെയിൽവേ സ്റ്റേഷൻ", "RAILWAY STATION", "LEFT", "180 M"),
         rightDest = KeralaSignDestination("ഒല്ലൂർ NH 544", "OLLUR", "RIGHT", "1.2 KM"),
         travelDir = 1
     ),
-    // A1. Northbound on M.O. Road approaching Railway Station & Sakthan Slip Turnoff (Z = -98.0m)
+    // A1. Northbound on M.O. Road approaching Railway Station & Sakthan Entry Slip Turnoff (Z = -98.0m)
     KeralaRoadSignSpec(
         roadId = "ROAD_SAKTHAN_TO_SWARAJ",
-        frameFraction = 0.48f,
+        frameFraction = 0.77f,
         side = -1,
         style = KeralaSignStyle.STACKED_3_PANEL,
         straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "UP", "0.3"),
@@ -3313,7 +2520,7 @@ private val ThrissurAuthenticSignSpecs = listOf(
     // A2. Southbound on M.O. Road from Swaraj Round approaching Puthanpalli Link (Z = -86.0m) & Railway Station Turnoff (Z = -98.0m)
     KeralaRoadSignSpec(
         roadId = "ROAD_SAKTHAN_TO_SWARAJ",
-        frameFraction = 0.72f,
+        frameFraction = 0.86f,
         side = 1,
         style = KeralaSignStyle.STACKED_3_PANEL,
         straightDest = KeralaSignDestination("ശക്തൻ സ്റ്റാൻഡ്", "Sakthan Stand", "UP", "0.3"),
@@ -3321,21 +2528,21 @@ private val ThrissurAuthenticSignSpecs = listOf(
         rightDest = KeralaSignDestination("റെയിൽവേ സ്റ്റേഷൻ", "Railway Station", "RIGHT", "0.1"),
         travelDir = -1
     ),
-    // A3. Southbound on M.O. Road approaching Ollur Link (Z = -114.5m) & Sakthan Stand
+    // A3. Southbound on M.O. Road approaching Ollur Boundary Link & Sakthan Stand
     KeralaRoadSignSpec(
         roadId = "ROAD_SAKTHAN_TO_SWARAJ",
-        frameFraction = 0.42f,
+        frameFraction = 0.71f,
         side = 1,
         style = KeralaSignStyle.STACKED_3_PANEL,
-        straightDest = KeralaSignDestination("ശക്തൻ സ്റ്റാൻഡ്", "Sakthan Stand", "UP", "0.2"),
-        leftDest = KeralaSignDestination("ഒല്ലൂർ", "Ollur", "LEFT", "1.2"),
+        straightDest = KeralaSignDestination("ശക്തൻ എൻട്രി", "Sakthan Entry", "RIGHT", "0.1"),
+        leftDest = KeralaSignDestination("ഒല്ലൂർ", "Ollur", "UP", "1.2"),
         rightDest = KeralaSignDestination("റെയിൽവേ സ്റ്റേഷൻ", "Railway Station", "RIGHT", "0.1"),
         travelDir = -1
     ),
-    // A4. Westbound on Ollur Road approaching M.O. Road T-Junction (Z = -114.5m)
+    // A4. Northbound on Ollur Road approaching Sakthan South-East T-Junction
     KeralaRoadSignSpec(
         roadId = "ROAD_SAKTHAN_TO_OLLUR",
-        frameFraction = 0.045f,
+        frameFraction = 0.032f,
         side = 1,
         style = KeralaSignStyle.STACKED_3_PANEL,
         straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "RIGHT", "0.4"),
@@ -3354,14 +2561,14 @@ private val ThrissurAuthenticSignSpecs = listOf(
         rightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "LEFT", "0.3"),
         travelDir = 1
     ),
-    // A6. Northbound on Station Road right at Thrissur Central Railway Station Forecourt
+    // A6. Northbound on Station Road approaching Thrissur Railway Station (TCR) West Entry
     KeralaRoadSignSpec(
         roadId = "ROAD_STATION_ROAD",
-        frameFraction = 0.30f,
+        frameFraction = 0.22f,
         side = 1,
         style = KeralaSignStyle.STACKED_3_PANEL,
         straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "UP", "0.2"),
-        leftDest = KeralaSignDestination("റെയിൽവേ സ്റ്റേഷൻ", "Railway Station", "LEFT", "TCR"),
+        leftDest = KeralaSignDestination("തൃശ്ശൂർ റെയിൽവേ", "Railway Station (TCR)", "LEFT", "0.1"),
         rightDest = KeralaSignDestination("ശക്തൻ സ്റ്റാൻഡ്", "Sakthan Stand", "RIGHT", "0.2"),
         travelDir = 1
     ),
@@ -3376,15 +2583,15 @@ private val ThrissurAuthenticSignSpecs = listOf(
         rightDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "RIGHT", "1.3"),
         travelDir = 1
     ),
-    // A8. Southbound on Station Road from Swaraj Round approaching Thrissur Central Railway Station
+    // A8. Southbound on Station Road from Swaraj Round approaching Thrissur Railway Station & Sakthan Stand
     KeralaRoadSignSpec(
         roadId = "ROAD_STATION_ROAD",
         frameFraction = 0.72f,
         side = -1,
         style = KeralaSignStyle.STACKED_3_PANEL,
-        straightDest = KeralaSignDestination("റെയിൽവേ സ്റ്റേഷൻ", "Railway Station", "RIGHT", "0.1"),
-        leftDest = KeralaSignDestination("ശക്തൻ സ്റ്റാൻഡ്", "Sakthan Stand", "UP", "0.2"),
-        rightDest = KeralaSignDestination("എം.ഒ. റോഡ്", "M.O. Road", "LEFT", "0.2"),
+        straightDest = KeralaSignDestination("ശക്തൻ സ്റ്റാൻഡ്", "Sakthan Stand", "UP", "0.2"),
+        leftDest = KeralaSignDestination("എം.ഒ. റോഡ്", "M.O. Road", "LEFT", "0.2"),
+        rightDest = KeralaSignDestination("തൃശ്ശൂർ റെയിൽവേ", "Railway Station (TCR)", "RIGHT", "0.1"),
         travelDir = -1
     ),
 
@@ -3394,7 +2601,7 @@ private val ThrissurAuthenticSignSpecs = listOf(
     // B1. Northbound on M.O. Road approaching High Road / Puthanpalli Link (Z = -86.0m)
     KeralaRoadSignSpec(
         roadId = "ROAD_SAKTHAN_TO_SWARAJ",
-        frameFraction = 0.62f,
+        frameFraction = 0.83f,
         side = -1,
         style = KeralaSignStyle.STACKED_3_PANEL,
         straightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "UP", "0.3"),
@@ -3431,7 +2638,7 @@ private val ThrissurAuthenticSignSpecs = listOf(
     // C1. South Approach (M.O. Road Northbound into Swaraj Round South / Manikandanal)
     KeralaRoadSignSpec(
         roadId = "ROAD_SAKTHAN_TO_SWARAJ",
-        frameFraction = 0.82f,
+        frameFraction = 0.93f,
         side = -1,
         style = KeralaSignStyle.ROUNDABOUT_DIAGRAM,
         headerTitle = "സ്വരാജ് റൗണ്ട് • SWARAJ ROUND",
@@ -3524,14 +2731,14 @@ private val ThrissurAuthenticSignSpecs = listOf(
     // ========================================================================
     // JUNCTION D: VADAKKE STAND (SHORANUR ROAD) & WEST FORT (M.G. ROAD)
     // ========================================================================
-    // D1. Northbound on Shoranur Road approaching Vadakke Bus Stand
+    // D1. Northbound on Shoranur Road approaching Vadakke Bus Stand East ENTRY & West EXIT Merge
     KeralaRoadSignSpec(
         roadId = "ROAD_SWARAJ_TO_VADAKKE",
-        frameFraction = 0.78f,
+        frameFraction = 0.72f,
         side = -1,
         style = KeralaSignStyle.STACKED_3_PANEL,
         straightDest = KeralaSignDestination("വടക്കേ സ്റ്റാൻഡ്", "Vadakke Stand", "UP", "0.2"),
-        leftDest = KeralaSignDestination("സ്റ്റാൻഡ് എൻട്രി", "Stand Entry", "LEFT", "0.1"),
+        leftDest = KeralaSignDestination("സ്റ്റാൻഡ് എക്സിറ്റ്", "Stand Exit", "LEFT", "0.1"),
         rightDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "RIGHT", "1.1"),
         travelDir = 1
     ),
@@ -3596,40 +2803,41 @@ private val ThrissurAuthenticSignSpecs = listOf(
     ),
 
     // ========================================================================
-    // JUNCTION F: MANNUTHY 3-WAY INTERCHANGE (All 3 Approaches!)
+    // JUNCTION F: MANNUTHY 4-WAY FLYOVER INTERCHANGE (Zone 2 NH 544 / SH 51!)
     // ========================================================================
-    // F1. Eastbound from Thrissur approaching Mannuthy NH 544 / Peechi Dam Junction
+    // F1. Eastbound from Thrissur approaching Mannuthy 4-Way Interchange
     KeralaRoadSignSpec(
         roadId = "ROAD_SWARAJ_TO_MANNUTHY",
-        frameFraction = 0.945f,
+        frameFraction = 0.905f,
         side = 0,
         style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
-        headerTitle = "MANNUTHY INTERCHANGE • NH 544 / SH 51",
-        straightDest = KeralaSignDestination("പീച്ചി ഡാം", "PEECHI DAM", "UP", "17 KM"),
-        leftDest = KeralaSignDestination("ഒല്ലൂർ NH 544", "OLLUR", "RIGHT", "8.8 KM"),
-        rightDest = KeralaSignDestination("പാലിയേക്കര ടോൾ", "TOLL PLAZA", "RIGHT", "16.6 KM"),
+        headerTitle = "MANNUTHY 4-WAY FLYOVER • NH 544 / SH 51",
+        straightDest = KeralaSignDestination("പീച്ചി ഡാം", "PEECHI DAM", "UP", "15 KM"),
+        leftDest = KeralaSignDestination("കുതിരാൻ / പാലക്കാട്", "KUTHIRAN / PALAKKAD", "LEFT", "68 KM"),
+        rightDest = KeralaSignDestination("പാലിയേക്കര ടോൾ", "KOCHI / TOLL NH 544", "RIGHT", "16 KM"),
         travelDir = 1
     ),
-    // F2. Westbound from Peechi Dam approaching Mannuthy Interchange
+    // F2. Westbound from Peechi Dam approaching Mannuthy 4-Way Interchange
     KeralaRoadSignSpec(
         roadId = "ROAD_MANNUTHY_TO_PEECHI_DAM",
-        frameFraction = 0.035f,
+        frameFraction = 0.055f,
         side = 1,
         style = KeralaSignStyle.STACKED_3_PANEL,
-        straightDest = KeralaSignDestination("തൃശ്ശൂർ നഗരം", "Thrissur City", "UP", "7.0"),
-        leftDest = KeralaSignDestination("പാലിയേക്കര ടോൾ", "Paliyekkara Toll", "LEFT", "16.6"),
-        rightDest = KeralaSignDestination("ഒല്ലൂർ NH 544", "Ollur", "LEFT", "8.8"),
+        straightDest = KeralaSignDestination("തൃശ്ശൂർ നഗരം (ഈസ്റ്റ് ഫോർട്ട്)", "Thrissur City", "UP", "6.0"),
+        leftDest = KeralaSignDestination("പാലിയേക്കര ടോൾ", "Paliyekkara Toll", "LEFT", "16.0"),
+        rightDest = KeralaSignDestination("കുതിരാൻ / പാലക്കാട്", "Kuthiran / Palakkad", "RIGHT", "68.0"),
         travelDir = -1
     ),
-    // F3. Northbound on NH 544 from Ollur/Paliyekkara approaching Mannuthy Interchange
+    // F3. Northbound on NH 544 from Ollur/Paliyekkara approaching Mannuthy 4-Way Interchange
     KeralaRoadSignSpec(
         roadId = "ROAD_NH544_MANNUTHY_TO_PALIYEKKARA",
-        frameFraction = 0.035f,
-        side = 1,
-        style = KeralaSignStyle.STACKED_3_PANEL,
-        straightDest = KeralaSignDestination("തൃശ്ശൂർ നഗരം", "Thrissur City", "LEFT", "7.0"),
-        leftDest = KeralaSignDestination("സ്വരാജ് റൗണ്ട്", "Swaraj Round", "LEFT", "7.0"),
-        rightDest = KeralaSignDestination("പീച്ചി ഡാം", "Peechi Dam", "RIGHT", "17.0"),
+        frameFraction = 0.095f,
+        side = 0,
+        style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
+        headerTitle = "NH 544 • MANNUTHY 4-WAY INTERCHANGE",
+        straightDest = KeralaSignDestination("കുതിരാൻ / പാലക്കാട്", "KUTHIRAN / PALAKKAD", "UP", "68 KM"),
+        leftDest = KeralaSignDestination("തൃശ്ശൂർ നഗരം (ഈസ്റ്റ് ഫോർട്ട്)", "THRISSUR CITY", "LEFT", "6 KM"),
+        rightDest = KeralaSignDestination("പീച്ചി ഡാം", "PEECHI DAM", "RIGHT", "15 KM"),
         travelDir = -1
     ),
 
@@ -3669,15 +2877,15 @@ private val ThrissurAuthenticSignSpecs = listOf(
         rightDest = KeralaSignDestination("പാലിയേക്കര ടോൾ", "Paliyekkara Toll", "RIGHT", "7.8"),
         travelDir = 1
     ),
-    // G4. Southbound on NH 544 approaching Paliyekkara Toll Plaza
+    // G4. Southbound on NH 544 approaching Paliyekkara Toll Plaza (cleanly ahead of North S-curve flare)
     KeralaRoadSignSpec(
         roadId = "ROAD_NH544_MANNUTHY_TO_PALIYEKKARA",
-        frameFraction = 0.905f,
+        frameFraction = 0.775f,
         side = 0,
         style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
         headerTitle = "NATIONAL HIGHWAY • NH 544",
-        straightDest = KeralaSignDestination("പാലിയേക്കര ടോൾ", "PALIYEKKARA TOLL", "UP", "500 M"),
-        leftDest = KeralaSignDestination("ഫാസ്ടാഗ് ലെയിൻ", "FASTAG LANES", "UP", "500 M"),
+        straightDest = KeralaSignDestination("പാലിയേക്കര ടോൾ", "PALIYEKKARA TOLL", "UP", "200 M"),
+        leftDest = KeralaSignDestination("ഫാസ്ടാഗ് ലെയിൻ", "FASTAG LANES", "UP", "200 M"),
         rightDest = KeralaSignDestination("ഒല്ലൂർ / തൃശ്ശൂർ", "THRISSUR VIA NH", "UP", "16 KM"),
         travelDir = 1
     ),
@@ -3741,8 +2949,110 @@ private val ThrissurAuthenticSignSpecs = listOf(
         leftDest = KeralaSignDestination("കാഞ്ഞാണി SH 61", "KANJANI", "LEFT", "1.6 KM"),
         rightDest = KeralaSignDestination("തൃശ്ശൂർ", "THRISSUR", "LEFT", "13 KM"),
         travelDir = 1
+    ),
+    // I1. Northbound on SH 22 leaving Thrissur / Viyyur towards Wadakkanchery & Shoranur
+    KeralaRoadSignSpec(
+        roadId = "ROAD_THRISSUR_TO_SHORANUR",
+        frameFraction = 0.085f,
+        side = -1,
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        headerTitle = "STATE HIGHWAY • SH 22 NORTHBOUND",
+        straightDest = KeralaSignDestination("വടക്കാഞ്ചേരി ROB", "Wadakkanchery ROB", "UP", "15 KM"),
+        leftDest = KeralaSignDestination("ഷൊർണ്ണൂർ ടെർമിനൽ", "Shoranur Stand", "UP", "31 KM"),
+        rightDest = KeralaSignDestination("ഷൊർണ്ണൂർ ജംഗ്ഷൻ", "Shoranur Jn (SRR)", "UP", "33 KM"),
+        travelDir = 1
+    ),
+    // I2. Overhead Gantry approaching Athani / Mulagunnathukavu -> Wadakkanchery ROB
+    KeralaRoadSignSpec(
+        roadId = "ROAD_THRISSUR_TO_SHORANUR",
+        frameFraction = 0.360f,
+        side = 0,
+        style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
+        headerTitle = "SH 22 • THRISSUR - WADAKKANCHERY - SHORANUR",
+        straightDest = KeralaSignDestination("വടക്കാഞ്ചേരി ROB", "WADAKKANCHERY", "UP", "3.5 KM"),
+        leftDest = KeralaSignDestination("ഷൊർണ്ണൂർ ജംഗ്ഷൻ", "SHORANUR JN", "UP", "19 KM"),
+        rightDest = KeralaSignDestination("ഷൊർണ്ണൂർ സ്റ്റാൻഡ്", "SHORANUR STAND", "UP", "18 KM"),
+        travelDir = 1
+    ),
+    // I3. Northbound approaching Shoranur Bus Terminal (East) & Shoranur Junction Station (West)
+    KeralaRoadSignSpec(
+        roadId = "ROAD_THRISSUR_TO_SHORANUR",
+        frameFraction = 0.855f,
+        side = 0,
+        style = KeralaSignStyle.OVERHEAD_HIGHWAY_GANTRY,
+        headerTitle = "SHORANUR TOWN • SH 22 TERMINUS",
+        straightDest = KeralaSignDestination("ഷൊർണ്ണൂർ ജംഗ്ഷൻ", "SHORANUR JN (SRR)", "LEFT", "0.4 KM"),
+        leftDest = KeralaSignDestination("റെയിൽവേ സ്റ്റേഷൻ", "RAILWAY STATION", "LEFT", "0.4 KM"),
+        rightDest = KeralaSignDestination("ഷൊർണ്ണൂർ ബസ് ടെർമിനൽ", "SHORANUR TERMINAL", "RIGHT", "0.1 KM"),
+        travelDir = 1
+    ),
+    // I4. Northbound between Shoranur Bus Terminal & Shoranur Junction Railway Station
+    KeralaRoadSignSpec(
+        roadId = "ROAD_THRISSUR_TO_SHORANUR",
+        frameFraction = 0.915f,
+        side = -1,
+        style = KeralaSignStyle.STACKED_3_PANEL,
+        headerTitle = "SHORANUR JUNCTION APPROACH",
+        straightDest = KeralaSignDestination("ഷൊർണ്ണൂർ ജംഗ്ഷൻ (SRR)", "Shoranur Jn Station", "LEFT", "0.1 KM"),
+        leftDest = KeralaSignDestination("പ്ലാറ്റ്ഫോം 1 & 2", "Trains to TCR / PGT", "LEFT", "0.1 KM"),
+        rightDest = KeralaSignDestination("ഷൊർണ്ണൂർ ബസ് സ്റ്റാൻഡ്", "Shoranur Bus Stand", "RIGHT", "0.2 KM"),
+        travelDir = 1
     )
 )
+
+private class RoadFrameSpatialGrid(roads: List<ThrissurOsmRoad>) {
+    private val cellSize = 32.0f
+    private val invCellSize = 1f / cellSize
+    private val grid = HashMap<Long, ArrayList<RoadFrame>>(4096)
+
+    init {
+        for (road in roads) {
+            val frames = road.frames
+            for (i in 0 until frames.size) {
+                val f = frames[i]
+                val cx = kotlin.math.floor(f.pos.x * invCellSize).toInt()
+                val cz = kotlin.math.floor(f.pos.z * invCellSize).toInt()
+                val key = (cx.toLong() shl 32) or (cz.toLong() and 0xFFFFFFFFL)
+                grid.getOrPut(key) { ArrayList(8) }.add(f)
+            }
+        }
+    }
+
+    fun isClear(px: Float, pz: Float, extraMarginM: Float): Boolean {
+        val cx0 = kotlin.math.floor(px * invCellSize).toInt()
+        val cz0 = kotlin.math.floor(pz * invCellSize).toInt()
+        for (dxC in -1..1) {
+            for (dzC in -1..1) {
+                val key = ((cx0 + dxC).toLong() shl 32) or ((cz0 + dzC).toLong() and 0xFFFFFFFFL)
+                val bucket = grid[key] ?: continue
+                for (i in 0 until bucket.size) {
+                    val f = bucket[i]
+                    val minClear = f.halfWidthM + extraMarginM
+                    val dx = px - f.pos.x
+                    val dz = pz - f.pos.z
+                    if (dx * dx + dz * dz < minClear * minClear) {
+                        return false
+                    }
+                }
+            }
+        }
+        return true
+    }
+}
+
+@Volatile
+private var cachedRoadSpatialRoadsRef: List<ThrissurOsmRoad>? = null
+@Volatile
+private var cachedRoadSpatialGrid: RoadFrameSpatialGrid? = null
+
+private fun getOrBuildRoadSpatialGrid(roads: List<ThrissurOsmRoad>): RoadFrameSpatialGrid {
+    val existing = cachedRoadSpatialGrid
+    if (existing != null && cachedRoadSpatialRoadsRef === roads) return existing
+    val built = RoadFrameSpatialGrid(roads)
+    cachedRoadSpatialRoadsRef = roads
+    cachedRoadSpatialGrid = built
+    return built
+}
 
 private fun isPointClearOfAllRoads(
     px: Float,
@@ -3750,22 +3060,22 @@ private fun isPointClearOfAllRoads(
     roads: List<ThrissurOsmRoad>,
     extraMarginM: Float = 3.25f
 ): Boolean {
-    for (road in roads) {
-        for (f in road.frames) {
-            val minClearDist = f.halfWidthM + extraMarginM
-            if (hypot(px - f.pos.x, pz - f.pos.z) < minClearDist) {
-                return false
-            }
-        }
-    }
-    for (bm in ThrissurRoadRepository.getJunctionBellmouths()) {
+    val spatialGrid = getOrBuildRoadSpatialGrid(roads)
+    if (!spatialGrid.isClear(px, pz, extraMarginM)) return false
+
+    val bellmouths = ThrissurRoadRepository.getJunctionBellmouths()
+    for (i in 0 until bellmouths.size) {
+        val bm = bellmouths[i]
         val bmMargin = bm.tCenter.halfWidthM + extraMarginM + 3.5f
-        if (hypot(px - bm.centerPos.x, pz - bm.centerPos.z) < bmMargin ||
-            hypot(px - bm.tBefore.pos.x, pz - bm.tBefore.pos.z) < bmMargin * 0.85f ||
-            hypot(px - bm.tAfter.pos.x, pz - bm.tAfter.pos.z) < bmMargin * 0.85f
-        ) {
-            return false
-        }
+        val bmMarginSq = bmMargin * bmMargin
+        val subMargin = bmMargin * 0.85f
+        val subMarginSq = subMargin * subMargin
+        val dcx = px - bm.centerPos.x; val dcz = pz - bm.centerPos.z
+        if (dcx * dcx + dcz * dcz < bmMarginSq) return false
+        val dbx = px - bm.tBefore.pos.x; val dbz = pz - bm.tBefore.pos.z
+        if (dbx * dbx + dbz * dbz < subMarginSq) return false
+        val dax = px - bm.tAfter.pos.x; val daz = pz - bm.tAfter.pos.z
+        if (dax * dax + daz * daz < subMarginSq) return false
     }
     return true
 }
@@ -3775,10 +3085,20 @@ private fun isPointClearOfLandmarkBuildings(px: Float, pz: Float): Boolean {
     if (px in 41.0f..66.5f && pz in 69.5f..85.0f) return false
     if (px in -79.0f..-63.5f && pz in 13.5f..41.0f) return false
     if (px in -54.5f..-19.5f && pz in 73.5f..88.5f) return false
-    if (hypot(px - 3.1f, pz - 9.5f) < 42.0f) return false
-    if (px in -33.0f..43.0f && pz in -223.0f..-138.0f) return false
-    if (px in -70.0f..-25.5f && pz in -238.0f..-66.0f) return false
+    if (hypot(px - 3.1f, pz - 18.0f) < 62.0f) return false
+    if (px in -32.0f..41.5f && pz in -208.5f..-138.0f) return false
+    if (px in -128.0f..-60.5f && pz in -228.0f..-54.0f) return false
     if (px in -66.0f..-5.0f && pz in 199.0f..249.0f) return false
+    if (px in 74.0f..136.0f && pz in 1510.0f..1955.0f) return false
+    if (px in 118.0f..204.0f && pz in 3008.0f..3142.0f) return false
+    if (px in -2.0f..78.0f && pz in 3158.0f..3318.0f) return false
+    if (ShoranurRailwaySystem.isNearRailwayTrack(px, pz, 13.5f)) return false
+    if (!Zone2Nh544KuthiranRenderer.isPointClearOfZone2Structures(px, pz)) return false
+    if (!Zone3Nh544SouthRenderer.isPointClearOfZone3Structures(px, pz)) return false
+    if (!Zone4KoleRailHeritageRenderer.isPointClearOfZone4Structures(px, pz)) return false
+    if (!Zone5Nh66CoastalRenderer.isPointClearOfZone5Structures(px, pz)) return false
+    if (!PuthanpallyBasilicaRenderer.isPointClearOfPuthanpally(px, pz)) return false
+    if (!ThrissurFuelStationSystem.isPointClearOfFuelStations(px, pz, extraMargin = 5.0f)) return false
     return true
 }
 
@@ -3885,9 +3205,11 @@ private fun addOrientedBeamFaces(
 private class CachedSignRenderItem(
     val midX: Float,
     val midZ: Float,
+    val postCoords: List<Triple<Float, Float, Float>>, // (x, z, radius)
     val faces: List<QuadFace3D>
 )
 
+@Volatile
 private var cachedSignRenderItems: List<CachedSignRenderItem>? = null
 
 private fun getOrBuildSignRenderCache(roads: List<ThrissurOsmRoad>): List<CachedSignRenderItem> {
@@ -3899,6 +3221,7 @@ private fun getOrBuildSignRenderCache(roads: List<ThrissurOsmRoad>): List<Cached
         val midX = (leftPos.x + rightPos.x) * 0.5f
         val midZ = (leftPos.z + rightPos.z) * 0.5f
         val itemFaces = ArrayList<QuadFace3D>(64)
+        val posts = ArrayList<Triple<Float, Float, Float>>(2)
 
         val dx = rightPos.x - leftPos.x
         val dz = rightPos.z - leftPos.z
@@ -3909,6 +3232,7 @@ private fun getOrBuildSignRenderCache(roads: List<ThrissurOsmRoad>): List<Cached
                 // Reinforced concrete foundation pedestal + galvanized steel lattice gantry column
                 addCylinderFrustumFaces(itemFaces, colPos.x, colPos.z, 0.05f, 0.65f, 0.38f, 0.34f, MatRoadMarkingYellow, sides = 8)
                 addCylinderFrustumFaces(itemFaces, colPos.x, colPos.z, 0.65f, 8.35f, 0.24f, 0.22f, MatGraniteLight, sides = 8)
+                posts.add(Triple(colPos.x, colPos.z, 0.42f))
             }
             // Lower & Upper Gantry Truss Beams (strictly below 6.15m and above 8.25m so no solid box ever covers the signboard!)
             addOrientedBeamFaces(
@@ -3951,6 +3275,7 @@ private fun getOrBuildSignRenderCache(roads: List<ThrissurOsmRoad>): List<Cached
                 addCylinderFrustumFaces(itemFaces, px, pz, 0.05f, 0.45f, 0.22f, 0.19f, MatRoadMarkingYellow, sides = 8)
                 addCylinderFrustumFaces(itemFaces, px, pz, 0.45f, 1.45f, 0.13f, 0.12f, MatHazardBlack, sides = 8)
                 addCylinderFrustumFaces(itemFaces, px, pz, 1.45f, botY, 0.12f, 0.11f, MatRoadMarkingWhite, sides = 8)
+                posts.add(Triple(px, pz, 0.30f))
             }
             // 2. Lower Support Cross-Beam (Y = 2.48m .. 2.65m) & Upper Weather-Cap Rim (Y = 5.65m .. 5.74m)
             //    Strictly outside the [botY..topY] sign face so no solid box ever occludes the direction board!
@@ -3982,7 +3307,7 @@ private fun getOrBuildSignRenderCache(roads: List<ThrissurOsmRoad>): List<Cached
                 )
             )
         }
-        built.add(CachedSignRenderItem(midX, midZ, itemFaces))
+        built.add(CachedSignRenderItem(midX, midZ, posts, itemFaces))
     }
     cachedSignRenderItems = built
     return built
@@ -4006,6 +3331,41 @@ private fun collectNhaiSignboardFaces(
             outFaces.addAll(item.faces)
         }
     }
+}
+
+internal fun getZone1RoadSignClearancePoints(roads: List<ThrissurOsmRoad>): List<Pair<Float, Float>> {
+    if (roads.isEmpty()) return emptyList()
+    val items = getOrBuildSignRenderCache(roads)
+    val out = ArrayList<Pair<Float, Float>>(items.size)
+    for (item in items) {
+        if (item.midX in Zone1GDriveEnvironmentRenderer.ZONE1_MIN_X..Zone1GDriveEnvironmentRenderer.ZONE1_MAX_X &&
+            item.midZ in Zone1GDriveEnvironmentRenderer.ZONE1_MIN_Z..Zone1GDriveEnvironmentRenderer.ZONE1_MAX_Z
+        ) {
+            out.add(Pair(item.midX, item.midZ))
+        }
+    }
+    return out
+}
+
+internal fun getRoadSignPostColliders(roads: List<ThrissurOsmRoad>): List<Triple<Float, Float, Float>> {
+    if (roads.isEmpty()) return emptyList()
+    val items = getOrBuildSignRenderCache(roads)
+    val out = ArrayList<Triple<Float, Float, Float>>(items.size * 2)
+    for (item in items) {
+        out.addAll(item.postCoords)
+    }
+    return out
+}
+
+internal fun getRoadsideTreeColliders(roads: List<ThrissurOsmRoad>): List<Triple<Float, Float, Float>> {
+    if (roads.isEmpty()) return emptyList()
+    val signs = getOrBuildSignRenderCache(roads)
+    val clusters = cachedRoadsideClusters ?: buildRoadsideSceneryCache(roads, signs).also { cachedRoadsideClusters = it }
+    val out = ArrayList<Triple<Float, Float, Float>>(clusters.size)
+    for (c in clusters) {
+        out.add(Triple(c.bx, c.bz, 0.56f))
+    }
+    return out
 }
 
 

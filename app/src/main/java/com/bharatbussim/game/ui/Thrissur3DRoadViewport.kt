@@ -2,10 +2,13 @@ package com.bharatbussim.game.ui
 
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.opengl.GLSurfaceView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -14,9 +17,11 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -25,7 +30,10 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import com.bharatbussim.game.model.CameraViewMode
@@ -35,6 +43,7 @@ import com.bharatbussim.game.model.RoadJunctionBellmouth
 import com.bharatbussim.game.model.ThrissurOsmRoad
 import com.bharatbussim.game.model.ThrissurRoadRepository
 import com.bharatbussim.game.model.Vec3
+import com.bharatbussim.game.ui.theme.PremiumFonts
 import com.bharatbussim.game.viewmodel.SimUiState
 import com.bharatbussim.game.viewmodel.ThrissurSimViewModel
 import kotlin.math.PI
@@ -56,9 +65,9 @@ private val SkyZenith = Color(0xFF2B5B8C)
 private val SkyMid = Color(0xFF6394BF)
 private val SkyHorizonHaze = Color(0xFFC4D7E8)
 
-private val GroundFarVerge = Color(0xFF5A6349)
-private val GroundMidVerge = Color(0xFF4B543B)
-private val GroundNearEarth = Color(0xFF424A34)
+private val GroundFarVerge = Color(0xFF6B6559)
+private val GroundMidVerge = Color(0xFF5B554A)
+private val GroundNearEarth = Color(0xFF4F4A40)
 
 private val MatAsphaltBase = Color(0xFF23272D)
 private val MatAsphaltCrown = Color(0xFF292E35)
@@ -92,6 +101,279 @@ private val MatCopperFinial = Color(0xFFB45309)
 
 internal data class CamSpaceVert(val cx: Float, val cy: Float, val cz: Float)
 
+/**
+ * Captures 3D world-space road, shoulder, bellmouth, marking, and ground plaza primitives directly
+ * into a flat GPU vertex array (8 floats/vertex: `x, y, z, r, g, b, a, biasOffset`) during a one-time
+ * startup recording pass so the OpenGL ES 3.0 renderer can draw the entire road network from a static VBO.
+ */
+internal class WorldGeometryRecorder(initialFloatsCapacity: Int = 450_000) {
+    var floats = FloatArray(initialFloatsCapacity)
+        private set
+    var floatCount = 0
+        private set
+
+    var passYOffset: Float = 0f
+    var passBiasOffset: Float = 0f
+    var microStepY: Float = 0f
+    private var microCounter: Int = 0
+
+    private var pendingKind = 0 // 0=none, 1=quad, 2=ribbon, 3=poly
+    private var q0 = Vec3(0f, 0f, 0f)
+    private var q1 = Vec3(0f, 0f, 0f)
+    private var q2 = Vec3(0f, 0f, 0f)
+    private var q3 = Vec3(0f, 0f, 0f)
+
+    private val ribbonLeft = ArrayList<Vec3>(256)
+    private val ribbonRight = ArrayList<Vec3>(256)
+    private val polyPts = ArrayList<Vec3>(64)
+
+    private var hasPendingSeg = false
+    private var segA = Vec3(0f, 0f, 0f)
+    private var segB = Vec3(0f, 0f, 0f)
+
+    fun setPassLayer(yOffset: Float, biasOffset: Float, microStep: Float = 0.00003f) {
+        passYOffset = yOffset
+        passBiasOffset = biasOffset
+        microStepY = microStep
+        microCounter = 0
+    }
+
+    private fun ensureCapacity(extraFloats: Int) {
+        if (floatCount + extraFloats > floats.size) {
+            val newCap = max(floats.size * 2, floatCount + extraFloats + 65536)
+            floats = floats.copyOf(newCap)
+        }
+    }
+
+    private fun emitTri(a: Vec3, b: Vec3, c: Vec3, yLift: Float, col: Color, bias: Float) {
+        ensureCapacity(24)
+        val r = col.red; val g = col.green; val bl = col.blue; val al = col.alpha
+        var p = floatCount
+        floats[p++] = a.x; floats[p++] = a.y + yLift; floats[p++] = a.z; floats[p++] = r; floats[p++] = g; floats[p++] = bl; floats[p++] = al; floats[p++] = bias
+        floats[p++] = b.x; floats[p++] = b.y + yLift; floats[p++] = b.z; floats[p++] = r; floats[p++] = g; floats[p++] = bl; floats[p++] = al; floats[p++] = bias
+        floats[p++] = c.x; floats[p++] = c.y + yLift; floats[p++] = c.z; floats[p++] = r; floats[p++] = g; floats[p++] = bl; floats[p++] = al; floats[p++] = bias
+        floatCount = p
+    }
+
+    fun setPendingQuad(v0: Vec3, v1: Vec3, v2: Vec3, v3: Vec3) {
+        q0 = v0; q1 = v1; q2 = v2; q3 = v3
+        pendingKind = 1
+    }
+
+    fun setPendingRibbon(
+        frames: List<RoadFrame>,
+        startIdx: Int,
+        endIdx: Int,
+        offsetLFn: (RoadFrame) -> Float,
+        offsetRFn: (RoadFrame) -> Float,
+        yHeight: Float
+    ) {
+        ribbonLeft.clear()
+        ribbonRight.clear()
+        val yDelta = yHeight - 0.05f
+        for (i in startIdx..endIdx) {
+            val f = frames[i]
+            val offL = offsetLFn(f)
+            val offR = offsetRFn(f)
+            val fy = f.pos.y + yDelta
+            ribbonLeft.add(Vec3(f.pos.x + f.right.x * offL, fy, f.pos.z + f.right.z * offL))
+            ribbonRight.add(Vec3(f.pos.x + f.right.x * offR, fy, f.pos.z + f.right.z * offR))
+        }
+        pendingKind = 2
+    }
+
+    fun setPendingPolygon(pts: List<Vec3>) {
+        polyPts.clear()
+        polyPts.addAll(pts)
+        pendingKind = 3
+    }
+
+    fun setPendingSegment(a: Vec3, b: Vec3) {
+        segA = a
+        segB = b
+        hasPendingSeg = true
+    }
+
+    private fun dist3D(a: Vec3, b: Vec3): Float {
+        val dx = b.x - a.x
+        val dy = b.y - a.y
+        val dz = b.z - a.z
+        return sqrt(dx * dx + dy * dy + dz * dz)
+    }
+
+    private fun emitSubdividedQuad(
+        v0: Vec3,
+        v1: Vec3,
+        v2: Vec3,
+        v3: Vec3,
+        yLift: Float,
+        col: Color,
+        bias: Float,
+        maxEdgeM: Float = 3.5f
+    ) {
+        val lenU = max(dist3D(v0, v1), dist3D(v3, v2))
+        val lenV = max(dist3D(v0, v3), dist3D(v1, v2))
+        if (lenU <= maxEdgeM && lenV <= maxEdgeM) {
+            emitTri(v0, v1, v2, yLift, col, bias)
+            emitTri(v0, v2, v3, yLift, col, bias)
+            return
+        }
+        val stepsU = kotlin.math.ceil(lenU / maxEdgeM).toInt().coerceIn(1, 28)
+        val stepsV = kotlin.math.ceil(lenV / maxEdgeM).toInt().coerceIn(1, 28)
+
+        fun bilerp(u: Float, v: Float): Vec3 {
+            val iu = 1f - u
+            val iv = 1f - v
+            val w0 = iu * iv
+            val w1 = u * iv
+            val w2 = u * v
+            val w3 = iu * v
+            return Vec3(
+                v0.x * w0 + v1.x * w1 + v2.x * w2 + v3.x * w3,
+                v0.y * w0 + v1.y * w1 + v2.y * w2 + v3.y * w3,
+                v0.z * w0 + v1.z * w1 + v2.z * w2 + v3.z * w3
+            )
+        }
+
+        val invU = 1f / stepsU.toFloat()
+        val invV = 1f / stepsV.toFloat()
+        for (iv in 0 until stepsV) {
+            val tv0 = iv * invV
+            val tv1 = (iv + 1) * invV
+            for (iu in 0 until stepsU) {
+                val tu0 = iu * invU
+                val tu1 = (iu + 1) * invU
+                val p00 = bilerp(tu0, tv0)
+                val p10 = bilerp(tu1, tv0)
+                val p11 = bilerp(tu1, tv1)
+                val p01 = bilerp(tu0, tv1)
+                emitTri(p00, p10, p11, yLift, col, bias)
+                emitTri(p00, p11, p01, yLift, col, bias)
+            }
+        }
+    }
+
+    private fun emitSubdividedTri(
+        a: Vec3,
+        b: Vec3,
+        c: Vec3,
+        yLift: Float,
+        col: Color,
+        bias: Float,
+        maxEdgeM: Float = 5.5f,
+        depth: Int = 0
+    ) {
+        if (depth >= 3) {
+            emitTri(a, b, c, yLift, col, bias)
+            return
+        }
+        val dAB = dist3D(a, b)
+        val dBC = dist3D(b, c)
+        val dCA = dist3D(c, a)
+        val maxD = max(dAB, max(dBC, dCA))
+        if (maxD <= maxEdgeM) {
+            emitTri(a, b, c, yLift, col, bias)
+            return
+        }
+        if (dAB >= dBC && dAB >= dCA) {
+            val mid = Vec3((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f, (a.z + b.z) * 0.5f)
+            emitSubdividedTri(a, mid, c, yLift, col, bias, maxEdgeM, depth + 1)
+            emitSubdividedTri(mid, b, c, yLift, col, bias, maxEdgeM, depth + 1)
+        } else if (dBC >= dCA) {
+            val mid = Vec3((b.x + c.x) * 0.5f, (b.y + c.y) * 0.5f, (b.z + c.z) * 0.5f)
+            emitSubdividedTri(a, b, mid, yLift, col, bias, maxEdgeM, depth + 1)
+            emitSubdividedTri(a, mid, c, yLift, col, bias, maxEdgeM, depth + 1)
+        } else {
+            val mid = Vec3((c.x + a.x) * 0.5f, (c.y + a.y) * 0.5f, (c.z + a.z) * 0.5f)
+            emitSubdividedTri(a, b, mid, yLift, col, bias, maxEdgeM, depth + 1)
+            emitSubdividedTri(mid, b, c, yLift, col, bias, maxEdgeM, depth + 1)
+        }
+    }
+
+    fun commitPendingPath(color: Color) {
+        val kind = pendingKind
+        pendingKind = 0
+        if (kind == 0) return
+
+        val extraCrownY = if (color == MatAsphaltCrown) 0.002f else 0f
+        val yLift = passYOffset + extraCrownY + (microCounter++ * microStepY).coerceAtMost(0.004f)
+        val bias = passBiasOffset - extraCrownY * 0.5f
+
+        when (kind) {
+            1 -> {
+                emitSubdividedQuad(q0, q1, q2, q3, yLift, color, bias, maxEdgeM = 3.5f)
+            }
+            2 -> {
+                val n = min(ribbonLeft.size, ribbonRight.size)
+                for (i in 0 until n - 1) {
+                    val l0 = ribbonLeft[i]
+                    val r0 = ribbonRight[i]
+                    val r1 = ribbonRight[i + 1]
+                    val l1 = ribbonLeft[i + 1]
+                    emitSubdividedQuad(l0, r0, r1, l1, yLift, color, bias, maxEdgeM = 4.5f)
+                }
+            }
+            3 -> {
+                val n = polyPts.size
+                if (n >= 3) {
+                    val p0 = polyPts[0]
+                    for (i in 1 until n - 1) {
+                        emitSubdividedTri(p0, polyPts[i], polyPts[i + 1], yLift, color, bias, maxEdgeM = 5.5f)
+                    }
+                }
+            }
+        }
+    }
+
+    fun commitPendingSegment(color: Color, strokeWidthPx: Float) {
+        if (!hasPendingSeg) return
+        hasPendingSeg = false
+        val widthM = (strokeWidthPx * 0.065f).coerceIn(0.07f, 0.26f)
+        emitWorldSegment(segA, segB, widthM, color)
+    }
+
+    fun emitWorldSegment(a: Vec3, b: Vec3, widthM: Float, color: Color) {
+        val dx = b.x - a.x
+        val dy = b.y - a.y
+        val dz = b.z - a.z
+        val len = hypot(dx, dz)
+        if (len < 1e-4f) return
+        val hw = widthM * 0.5f
+        val rx = (-dz / len) * hw
+        val rz = (dx / len) * hw
+        val yLift = passYOffset + (microCounter++ * microStepY).coerceAtMost(0.004f)
+        val steps = if (len > 3.2f) kotlin.math.ceil(len / 3.0f).toInt().coerceIn(1, 28) else 1
+        val invSteps = 1f / steps.toFloat()
+        for (s in 0 until steps) {
+            val t0 = s * invSteps
+            val t1 = (s + 1) * invSteps
+            val ax = a.x + dx * t0; val ay = a.y + dy * t0; val az = a.z + dz * t0
+            val bx = a.x + dx * t1; val by = a.y + dy * t1; val bz = a.z + dz * t1
+            val v0 = Vec3(ax - rx, ay, az - rz)
+            val v1 = Vec3(ax + rx, ay, az + rz)
+            val v2 = Vec3(bx + rx, by, bz + rz)
+            val v3 = Vec3(bx - rx, by, bz - rz)
+            emitTri(v0, v1, v2, yLift, color, passBiasOffset)
+            emitTri(v0, v2, v3, yLift, color, passBiasOffset)
+        }
+    }
+
+    fun toTrimmedFloatArray(): FloatArray = floats.copyOf(floatCount)
+}
+
+private class RecordingComposeCanvas(
+    private val delegate: androidx.compose.ui.graphics.Canvas,
+    private val recorder: WorldGeometryRecorder
+) : androidx.compose.ui.graphics.Canvas by delegate {
+    override fun drawPath(path: Path, paint: androidx.compose.ui.graphics.Paint) {
+        recorder.commitPendingPath(paint.color)
+    }
+
+    override fun drawLine(p1: Offset, p2: Offset, paint: androidx.compose.ui.graphics.Paint) {
+        recorder.commitPendingSegment(paint.color, paint.strokeWidth)
+    }
+}
+
 internal class CameraRig(
     val eye: Vec3,
     val forward: Vec3,
@@ -101,7 +383,8 @@ internal class CameraRig(
     val screenCenterX: Float,
     val screenCenterY: Float,
     val screenW: Float,
-    val screenH: Float
+    val screenH: Float,
+    val recorder: WorldGeometryRecorder? = null
 ) {
     val nearZ = 0.25f
     private val rawVerts = Array(4) { CamSpaceVert(0f, 0f, 0f) }
@@ -130,6 +413,10 @@ internal class CameraRig(
     }
 
     fun projectSegmentClipped(a: Vec3, b: Vec3): Pair<Offset, Offset>? {
+        if (recorder != null) {
+            recorder.setPendingSegment(a, b)
+            return Pair(Offset.Zero, Offset(1f, 0f))
+        }
         var ca = toCamSpace(a)
         var cb = toCamSpace(b)
         if (ca.cz < nearZ && cb.cz < nearZ) return null
@@ -162,6 +449,10 @@ internal class CameraRig(
         v2: Vec3,
         v3: Vec3
     ): Boolean {
+        if (recorder != null) {
+            recorder.setPendingQuad(v0, v1, v2, v3)
+            return true
+        }
         rawVerts[0] = toCamSpace(v0)
         rawVerts[1] = toCamSpace(v1)
         rawVerts[2] = toCamSpace(v2)
@@ -252,20 +543,25 @@ internal class CameraRig(
         yHeight: Float
     ): Boolean {
         if (endIdx <= startIdx) return false
+        if (recorder != null) {
+            recorder.setPendingRibbon(frames, startIdx, endIdx, offsetLFn, offsetRFn, yHeight)
+            return true
+        }
         polyRaw.clear()
 
+        val yDelta = yHeight - 0.05f
         // Forward along left edge
         for (i in startIdx..endIdx) {
             val f = frames[i]
             val offL = offsetLFn(f)
-            val w = Vec3(f.pos.x + f.right.x * offL, yHeight, f.pos.z + f.right.z * offL)
+            val w = Vec3(f.pos.x + f.right.x * offL, f.pos.y + yDelta, f.pos.z + f.right.z * offL)
             polyRaw.add(toCamSpace(w))
         }
         // Backward along right edge
         for (i in endIdx downTo startIdx) {
             val f = frames[i]
             val offR = offsetRFn(f)
-            val w = Vec3(f.pos.x + f.right.x * offR, yHeight, f.pos.z + f.right.z * offR)
+            val w = Vec3(f.pos.x + f.right.x * offR, f.pos.y + yDelta, f.pos.z + f.right.z * offR)
             polyRaw.add(toCamSpace(w))
         }
 
@@ -332,6 +628,10 @@ internal class CameraRig(
         worldPts: List<Vec3>
     ): Boolean {
         if (worldPts.size < 3) return false
+        if (recorder != null) {
+            recorder.setPendingPolygon(worldPts)
+            return true
+        }
         polyRaw.clear()
         for (i in worldPts.indices) {
             polyRaw.add(toCamSpace(worldPts[i]))
@@ -693,6 +993,25 @@ internal class HinoRealMeshPoly(
     val isDoorLeaf: Boolean = false
 )
 
+internal object HinoRealMeshCache {
+    @Volatile
+    var cachedMesh: List<HinoRealMeshPoly> = emptyList()
+        private set
+
+    fun getOrLoad(context: android.content.Context): List<HinoRealMeshPoly> {
+        val existing = cachedMesh
+        if (existing.isNotEmpty()) return existing
+        return synchronized(this) {
+            val again = cachedMesh
+            if (again.isNotEmpty()) {
+                again
+            } else {
+                loadHinoRealMeshFromAssets(context.applicationContext).also { cachedMesh = it }
+            }
+        }
+    }
+}
+
 private fun loadHinoRealMeshFromAssets(context: android.content.Context): List<HinoRealMeshPoly> {
     return try {
         val bytes = context.assets.open("hino_rm2_real_mesh.bin").use { it.readBytes() }
@@ -986,55 +1305,82 @@ private fun loadHinoRealMeshFromAssets(context: android.content.Context): List<H
 
 @Composable
 fun Thrissur3DRoadViewport(
-    state: SimUiState,
+    stateProvider: () -> SimUiState,
+    glStateProvider: () -> SimUiState = stateProvider,
     onOrbitDrag: (Float, Float) -> Unit,
+    onWorldReady: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val hinoRealMesh = remember(context) { loadHinoRealMeshFromAssets(context) }
-    val busFacePool = remember { ArrayList<BusQuadFace3D>(34000) }
-    val busFacesBuffer = remember { ArrayList<BusQuadFace3D>(34000) }
-    val busVertsBuf = remember { FloatArray(34000 * 12) }
-    val busColorsBuf = remember { IntArray(34000 * 6) }
-    val busBatchVerts = remember { FloatArray(18000 * 2) }
-    val busBatchColors = remember { IntArray(18000) }
-    val busVertexPaint = remember {
-        Paint().apply {
-            color = android.graphics.Color.WHITE
-            isAntiAlias = true
-            isFilterBitmap = true
-        }
+    val cameraModeState = remember(stateProvider) {
+        androidx.compose.runtime.derivedStateOf { stateProvider().cameraMode }
     }
-    val busFallbackPaint = remember {
-        Paint().apply {
-            style = Paint.Style.FILL_AND_STROKE
-            strokeWidth = 1.25f
-            strokeJoin = Paint.Join.ROUND
-            isAntiAlias = true
-        }
+    val cameraMode = cameraModeState.value
+    val glRenderer = remember(context) {
+        ThrissurGlWorldRenderer(context.applicationContext)
     }
-    val busFallbackPath = remember { android.graphics.Path() }
-    val titlePaint = remember {
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textAlign = Paint.Align.CENTER
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
+    glRenderer.onWorldGpuReady = onWorldReady
+    glRenderer.stateProvider = glStateProvider
+    val cachedBusMesh = HinoRealMeshCache.cachedMesh
+    if (cachedBusMesh.isNotEmpty() && glRenderer.hinoMesh.isEmpty()) {
+        glRenderer.hinoMesh = cachedBusMesh
     }
-    val subPaint = remember {
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textAlign = Paint.Align.CENTER
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-        }
-    }
-    val sceneRawFaces = remember { ArrayList<QuadFace3D>(2600) }
-    val sceneSortedFaces = remember { ArrayList<QuadFace3D>(2600) }
 
-    Canvas(
+    val glSurfaceView = remember(context) {
+        GLSurfaceView(context).apply {
+            setEGLContextClientVersion(3)
+            setEGLConfigChooser(8, 8, 8, 8, 24, 0)
+            preserveEGLContextOnPause = true
+            setRenderer(glRenderer)
+            renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+            var lastFixedW = 0
+            var lastFixedH = 0
+            addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+                val vw = right - left
+                val vh = bottom - top
+                if (vw > 0 && vh > 720) {
+                    val targetH = 720
+                    val targetW = ((vw.toLong() * targetH) / vh).toInt().coerceAtLeast(1)
+                    if (targetW != lastFixedW || targetH != lastFixedH) {
+                        lastFixedW = targetW
+                        lastFixedH = targetH
+                        holder.setFixedSize(targetW, targetH)
+                    }
+                }
+            }
+        }
+    }
+
+    DisposableEffect(glSurfaceView) {
+        glSurfaceView.onResume()
+        onDispose {
+            glSurfaceView.onPause()
+        }
+    }
+
+    val titlePaint = remember(context) {
+        PremiumFonts.init(context)
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+            typeface = PremiumFonts.displayTypefaceFor("", bold = true)
+            letterSpacing = 0.04f
+        }
+    }
+    val subPaint = remember(context) {
+        PremiumFonts.init(context)
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+            typeface = PremiumFonts.monoTypeface(bold = true)
+            letterSpacing = 0.03f
+        }
+    }
+
+    Box(
         modifier = modifier
             .fillMaxSize()
             .testTag("thrissur_3d_viewport")
-            .pointerInput(state.cameraMode) {
-                if (state.cameraMode == CameraViewMode.Orbit) {
+            .pointerInput(cameraMode) {
+                if (cameraMode == CameraViewMode.Orbit) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
                         onOrbitDrag(dragAmount.x * 0.22f, dragAmount.y * 0.14f)
@@ -1042,226 +1388,120 @@ fun Thrissur3DRoadViewport(
                 }
             }
     ) {
-        val w = size.width
-        val h = size.height
-
-        // 1. Third-Person Follow Camera with Lerp Tracking, Road-Mesh Anti-Clipping & Cinematic FOV
-        val busSin = sin(state.busHeadingRad)
-        val busCos = cos(state.busHeadingRad)
-
-        val lookTarget = state.camFocusPos
-        val camEye = ThrissurSimViewModel.preventRoadMeshCameraClip(
-            focusPos = lookTarget,
-            candidateEye = state.camEyePos,
-            busPos = state.busPos,
-            busHeadingRad = state.busHeadingRad,
-            cameraMode = state.cameraMode
+        AndroidView(
+            factory = { glSurfaceView },
+            update = {
+                glRenderer.stateProvider = glStateProvider
+                val latestMesh = HinoRealMeshCache.cachedMesh
+                if (latestMesh.isNotEmpty() && glRenderer.hinoMesh.isEmpty()) {
+                    glRenderer.hinoMesh = latestMesh
+                }
+            },
+            modifier = Modifier.fillMaxSize()
         )
 
-        val rawDirX = lookTarget.x - camEye.x
-        val rawDirY = lookTarget.y - camEye.y
-        val rawDirZ = lookTarget.z - camEye.z
-        val dirLen = sqrt(rawDirX * rawDirX + rawDirY * rawDirY + rawDirZ * rawDirZ).coerceAtLeast(0.001f)
-        val fwd = Vec3(rawDirX / dirLen, rawDirY / dirLen, rawDirZ / dirLen)
-
-        // Orthonormal right = normalize(worldUp x fwd) where worldUp = (0, 1, 0)
-        val rx = fwd.z
-        val rz = -fwd.x
-        val rLen = hypot(rx, rz).coerceAtLeast(0.001f)
-        val right = Vec3(rx / rLen, 0f, rz / rLen)
-
-        // Orthonormal up = fwd x right
-        val ux = fwd.y * right.z - fwd.z * right.y
-        val uy = fwd.z * right.x - fwd.x * right.z
-        val uz = fwd.x * right.y - fwd.y * right.x
-        val uLen = sqrt(ux * ux + uy * uy + uz * uz).coerceAtLeast(0.001f)
-        val up = Vec3(ux / uLen, uy / uLen, uz / uLen)
-
-        val pitchRad = asin((-fwd.y).coerceIn(-0.95f, 0.95f))
-
-        // Aspect-aware consistent cinematic driving FOV
-        val cinematicHalfFovRad = Math.toRadians((state.cameraFovDeg.coerceIn(50f, 70f) * 0.5f).toDouble())
-        val fovScale = (h * 0.5f) / tan(cinematicHalfFovRad).toFloat()
-
-        // Exact mathematical vanishing horizon Y of the y=0 ground plane
-        val horizonY = (h * 0.5f - tan(pitchRad) * fovScale).coerceIn(0f, h * 0.85f)
-
-        val rig = CameraRig(
-            eye = camEye,
-            forward = fwd,
-            right = right,
-            up = up,
-            fovScale = fovScale,
-            screenCenterX = w * 0.5f,
-            screenCenterY = h * 0.5f,
-            screenW = w,
-            screenH = h
-        )
-
-        // 2. Tropical Kerala Sky & Atmospheric Ground Plane (Strictly Zero Trees)
-        if (horizonY > 0f) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    0.0f to SkyZenith,
-                    0.62f to SkyMid,
-                    1.0f to SkyHorizonHaze,
-                    startY = 0f,
-                    endY = horizonY
-                ),
-                topLeft = Offset.Zero,
-                size = Size(w, horizonY + 1f)
-            )
-        }
-        if (horizonY < h) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    0.0f to SkyHorizonHaze,
-                    0.04f to GroundFarVerge,
-                    0.28f to GroundMidVerge,
-                    1.0f to GroundNearEarth,
-                    startY = horizonY,
-                    endY = h
-                ),
-                topLeft = Offset(0f, horizonY),
-                size = Size(w, h - horizonY)
-            )
-        }
-
-        // 3. Collect Contiguous Visible Road Spans (frustum-culled to skip spans behind the camera)
-        val maxDrawDistSq = 280f * 280f
-        val spans = ArrayList<ContiguousRoadSpan>(64)
-        val fwdX = fwd.x
-        val fwdZ = fwd.z
-
-        for (road in state.roads) {
-            val frames = road.frames
-            if (frames.size < 2) continue
-            val chunkSize = 16
-            var i = 0
-            while (i < frames.size - 1) {
-                var sIdx = i
-                val eIdx = min(i + chunkSize, frames.size - 1)
-
-                // Trim Sakthan Stand bay-interior frames south of Z=-165.0m so the departure road starts cleanly at the North Concourse edge (Z=-165.0m) and runs continuously through the Right Exit Gate (Z=-140.0m)
-                if (road.id == "ROAD_SAKTHAN_TO_SWARAJ") {
-                    while (sIdx < eIdx && frames[sIdx].pos.z < -165.5f) {
-                        sIdx++
-                    }
-                    if (sIdx >= eIdx) {
-                        i += chunkSize
-                        continue
-                    }
-                }
-
-                val midF = frames[(sIdx + eIdx) / 2]
-                val dx = midF.pos.x - camEye.x
-                val dz = midF.pos.z - camEye.z
-                val distSq = dx * dx + dz * dz
-                if (distSq <= maxDrawDistSq) {
-                    val f0 = frames[sIdx]
-                    val f1 = frames[eIdx]
-                    val camZMid = dx * fwdX + dz * fwdZ
-                    val camZ0 = (f0.pos.x - camEye.x) * fwdX + (f0.pos.z - camEye.z) * fwdZ
-                    val camZ1 = (f1.pos.x - camEye.x) * fwdX + (f1.pos.z - camEye.z) * fwdZ
-                    if (camZMid > -24f || camZ0 > -24f || camZ1 > -24f) {
-                        spans.add(ContiguousRoadSpan(road, sIdx, eIdx, distSq))
-                    }
-                }
-                i += chunkSize
-            }
-        }
-
-        spans.sortWith { a, b -> b.avgDistSq.compareTo(a.avgDistSq) }
-        val sharedPath = Path()
-
-        // PASS 1: 20-Bay Sakthan Terminal Concrete Yard + 5 Landmark Ground Plazas/Beaches + Continuous Laterite Shoulders & Flared Junction Shoulders
-        drawSakthan20BayTerminalYard(rig, sharedPath, camEye)
-        drawThrissurLandmarkGroundPlazas(rig, sharedPath, camEye, state.roads)
-        drawJunctionShoulders(rig, sharedPath, camEye)
-        for (span in spans) {
-            drawContinuousShouldersAndCurbs(rig, sharedPath, span)
-        }
-
-        // PASS 2: Seamless Bezier Junction Plazas & Continuous Crack-Free Asphalt Carriageway Ribbons
-        drawJunctionPlazas(rig, sharedPath, camEye)
-        for (span in spans) {
-            drawContinuousAsphaltRibbon(rig, sharedPath, span)
-        }
-
-        // PASS 3: Anti-Aliased Continuous IRC White Edge Lines, Curved Junction Edge Fillets, 8 Zebra Crossings, Yellow Centerlines, Dashed Lane Dividers & Medians
-        for (span in spans) {
-            drawContinuousRoadMarkings(rig, sharedPath, span)
-        }
-        drawJunctionEdgeFilletMarkings(rig, camEye)
-        drawSwarajRound8ZebraCrossings(rig, sharedPath, camEye, state.roads)
-
-        // PASS 4 & 5: Globally Depth-Sorted 3D World Scene (Sakthan Stand, Swaraj Round, TCR Railway Station,
-        // Manikandanal Signal, Street Culture Props, Temples, Bridges, NHAI/PWD Direction Boards)
-        sceneRawFaces.clear()
-        collectSakthanTerminalSceneFaces(camEye, sceneRawFaces)
-        collectThrissurLandmarkSceneFaces(camEye, state.roads, state.manikandanalSignal, sceneRawFaces)
-        prepareSortedSceneFaces(rig, camEye, sceneRawFaces, sceneSortedFaces)
-
-        if (state.cameraMode == CameraViewMode.Chase || state.cameraMode == CameraViewMode.Orbit) {
-            val bdx = state.busPos.x - camEye.x
-            val bdy = (state.busPos.y + 1.50f) - camEye.y
-            val bdz = state.busPos.z - camEye.z
-            val busSplitDist = sqrt(bdx * bdx + bdy * bdy + bdz * bdz) - 1.25f
-
-            var splitIdx = sceneSortedFaces.size
-            for (i in 0 until sceneSortedFaces.size) {
-                if (sceneSortedFaces[i].sortKey < busSplitDist) {
-                    splitIdx = i
-                    break
-                }
-            }
-
-            // Draw all far scene faces + low platforms/curbs behind or beneath the bus
-            for (i in 0 until sceneSortedFaces.size) {
-                val f = sceneSortedFaces[i]
-                val isLowFloor = f.v0.y <= 0.45f && f.v1.y <= 0.45f && f.v2.y <= 0.45f && f.v3.y <= 0.45f
-                if (i < splitIdx || isLowFloor) {
-                    drawSceneFaceOrSignboard(rig, sharedPath, f)
-                }
-            }
-
-            drawHinoRm2Bus3D(
-                rig = rig,
-                path = sharedPath,
-                state = state,
-                hinoMesh = hinoRealMesh,
-                facePool = busFacePool,
-                facesBuffer = busFacesBuffer,
-                vertsBuf = busVertsBuf,
-                colorsBuf = busColorsBuf,
-                batchVerts = busBatchVerts,
-                batchColors = busBatchColors,
-                vertexPaint = busVertexPaint,
-                fallbackPaint = busFallbackPaint,
-                fallbackPath = busFallbackPath
-            )
-
-            // Draw any tall foreground pillars, buses, buildings, or overhead gantries strictly closer than the bus
-            for (i in splitIdx until sceneSortedFaces.size) {
-                val f = sceneSortedFaces[i]
-                val isLowFloor = f.v0.y <= 0.45f && f.v1.y <= 0.45f && f.v2.y <= 0.45f && f.v3.y <= 0.45f
-                if (!isLowFloor) {
-                    drawSceneFaceOrSignboard(rig, sharedPath, f)
-                }
-            }
-        } else {
-            for (i in 0 until sceneSortedFaces.size) {
-                drawSceneFaceOrSignboard(rig, sharedPath, sceneSortedFaces[i])
-            }
-            if (state.cameraMode == CameraViewMode.Cockpit) {
+        if (cameraMode == CameraViewMode.Cockpit) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
                 drawHinoRm2Cockpit3D(
-                    state = state,
+                    state = stateProvider(),
                     titlePaint = titlePaint,
                     subPaint = subPaint
                 )
             }
         }
     }
+}
+
+/**
+ * Performs a one-time startup recording pass of all Thrissur roads, laterite shoulders, footpaths,
+ * curb stones, junction bellmouths, road markings, zebra crossings, Sakthan 20-bay terminal yard,
+ * and all 5 landmark ground plazas into a static GPU vertex array for OpenGL ES 3.0.
+ */
+internal fun captureStaticRoadAndGroundTriangles(roads: List<ThrissurOsmRoad>): FloatArray {
+    if (roads.isEmpty()) return FloatArray(0)
+    val recorder = WorldGeometryRecorder(480_000)
+    val dummyEye = Vec3(0f, 50f, 0f)
+    val rig = CameraRig(
+        eye = dummyEye,
+        forward = Vec3(0f, 0f, 1f),
+        right = Vec3(1f, 0f, 0f),
+        up = Vec3(0f, 1f, 0f),
+        fovScale = 500f,
+        screenCenterX = 500f,
+        screenCenterY = 500f,
+        screenW = 1000f,
+        screenH = 1000f,
+        recorder = recorder
+    )
+
+    val allSpans = ArrayList<ContiguousRoadSpan>(256)
+    for (road in roads) {
+        val frames = road.frames
+        if (frames.size < 2) continue
+        val chunkSize = 16
+        var i = 0
+        while (i < frames.size - 1) {
+            val sIdx = i
+            val eIdx = min(i + chunkSize, frames.size - 1)
+            allSpans.add(ContiguousRoadSpan(road, sIdx, eIdx, 0f))
+            i += chunkSize
+        }
+    }
+
+    val delegateCanvas = androidx.compose.ui.graphics.Canvas(ImageBitmap(1, 1))
+    val recordingCanvas = RecordingComposeCanvas(delegateCanvas, recorder)
+    val drawScope = CanvasDrawScope()
+    val sharedPath = Path()
+
+    drawScope.draw(
+        density = Density(1f),
+        layoutDirection = LayoutDirection.Ltr,
+        canvas = recordingCanvas,
+        size = Size(1000f, 1000f)
+    ) {
+        // PASS 1A: Sakthan 20-Bay Terminal Yard
+        recorder.setPassLayer(yOffset = 0.000f, biasOffset = 0.016f, microStep = 0.00004f)
+        drawSakthan20BayTerminalYard(rig, sharedPath, Vec3(10f, 2f, -178f))
+
+        // PASS 1B: All 5 Landmark Ground Plazas
+        recorder.setPassLayer(yOffset = 0.001f, biasOffset = 0.012f, microStep = 0.00003f)
+        drawAllLandmarkGroundPlazasUnconditional(rig, sharedPath, roads)
+
+        // PASS 1C: Flared Junction Laterite Shoulders & Lips
+        recorder.setPassLayer(yOffset = 0.003f, biasOffset = 0.008f, microStep = 0.00002f)
+        drawJunctionShoulders(rig, sharedPath, dummyEye)
+
+        // PASS 1D: Continuous Road Shoulders, Footpaths & Curb Stones
+        recorder.setPassLayer(yOffset = 0.005f, biasOffset = 0.005f, microStep = 0.00001f)
+        for (span in allSpans) {
+            drawContinuousShouldersAndCurbs(rig, sharedPath, span)
+        }
+
+        // PASS 2A: Seamless Bezier Junction Plazas
+        recorder.setPassLayer(yOffset = 0.012f, biasOffset = 0.000f, microStep = 0.00002f)
+        drawJunctionPlazas(rig, sharedPath, dummyEye)
+
+        // PASS 2B: Continuous Crack-Free Asphalt Carriageway Ribbons + Crown
+        recorder.setPassLayer(yOffset = 0.014f, biasOffset = -0.002f, microStep = 0.00001f)
+        for (span in allSpans) {
+            drawContinuousAsphaltRibbon(rig, sharedPath, span)
+        }
+
+        // PASS 2C: Paliyekkara 12-Lane Toll Plaza Rigid PQC Concrete Pavement, Fan-Out Lane Guides & FASTag Strips
+        //          (Layered directly above the continuous S-curve flared asphalt ribbon & below outer edge lines!)
+        recorder.setPassLayer(yOffset = 0.017f, biasOffset = -0.005f, microStep = 0.00001f)
+        Zone3Nh544SouthRenderer.run { drawPaliyekkaraTollPavementOverlay(rig, sharedPath, dummyEye) }
+
+        // PASS 3A/3B/3C: Continuous IRC Road Markings, Junction Edge Fillets & 8 Swaraj Zebra Crossings
+        recorder.setPassLayer(yOffset = 0.020f, biasOffset = -0.008f, microStep = 0.000005f)
+        for (span in allSpans) {
+            drawContinuousRoadMarkings(rig, sharedPath, span)
+        }
+        drawJunctionEdgeFilletMarkings(rig, dummyEye)
+        drawSwarajRound8ZebraCrossings(rig, sharedPath, Vec3(3.1f, 2f, 18.0f), roads)
+    }
+
+    return recorder.toTrimmedFloatArray()
 }
 
 /**
@@ -1411,13 +1651,35 @@ private fun DrawScope.drawContinuousShouldersAndCurbs(
     }
 
     val isSakthanGateRoad = road.id == "ROAD_SAKTHAN_TO_SWARAJ" || road.id == "ROAD_SAKTHAN_STAND_ENTRY"
-    val isNh544 = road.id == "ROAD_NH544_MANNUTHY_TO_PALIYEKKARA"
-    val isStationRoad = road.id == "ROAD_STATION_ROAD"
+    val isVadakkeGateRoad = road.id == "ROAD_SWARAJ_TO_VADAKKE" || road.id == "ROAD_VADAKKE_STAND_EXIT"
+    val isStationGateRoad = road.id == "ROAD_RAILWAY_STATION_ACCESS" || road.id == "ROAD_RAILWAY_STATION_EXIT"
+    val isShoranurTermGateRoad = road.id == "ROAD_SHORANUR_TERMINAL_ENTRY" || road.id == "ROAD_SHORANUR_TERMINAL_EXIT"
+    val isShoranurStationGateRoad = road.id == "ROAD_SHORANUR_STATION_ENTRY" || road.id == "ROAD_SHORANUR_STATION_EXIT"
+    val isPeechiDamGateRoad = road.id == "ROAD_PEECHI_DAM_ENTRY" || road.id == "ROAD_PEECHI_DAM_EXIT"
+    val isNh544 = road.id == "ROAD_NH544_MANNUTHY_TO_PALIYEKKARA" || road.id == "ROAD_NH544_PALIYEKKARA_TO_CHALAKUDY"
+    val isNh66 = road.id == "ROAD_NH66_CHAVAKKAD_TO_TRIPRAYAR" || road.id == "ROAD_NH66_TRIPRAYAR_TO_KOTTAPURAM"
+    val isKuthiranTunnelTube = road.id == "ROAD_NH544_KUTHIRAN_LEFT_TUBE" || road.id == "ROAD_NH544_KUTHIRAN_RIGHT_TUBE"
+    val isSh69Muthuvara = road.id == "ROAD_SH69_THRISSUR_MUTHUVARA_GURUVAYUR"
+    fun insideSakthanYard(f: RoadFrame): Boolean =
+        isSakthanGateRoad && f.pos.x in -30.8f..40.3f && f.pos.z in -207.2f..-139.6f
+    fun insideVadakkeApron(f: RoadFrame): Boolean =
+        isVadakkeGateRoad && f.pos.z >= 198.2f
+    fun insideStationApron(f: RoadFrame): Boolean =
+        isStationGateRoad && f.pos.x <= -61.8f
+    fun insideShoranurYard(f: RoadFrame): Boolean =
+        (isShoranurTermGateRoad && f.pos.x >= 124.2f) ||
+            (isShoranurStationGateRoad && f.pos.x <= 75.8f) ||
+            (isPeechiDamGateRoad && f.pos.x >= 3410.2f)
+    fun insideKuthiranTubeOrGore(f: RoadFrame): Boolean =
+        isKuthiranTunnelTube && f.pos.x in 1994.0f..3286.0f
+    fun insideMuthuvaraLcPad(f: RoadFrame): Boolean =
+        isSh69Muthuvara && f.pos.z in 597.5f..622.5f
+    fun onElevatedBridgeSpan(f: RoadFrame): Boolean = f.pos.y > 0.35f
     fun insideTerminalOrTollApron(f: RoadFrame): Boolean =
-        (isSakthanGateRoad && f.pos.z < -139.6f) ||
-            (isNh544 && f.pos.z in -1856.0f..-1756.0f)
-    fun insideStationForecourtLeft(f: RoadFrame): Boolean =
-        isStationRoad && f.pos.x < -16.5f && f.pos.z in -118.0f..-64.0f
+        insideSakthanYard(f) || insideVadakkeApron(f) || insideStationApron(f) || insideShoranurYard(f) ||
+            insideKuthiranTubeOrGore(f) || insideMuthuvaraLcPad(f) || onElevatedBridgeSpan(f) ||
+            (isNh544 && f.pos.z <= -5330.0f) ||
+            (isNh66 && (f.pos.z in Zone5Nh66CoastalRenderer.NATTIKA_FLARE_SOUTH_END_Z..Zone5Nh66CoastalRenderer.NATTIKA_FLARE_NORTH_START_Z || f.pos.z <= -4375.0f))
 
     // 1. Left & Right Earthen Laterite Shoulders (continuous through all road joints; suppressed only inside concrete terminal/toll/station aprons)
     drawUncoveredSideRibbon(
@@ -1425,7 +1687,7 @@ private fun DrawScope.drawContinuousShouldersAndCurbs(
         offsetOuterFn = { -it.halfWidthM - bevelW },
         color = MatShoulderLaterite
     ) {
-        insideTerminalOrTollApron(it) || insideStationForecourtLeft(it)
+        insideTerminalOrTollApron(it)
     }
     drawUncoveredSideRibbon(
         offsetInnerFn = { it.halfWidthM + bevelW },
@@ -1441,7 +1703,7 @@ private fun DrawScope.drawContinuousShouldersAndCurbs(
         offsetInnerFn = { -it.halfWidthM - bevelW },
         offsetOuterFn = { -it.halfWidthM },
         color = matAsphaltEdgeLip
-    ) { insideTerminalOrTollApron(it) || insideStationForecourtLeft(it) }
+    ) { insideTerminalOrTollApron(it) }
     drawUncoveredSideRibbon(
         offsetInnerFn = { it.halfWidthM },
         offsetOuterFn = { it.halfWidthM + bevelW },
@@ -1452,7 +1714,10 @@ private fun DrawScope.drawContinuousShouldersAndCurbs(
     val hasUrbanFootpath = road.id == "ROAD_SWARAJ_ROUND" ||
         road.id == "ROAD_SAKTHAN_TO_SWARAJ" ||
         road.id == "ROAD_STATION_ROAD" ||
+        road.id == "ROAD_RAILWAY_STATION_ACCESS" ||
+        road.id == "ROAD_RAILWAY_STATION_EXIT" ||
         road.id == "ROAD_SWARAJ_TO_VADAKKE" ||
+        road.id == "ROAD_VADAKKE_STAND_EXIT" ||
         (road.id == "ROAD_SWARAJ_TO_MANNUTHY" && frames[span.startIdx].cumulativeDist < 320f) ||
         (road.id == "ROAD_SWARAJ_TO_WEST_FORT" && frames[span.startIdx].cumulativeDist < 260f)
 
@@ -1514,7 +1779,7 @@ private fun DrawScope.drawJunctionShoulders(
     val yGround = 0.06f
 
     for (bm in ThrissurRoadRepository.getJunctionBellmouths()) {
-        if (hypot(bm.centerPos.x - camEye.x, bm.centerPos.z - camEye.z) > 400f) continue
+        if (rig.recorder == null && hypot(bm.centerPos.x - camEye.x, bm.centerPos.z - camEye.z) > 400f) continue
         val shoulderPts = buildBellmouthPolygonPoints(bm, bevelW + shoulderW, yGround)
         if (rig.buildWorldPolygonPath(path, shoulderPts)) {
             drawPath(path, MatShoulderLaterite)
@@ -1538,15 +1803,45 @@ private fun DrawScope.drawContinuousAsphaltRibbon(
     val road = span.road
     val frames = road.frames
     val yRoad = 0.06f
+    val isSakthanGateRoad = road.id == "ROAD_SAKTHAN_TO_SWARAJ" || road.id == "ROAD_SAKTHAN_STAND_ENTRY"
+    val isVadakkeGateRoad = road.id == "ROAD_SWARAJ_TO_VADAKKE" || road.id == "ROAD_VADAKKE_STAND_EXIT"
+    val isStationGateRoad = road.id == "ROAD_RAILWAY_STATION_ACCESS" || road.id == "ROAD_RAILWAY_STATION_EXIT"
+    val isShoranurTermGateRoad = road.id == "ROAD_SHORANUR_TERMINAL_ENTRY" || road.id == "ROAD_SHORANUR_TERMINAL_EXIT"
+    val isShoranurStationGateRoad = road.id == "ROAD_SHORANUR_STATION_ENTRY" || road.id == "ROAD_SHORANUR_STATION_EXIT"
+    val isPeechiDamGateRoad = road.id == "ROAD_PEECHI_DAM_ENTRY" || road.id == "ROAD_PEECHI_DAM_EXIT"
 
-    // Main seamless hot-mix asphalt carriageway (automatically widened on curves & welded at continuation joints!)
-    if (rig.buildVariableRibbonPath(path, frames, span.startIdx, span.endIdx, { -it.halfWidthM }, { it.halfWidthM }, yRoad)) {
-        drawPath(path, MatAsphaltBase)
+    if (!isSakthanGateRoad && !isVadakkeGateRoad && !isStationGateRoad && !isShoranurTermGateRoad && !isShoranurStationGateRoad && !isPeechiDamGateRoad) {
+        if (rig.buildVariableRibbonPath(path, frames, span.startIdx, span.endIdx, { -it.halfWidthM }, { it.halfWidthM }, yRoad)) {
+            drawPath(path, MatAsphaltBase)
+        }
+        if (rig.buildVariableRibbonPath(path, frames, span.startIdx, span.endIdx, { -it.halfWidthM * 0.25f }, { it.halfWidthM * 0.25f }, yRoad)) {
+            drawPath(path, MatAsphaltCrown)
+        }
+        return
     }
 
-    // Subtle continuous center crown band
-    if (rig.buildVariableRibbonPath(path, frames, span.startIdx, span.endIdx, { -it.halfWidthM * 0.25f }, { it.halfWidthM * 0.25f }, yRoad)) {
-        drawPath(path, MatAsphaltCrown)
+    fun isInsideTerminalCourtyard(f: RoadFrame): Boolean =
+        (isSakthanGateRoad && f.pos.x in -30.8f..40.3f && f.pos.z in -207.2f..-139.8f) ||
+            (isVadakkeGateRoad && f.pos.x in -64.5f..-6.5f && f.pos.z >= 200.5f) ||
+            (isStationGateRoad && f.pos.x <= -64.0f && f.pos.z in -204.0f..-62.0f) ||
+            (isShoranurTermGateRoad && f.pos.x >= 126.0f) ||
+            (isShoranurStationGateRoad && f.pos.x <= 74.0f) ||
+            (isPeechiDamGateRoad && f.pos.x >= 3412.0f)
+
+    var runStart = span.startIdx
+    while (runStart < span.endIdx) {
+        while (runStart < span.endIdx && isInsideTerminalCourtyard(frames[runStart])) runStart++
+        if (runStart >= span.endIdx) break
+        var runEnd = runStart + 1
+        while (runEnd < span.endIdx && !isInsideTerminalCourtyard(frames[runEnd])) runEnd++
+        val drawStart = if (runStart > span.startIdx) runStart - 1 else runStart
+        if (rig.buildVariableRibbonPath(path, frames, drawStart, runEnd, { -it.halfWidthM }, { it.halfWidthM }, yRoad)) {
+            drawPath(path, MatAsphaltBase)
+        }
+        if (rig.buildVariableRibbonPath(path, frames, drawStart, runEnd, { -it.halfWidthM * 0.25f }, { it.halfWidthM * 0.25f }, yRoad)) {
+            drawPath(path, MatAsphaltCrown)
+        }
+        runStart = runEnd
     }
 }
 
@@ -1562,7 +1857,7 @@ private fun DrawScope.drawJunctionPlazas(
 ) {
     val yRoad = 0.06f
     for (bm in ThrissurRoadRepository.getJunctionBellmouths()) {
-        if (hypot(bm.centerPos.x - camEye.x, bm.centerPos.z - camEye.z) > 400f) continue
+        if (rig.recorder == null && hypot(bm.centerPos.x - camEye.x, bm.centerPos.z - camEye.z) > 400f) continue
         val asphaltPts = buildBellmouthPolygonPoints(bm, 0f, yRoad)
         if (rig.buildWorldPolygonPath(path, asphaltPts)) {
             drawPath(path, MatAsphaltBase)
@@ -1579,16 +1874,20 @@ private fun DrawScope.drawContinuousRoadMarkings(
     path: Path,
     span: ContiguousRoadSpan
 ) {
-    if (span.avgDistSq > 165f * 165f) return
+    if (rig.recorder == null && span.avgDistSq > 165f * 165f) return
     val road = span.road
     val frames = road.frames
     val yMark = 0.062f
     val sIdx = span.startIdx
     val eIdx = span.endIdx
     if (eIdx <= sIdx) return
-    val step = if (span.avgDistSq > 75f * 75f) 2 else 1
+    val step = if (rig.recorder == null && span.avgDistSq > 75f * 75f) 2 else 1
 
     fun drawSegment3D(w0: Vec3, w1: Vec3, widthM: Float, color: Color) {
+        if (rig.recorder != null) {
+            rig.recorder.emitWorldSegment(w0, w1, widthM, color)
+            return
+        }
         val seg = rig.projectSegmentClipped(w0, w1) ?: return
         val dx = (w0.x + w1.x) * 0.5f - rig.eye.x
         val dz = (w0.z + w1.z) * 0.5f - rig.eye.z
@@ -1611,12 +1910,25 @@ private fun DrawScope.drawContinuousRoadMarkings(
         coveredFn: (RoadFrame) -> Boolean
     ) {
         var i = sIdx
+        val isSakthanGateRoad = road.id == "ROAD_SAKTHAN_TO_SWARAJ" || road.id == "ROAD_SAKTHAN_STAND_ENTRY"
+        val isVadakkeGateRoad = road.id == "ROAD_SWARAJ_TO_VADAKKE" || road.id == "ROAD_VADAKKE_STAND_EXIT"
+        val isStationGateRoad = road.id == "ROAD_RAILWAY_STATION_ACCESS" || road.id == "ROAD_RAILWAY_STATION_EXIT"
+        val isShoranurTermGateRoad = road.id == "ROAD_SHORANUR_TERMINAL_ENTRY" || road.id == "ROAD_SHORANUR_TERMINAL_EXIT"
+        val isShoranurStationGateRoad = road.id == "ROAD_SHORANUR_STATION_ENTRY" || road.id == "ROAD_SHORANUR_STATION_EXIT"
+        val isPeechiDamGateRoad = road.id == "ROAD_PEECHI_DAM_ENTRY" || road.id == "ROAD_PEECHI_DAM_EXIT"
+        fun insideYard(f: RoadFrame): Boolean =
+            (isSakthanGateRoad && f.pos.x in -30.8f..40.3f && f.pos.z in -207.2f..-139.8f) ||
+                (isVadakkeGateRoad && f.pos.x in -64.5f..-6.5f && f.pos.z >= 200.5f) ||
+                (isStationGateRoad && f.pos.x <= -64.0f && f.pos.z in -204.0f..-62.0f) ||
+                (isShoranurTermGateRoad && f.pos.x >= 126.0f) ||
+                (isShoranurStationGateRoad && f.pos.x <= 74.0f) ||
+                (isPeechiDamGateRoad && f.pos.x >= 3412.0f)
         while (i < eIdx) {
             val nextIdx = min(i + step, eIdx)
             val f0 = frames[i]
             val f1 = frames[nextIdx]
-            val cov0 = coveredFn(f0)
-            val cov1 = coveredFn(f1)
+            val cov0 = coveredFn(f0) || insideYard(f0)
+            val cov1 = coveredFn(f1) || insideYard(f1)
             if (cov0 && cov1) {
                 i = nextIdx
                 continue
@@ -1630,14 +1942,16 @@ private fun DrawScope.drawContinuousRoadMarkings(
             }
             val off0 = lateralOffsetFn(f0)
             val off1 = lateralOffsetFn(f1)
-            val w0 = Vec3(f0.pos.x + f0.right.x * off0, yMark, f0.pos.z + f0.right.z * off0)
-            val w1 = Vec3(f1.pos.x + f1.right.x * off1, yMark, f1.pos.z + f1.right.z * off1)
+            val y0 = f0.pos.y + (yMark - 0.05f)
+            val y1 = f1.pos.y + (yMark - 0.05f)
+            val w0 = Vec3(f0.pos.x + f0.right.x * off0, y0, f0.pos.z + f0.right.z * off0)
+            val w1 = Vec3(f1.pos.x + f1.right.x * off1, y1, f1.pos.z + f1.right.z * off1)
 
             if (!cov0 && !cov1) {
                 drawSegment3D(w0, w1, widthM, color)
             } else if (clipPartialTransition && !dashed) {
                 // Extend centerline right up to the outer edge of the intersecting trunk road
-                val mid = Vec3((w0.x + w1.x) * 0.5f, yMark, (w0.z + w1.z) * 0.5f)
+                val mid = Vec3((w0.x + w1.x) * 0.5f, (w0.y + w1.y) * 0.5f, (w0.z + w1.z) * 0.5f)
                 if (!cov0) {
                     drawSegment3D(w0, mid, widthM, color)
                 } else {
@@ -1648,11 +1962,14 @@ private fun DrawScope.drawContinuousRoadMarkings(
         }
     }
 
-    // 1. Single Crisp IRC Solid White Edge Lines (stopping at exact tBefore / tAfter / bThroat anchor frames where Bezier fillets connect!)
+    // 1. Single Crisp IRC Edge Lines (Continuous Reflective Yellow on NH 544 East 6-Lane Expressway, White elsewhere)
+    val isNh544EastExp = road.id == "ROAD_NH544_MANNUTHY_TO_KUTHIRAN" || road.id == "ROAD_NH544_KUTHIRAN_EAST_PALAKKAD"
+    val isNh66CoastalExp = road.id == "ROAD_NH66_CHAVAKKAD_TO_TRIPRAYAR" || road.id == "ROAD_NH66_TRIPRAYAR_TO_KOTTAPURAM"
+    val outerEdgeColor = if (isNh544EastExp || isNh66CoastalExp) MatRoadYellow else MatRoadWhite
     drawPerspectiveLine(
         lateralOffsetFn = { -it.halfWidthM + 0.38f },
         widthM = 0.16f,
-        color = MatRoadWhite,
+        color = outerEdgeColor,
         dashed = false,
         clipPartialTransition = false
     ) { it.leftEdgeCovered }
@@ -1660,38 +1977,47 @@ private fun DrawScope.drawContinuousRoadMarkings(
     drawPerspectiveLine(
         lateralOffsetFn = { it.halfWidthM - 0.38f },
         widthM = 0.16f,
-        color = MatRoadWhite,
+        color = outerEdgeColor,
         dashed = false,
         clipPartialTransition = false
     ) { it.rightEdgeCovered }
 
-    // 2. Centerline / Divided Highway Median & Dashed Lane Lines (2-way 1+1, 4-way 2+2, 6-way 3+3)
+    // 2. Centerline / Divided Highway Median & Dashed Lane Lines (2-way 1+1, 3-lane Tunnel Tube, 4-way 2+2, 6-way 3+3)
     if (road.divided) {
         val medHw = 0.62f
+        val isNh544TollCorridor = road.id == "ROAD_NH544_MANNUTHY_TO_PALIYEKKARA" ||
+            road.id == "ROAD_NH544_PALIYEKKARA_TO_CHALAKUDY"
+        val isNh66TollCorridor = road.id == "ROAD_NH66_CHAVAKKAD_TO_TRIPRAYAR"
+        fun suppressTollInterior(f: RoadFrame): Boolean =
+            f.centerCovered ||
+                (isNh544TollCorridor &&
+                    f.pos.z in Zone3Nh544SouthRenderer.TOLL_FLARE_SOUTH_END_Z..Zone3Nh544SouthRenderer.TOLL_FLARE_NORTH_START_Z) ||
+                (isNh66TollCorridor &&
+                    f.pos.z in Zone5Nh66CoastalRenderer.NATTIKA_FLARE_SOUTH_END_Z..Zone5Nh66CoastalRenderer.NATTIKA_FLARE_NORTH_START_Z)
         var runStart = sIdx
         while (runStart < eIdx) {
-            while (runStart < eIdx && frames[runStart].centerCovered) runStart++
+            while (runStart < eIdx && suppressTollInterior(frames[runStart])) runStart++
             if (runStart >= eIdx) break
             var runEnd = runStart + 1
-            while (runEnd < eIdx && !frames[runEnd].centerCovered) runEnd++
+            while (runEnd < eIdx && !suppressTollInterior(frames[runEnd])) runEnd++
             if (rig.buildContinuousRibbonPath(path, frames, runStart, runEnd, -medHw, medHw, yMark)) {
                 drawPath(path, MatMedianConcrete)
             }
             runStart = runEnd
         }
-        drawPerspectiveLine({ -medHw - 0.20f }, 0.15f, MatRoadYellow, dashed = false, clipPartialTransition = true) { it.centerCovered }
-        drawPerspectiveLine({ medHw + 0.20f }, 0.15f, MatRoadYellow, dashed = false, clipPartialTransition = true) { it.centerCovered }
+        drawPerspectiveLine({ -medHw - 0.20f }, 0.15f, MatRoadYellow, dashed = false, clipPartialTransition = true) { suppressTollInterior(it) }
+        drawPerspectiveLine({ medHw + 0.20f }, 0.15f, MatRoadYellow, dashed = false, clipPartialTransition = true) { suppressTollInterior(it) }
 
         if (road.lanes >= 6) {
             // 6-Way (3+3) Divided National Highway (NH 544): 2 Dashed White Lane Dividers per Carriageway = 3 Lanes Each Way!
-            drawPerspectiveLine({ -(medHw + (it.halfWidthM - medHw) * 0.333f) }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { it.centerCovered }
-            drawPerspectiveLine({ -(medHw + (it.halfWidthM - medHw) * 0.667f) }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { it.centerCovered }
-            drawPerspectiveLine({ medHw + (it.halfWidthM - medHw) * 0.333f }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { it.centerCovered }
-            drawPerspectiveLine({ medHw + (it.halfWidthM - medHw) * 0.667f }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { it.centerCovered }
+            drawPerspectiveLine({ -(medHw + (it.halfWidthM - medHw) * 0.333f) }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { suppressTollInterior(it) }
+            drawPerspectiveLine({ -(medHw + (it.halfWidthM - medHw) * 0.667f) }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { suppressTollInterior(it) }
+            drawPerspectiveLine({ medHw + (it.halfWidthM - medHw) * 0.333f }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { suppressTollInterior(it) }
+            drawPerspectiveLine({ medHw + (it.halfWidthM - medHw) * 0.667f }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { suppressTollInterior(it) }
         } else {
             // 4-Way (2+2) Divided Highway: 1 Dashed White Lane Divider per Carriageway = 2 Lanes Each Way
-            drawPerspectiveLine({ -(it.halfWidthM + medHw) * 0.5f }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { it.centerCovered }
-            drawPerspectiveLine({ (it.halfWidthM + medHw) * 0.5f }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { it.centerCovered }
+            drawPerspectiveLine({ -(it.halfWidthM + medHw) * 0.5f }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { suppressTollInterior(it) }
+            drawPerspectiveLine({ (it.halfWidthM + medHw) * 0.5f }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { suppressTollInterior(it) }
         }
     } else if (road.oneWayClockwise || road.id == "ROAD_SWARAJ_ROUND") {
         // Zone 1 Spec: Swaraj Round has 4 continuous lanes, strictly 1-way clockwise flow (14.0m asphalt carriageway)
@@ -1699,6 +2025,10 @@ private fun DrawScope.drawContinuousRoadMarkings(
         drawPerspectiveLine({ -it.halfWidthM * 0.5f }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { it.centerCovered }
         drawPerspectiveLine({ 0f }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { it.centerCovered }
         drawPerspectiveLine({ it.halfWidthM * 0.5f }, 0.14f, MatRoadWhite, dashed = true, clipPartialTransition = false) { it.centerCovered }
+    } else if (road.lanes == 3) {
+        // Zone 2 Spec: Kuthiran Twin-Tube Tunnel (10.5m = 3 x 3.5m one-way lanes): 2 Dashed White Lane Dividers at -1.75m & +1.75m
+        drawPerspectiveLine({ -it.halfWidthM * 0.333f }, 0.15f, MatRoadWhite, dashed = true, clipPartialTransition = false) { it.centerCovered }
+        drawPerspectiveLine({ it.halfWidthM * 0.333f }, 0.15f, MatRoadWhite, dashed = true, clipPartialTransition = false) { it.centerCovered }
     } else if (road.lanes >= 4) {
         // 4-Lane (2+2) Undivided 2-Way Arterial (M.O. Road 12.0m): IRC Double Yellow Centerline + Dashed Lane Dividers
         drawPerspectiveLine({ -0.15f }, 0.13f, MatRoadYellow, dashed = false, clipPartialTransition = true) { it.centerCovered }
@@ -1727,6 +2057,10 @@ private fun DrawScope.drawJunctionEdgeFilletMarkings(
         for (i in 0 until pts.size - 1) {
             val w0 = pts[i]
             val w1 = pts[i + 1]
+            if (rig.recorder != null) {
+                rig.recorder.emitWorldSegment(w0, w1, widthM, MatRoadWhite)
+                continue
+            }
             val seg = rig.projectSegmentClipped(w0, w1) ?: continue
             val c0 = rig.toCamSpace(w0)
             val c1 = rig.toCamSpace(w1)
@@ -1743,7 +2077,7 @@ private fun DrawScope.drawJunctionEdgeFilletMarkings(
     }
 
     for (bm in ThrissurRoadRepository.getJunctionBellmouths()) {
-        if (hypot(bm.centerPos.x - camEye.x, bm.centerPos.z - camEye.z) > 400f) continue
+        if (rig.recorder == null && hypot(bm.centerPos.x - camEye.x, bm.centerPos.z - camEye.z) > 400f) continue
         val (curve1, curve2) = computeBellmouthCornerCurves(bm, extraM = -0.38f, yHeight = yMark, steps = 6)
         drawCurve(curve1)
         drawCurve(curve2)
@@ -1774,21 +2108,21 @@ private fun DrawScope.drawSwarajRound8ZebraCrossings(
     camEye: Vec3,
     roads: List<ThrissurOsmRoad>
 ) {
-    if (hypot(camEye.x - 3.1f, camEye.z - 9.5f) > 210f) return
+    if (hypot(camEye.x - 3.1f, camEye.z - 18.0f) > 250f) return
     val swarajRoad = roads.firstOrNull { it.id == "ROAD_SWARAJ_ROUND" } ?: return
     val frames = swarajRoad.frames
     if (frames.size < 16) return
 
-    // Frame fractions corresponding to the 8 radiating junctions around Swaraj Round
+    // Frame fractions corresponding to the 8 radiating junctions around expanded R=66m Swaraj Round (starts South phi=180 deg)
     val junctionFractions = floatArrayOf(
-        0.905f, // 1. Manikandanal (South / M.O. Road)
-        0.045f, // 2. Kuruppam Road (South-West)
-        0.115f, // 3. Bini Tourist Home (West-South-West)
-        0.180f, // 4. Round West (M.G. Road)
-        0.468f, // 5. Shoranur Road (North)
-        0.585f, // 6. Round North (North-East)
-        0.745f, // 7. Palace Road (East)
-        0.835f  // 8. High Road (South-East)
+        0.964f, // 1. Manikandanal (South / M.O. Road)
+        0.053f, // 2. Kuruppam / Station Road (South-West)
+        0.125f, // 3. Bini Tourist Home (West-South-West)
+        0.194f, // 4. Round West (M.G. Road)
+        0.500f, // 5. Shoranur Road (North)
+        0.625f, // 6. Round North (North-East)
+        0.809f, // 7. Palace / Mannuthy Road (East)
+        0.895f  // 8. High Road (South-East)
     )
 
     val yZebra = 0.064f
@@ -1833,11 +2167,11 @@ private fun DrawScope.drawSwarajRound8ZebraCrossings(
         }
     }
 
-    // Also draw pedestrian stop line across M.O. Road approach at Manikandanal Signal (Z = -54.0m, 18.5m South of Swaraj Round)
+    // Also draw pedestrian stop line across M.O. Road approach at Manikandanal Signal (Z = -64.5m)
     val moRoad = roads.firstOrNull { it.id == "ROAD_SAKTHAN_TO_SWARAJ" }
     val moFrames = moRoad?.frames
     if (moFrames != null && moFrames.size >= 6) {
-        val sigFrame = moFrames.minByOrNull { kotlin.math.abs(it.pos.z - (-55.5f)) } ?: moFrames[(moFrames.size - 4).coerceAtLeast(0)]
+        val sigFrame = moFrames.minByOrNull { kotlin.math.abs(it.pos.z - (-64.5f)) } ?: moFrames[(moFrames.size - 4).coerceAtLeast(0)]
         if (hypot(sigFrame.pos.x - camEye.x, sigFrame.pos.z - camEye.z) <= 135f) {
             val sl0 = Vec3(
                 sigFrame.pos.x - sigFrame.right.x * (sigFrame.halfWidthM - 0.4f),
@@ -1871,828 +2205,20 @@ private fun DrawScope.drawSakthan20BayTerminalYard(
     path: Path,
     camEye: Vec3
 ) {
-    if (hypot(camEye.x - 10f, camEye.z - (-178f)) > 320f) return
-
-    val yYard = 0.058f
-    // Strictly bounded within X = -31.0m .. +40.5m, Z = -214.0m .. -139.5m
-    val yardMinX = -31.0f
-    val yardMaxX = 40.5f
-    val yardMinZ = -214.0f
-    val yardMaxZ = -139.5f
-
-    // 1. Heavy-Duty Concrete Terminal Apron (#2B3037)
-    if (rig.buildClippedQuadPath(
-            path,
-            Vec3(yardMinX, yYard, yardMinZ),
-            Vec3(yardMaxX, yYard, yardMinZ),
-            Vec3(yardMaxX, yYard, yardMaxZ),
-            Vec3(yardMinX, yYard, yardMaxZ)
-        )
-    ) {
-        drawPath(path, MatTerminalYardConcrete)
-    }
-
-    // 2. Dark Hot-Mix Asphalt Circulation Loop:
-    //    - North Front Concourse & Exit Apron (X = -23.5m .. +39.0m, Z = -164.0m .. -140.0m)
-    //    - West Entry Feeder Carriageway (X = -23.5m .. -16.5m, Z = -208.0m .. -140.0m)
-    //    - Wide Rear Circulation Carriageway behind all 10 Bays (X = -23.5m .. +39.5m, Z = -208.0m .. -182.0m)
-    val loopAsphaltCol = Color(0xFF232830)
-    if (rig.buildClippedQuadPath(
-            path,
-            Vec3(-23.5f, 0.059f, -164.0f),
-            Vec3(39.0f, 0.059f, -164.0f),
-            Vec3(39.0f, 0.059f, -140.0f),
-            Vec3(-23.5f, 0.059f, -140.0f)
-        )
-    ) {
-        drawPath(path, loopAsphaltCol)
-    }
-    if (rig.buildClippedQuadPath(
-            path,
-            Vec3(-23.5f, 0.059f, -208.0f),
-            Vec3(-16.5f, 0.059f, -208.0f),
-            Vec3(-16.5f, 0.059f, -164.0f),
-            Vec3(-23.5f, 0.059f, -164.0f)
-        )
-    ) {
-        drawPath(path, loopAsphaltCol)
-    }
-    if (rig.buildClippedQuadPath(
-            path,
-            Vec3(-23.5f, 0.059f, -208.0f),
-            Vec3(39.5f, 0.059f, -208.0f),
-            Vec3(39.5f, 0.059f, -182.0f),
-            Vec3(-23.5f, 0.059f, -182.0f)
-        )
-    ) {
-        drawPath(path, loopAsphaltCol)
-    }
-
-    // 3. Scored 6m × 6m Concrete Expansion Joint Grids across the terminal apron
-    if (hypot(camEye.x - 10f, camEye.z - (-178f)) < 145f) {
-        val jointCol = Color(0x5511151C)
-        var gx = -24.0f
-        while (gx <= 36.0f) {
-            rig.projectSegmentClipped(Vec3(gx, 0.0595f, yardMinZ), Vec3(gx, 0.0595f, yardMaxZ))?.let { seg ->
-                drawLine(jointCol, seg.first, seg.second, strokeWidth = 1.1f)
-            }
-            gx += 6.0f
-        }
-        var gz = -210.0f
-        while (gz <= -144.0f) {
-            rig.projectSegmentClipped(Vec3(yardMinX, 0.0595f, gz), Vec3(yardMaxX, 0.0595f, gz))?.let { seg ->
-                drawLine(jointCol, seg.first, seg.second, strokeWidth = 1.1f)
-            }
-            gz += 6.0f
-        }
-    }
-
-    // 4. SINGLE LINEAR ROW OF 10 DRIVE-THROUGH BUS DOCKING BAYS (bIdx in 0..9)
-    //    - 10 Buses park side-by-side in ONE single line at Z = -182.0m .. -164.0m!
-    //    - bx = -13.5f + bIdx * 5.5f -> for bIdx = 7, bx = 25.0f (Exact Player Bus Spawn X = 25.0m, Z = -176.0m!)
-    val z0 = -182.0f
-    val z1 = -164.0f
-    val zMid = (z0 + z1) * 0.5f
-    val bayHalfW = 1.95f
-    val oilStainCol = Color(0xCC12151B)
-    val skidMarkCol = Color(0x99191D24)
-
-    for (bIdx in 0 until 10) {
-        val bx = -13.5f + bIdx * 5.5f
-
-        // Dark diesel oil drip stain patch centered in bay
-        if (rig.buildClippedQuadPath(
-                path,
-                Vec3(bx - 0.55f, 0.060f, zMid - 2.4f),
-                Vec3(bx + 0.55f, 0.060f, zMid - 2.4f),
-                Vec3(bx + 0.55f, 0.060f, zMid + 2.4f),
-                Vec3(bx - 0.55f, 0.060f, zMid + 2.4f)
-            )
-        ) {
-            drawPath(path, oilStainCol)
-        }
-
-        // Twin rubber tire skid marks inside docking bay
-        for (wheelOffX in floatArrayOf(-0.96f, 0.96f)) {
-            rig.projectSegmentClipped(
-                Vec3(bx + wheelOffX, 0.061f, z0 + 1.2f),
-                Vec3(bx + wheelOffX, 0.061f, z1 - 0.8f)
-            )?.let { seg ->
-                drawLine(skidMarkCol, seg.first, seg.second, strokeWidth = 3.2f)
-            }
-        }
-
-        // Yellow thermoplastic bay side boundary lines (Left & Right)
-        rig.projectSegmentClipped(
-            Vec3(bx - bayHalfW, 0.062f, z0),
-            Vec3(bx - bayHalfW, 0.062f, z1)
-        )?.let { leftLine ->
-            drawLine(MatRoadYellow, leftLine.first, leftLine.second, strokeWidth = 2.4f)
-        }
-        rig.projectSegmentClipped(
-            Vec3(bx + bayHalfW, 0.062f, z0),
-            Vec3(bx + bayHalfW, 0.062f, z1)
-        )?.let { rightLine ->
-            drawLine(MatRoadYellow, rightLine.first, rightLine.second, strokeWidth = 2.4f)
-        }
-        // North departure stop bar at z1 (-164.0m) so Rear Entry at z0 (-182.0m) is 100% open from the Rear Carriageway!
-        rig.projectSegmentClipped(
-            Vec3(bx - bayHalfW, 0.062f, z1),
-            Vec3(bx + bayHalfW, 0.062f, z1)
-        )?.let { stopSeg ->
-            drawLine(MatRoadYellow, stopSeg.first, stopSeg.second, strokeWidth = 3.0f)
-        }
-    }
-
-    // 5. Yellow & White Thermoplastic Guide Lines Marking Entry, Rear Circulation Carriageway & Exit:
-    //    - Straight Departure Trajectory from Bay 8 (X = 25.0m) through North Exit Gate onto M.O. Road
-    for (trajX in floatArrayOf(22.4f, 27.6f)) {
-        rig.projectSegmentClipped(Vec3(trajX, 0.063f, -164.0f), Vec3(trajX, 0.063f, -140.0f))?.let { seg ->
-            drawLine(MatRoadYellow, seg.first, seg.second, strokeWidth = 2.6f)
-        }
-    }
-    //    - Entry Guide Lines from North Entry Gate (X = 1.0m..13.5m, Z = -140.0m) curving along West Feeder to Rear Carriageway
-    for (trajX in floatArrayOf(2.2f, 11.8f)) {
-        rig.projectSegmentClipped(Vec3(trajX, 0.063f, -140.0f), Vec3(trajX, 0.063f, -154.0f))?.let { seg ->
-            drawLine(MatRoadYellow, seg.first, seg.second, strokeWidth = 2.6f)
-        }
-    }
-    for (westX in floatArrayOf(-22.8f, -17.2f)) {
-        rig.projectSegmentClipped(Vec3(westX, 0.063f, -154.0f), Vec3(westX, 0.063f, -196.0f))?.let { seg ->
-            drawLine(MatRoadYellow, seg.first, seg.second, strokeWidth = 2.4f)
-        }
-    }
-    //    - Rear Circulation Carriageway Guide Lines & Dashed White Centerline (Z = -194.5m, X = -20.0m .. +38.5m)
-    for (aisleZ in floatArrayOf(-184.5f, -204.5f)) {
-        rig.projectSegmentClipped(Vec3(-21.0f, 0.063f, aisleZ), Vec3(38.5f, 0.063f, aisleZ))?.let { seg ->
-            drawLine(MatRoadYellow, seg.first, seg.second, strokeWidth = 2.2f)
-        }
-    }
-    var rearDashX = -19.0f
-    while (rearDashX <= 36.0f) {
-        rig.projectSegmentClipped(Vec3(rearDashX, 0.063f, -194.5f), Vec3(rearDashX + 3.2f, 0.063f, -194.5f))?.let { seg ->
-            drawLine(MatRoadWhite, seg.first, seg.second, strokeWidth = 2.2f)
-        }
-        rearDashX += 6.4f
-    }
-}
-
-private val cachedSakthanTerminalFaces: List<QuadFace3D> by lazy {
-    val faces = ArrayList<QuadFace3D>(1850)
-
-    fun addSingleBox3D(
-        minX: Float,
-        minY: Float,
-        minZ: Float,
-        maxX: Float,
-        maxY: Float,
-        maxZ: Float,
-        topCol: Color,
-        sideCol: Color,
-        frontBackCol: Color,
-        stroke: Color?,
-        bias: Float,
-        emitWest: Boolean,
-        emitEast: Boolean,
-        emitSouth: Boolean,
-        emitNorth: Boolean
-    ) {
-        faces.add(
-            QuadFace3D(
-                Vec3(minX, maxY, minZ),
-                Vec3(maxX, maxY, minZ),
-                Vec3(maxX, maxY, maxZ),
-                Vec3(minX, maxY, maxZ),
-                topCol,
-                stroke,
-                bias,
-                0f,
-                0f, 1f, 0f
-            )
-        )
-        if (minY >= 3.5f) {
-            faces.add(
-                QuadFace3D(
-                    Vec3(minX, minY, maxZ),
-                    Vec3(maxX, minY, maxZ),
-                    Vec3(maxX, minY, minZ),
-                    Vec3(minX, minY, minZ),
-                    MatRoofUnderTruss,
-                    stroke,
-                    bias + 0.5f,
-                    0f,
-                    0f, -1f, 0f
-                )
-            )
-        }
-        if (emitSouth) {
-            faces.add(
-                QuadFace3D(
-                    Vec3(minX, minY, minZ),
-                    Vec3(maxX, minY, minZ),
-                    Vec3(maxX, maxY, minZ),
-                    Vec3(minX, maxY, minZ),
-                    frontBackCol,
-                    stroke,
-                    bias,
-                    0f,
-                    0f, 0f, -1f
-                )
-            )
-        }
-        if (emitNorth) {
-            faces.add(
-                QuadFace3D(
-                    Vec3(maxX, minY, maxZ),
-                    Vec3(minX, minY, maxZ),
-                    Vec3(minX, maxY, maxZ),
-                    Vec3(maxX, maxY, maxZ),
-                    frontBackCol,
-                    stroke,
-                    bias,
-                    0f,
-                    0f, 0f, 1f
-                )
-            )
-        }
-        if (emitWest) {
-            faces.add(
-                QuadFace3D(
-                    Vec3(minX, minY, maxZ),
-                    Vec3(minX, minY, minZ),
-                    Vec3(minX, maxY, minZ),
-                    Vec3(minX, maxY, maxZ),
-                    sideCol,
-                    stroke,
-                    bias,
-                    0f,
-                    -1f, 0f, 0f
-                )
-            )
-        }
-        if (emitEast) {
-            faces.add(
-                QuadFace3D(
-                    Vec3(maxX, minY, minZ),
-                    Vec3(maxX, minY, maxZ),
-                    Vec3(maxX, maxY, maxZ),
-                    Vec3(maxX, maxY, minZ),
-                    sideCol,
-                    stroke,
-                    bias,
-                    0f,
-                    1f, 0f, 0f
-                )
-            )
-        }
-    }
-
-    fun addBox3D(
-        minX: Float,
-        minY: Float,
-        minZ: Float,
-        maxX: Float,
-        maxY: Float,
-        maxZ: Float,
-        topCol: Color,
-        sideCol: Color,
-        frontBackCol: Color = sideCol,
-        stroke: Color? = null,
-        bias: Float = 0f
-    ) {
-        val spanX = maxX - minX
-        val spanZ = maxZ - minZ
-        if (spanX > 12f || spanZ > 12f) {
-            if (spanX >= spanZ) {
-                val segs = ((spanX / 8.0f).toInt()).coerceIn(2, 12)
-                val stepX = spanX / segs
-                for (s in 0 until segs) {
-                    val sx0 = minX + s * stepX
-                    val sx1 = sx0 + stepX
-                    addSingleBox3D(
-                        sx0, minY, minZ, sx1, maxY, maxZ,
-                        topCol, sideCol, frontBackCol, stroke, bias,
-                        emitWest = (s == 0), emitEast = (s == segs - 1),
-                        emitSouth = true, emitNorth = true
-                    )
-                }
-            } else {
-                val segs = ((spanZ / 8.0f).toInt()).coerceIn(2, 12)
-                val stepZ = spanZ / segs
-                for (s in 0 until segs) {
-                    val sz0 = minZ + s * stepZ
-                    val sz1 = sz0 + stepZ
-                    addSingleBox3D(
-                        minX, minY, sz0, maxX, maxY, sz1,
-                        topCol, sideCol, frontBackCol, stroke, bias,
-                        emitWest = true, emitEast = true,
-                        emitSouth = (s == 0), emitNorth = (s == segs - 1)
-                    )
-                }
-            }
-        } else {
-            addSingleBox3D(
-                minX, minY, minZ, maxX, maxY, maxZ,
-                topCol, sideCol, frontBackCol, stroke, bias,
-                emitWest = true, emitEast = true, emitSouth = true, emitNorth = true
-            )
-        }
-    }
-
-    fun addOctagonalFrustum3D(
-        cx: Float,
-        cz: Float,
-        yBot: Float,
-        yTop: Float,
-        rBot: Float,
-        rTop: Float,
-        baseCol: Color,
-        capCol: Color = baseCol,
-        sides: Int = 8,
-        bias: Float = 0f
-    ) {
-        for (i in 0 until sides) {
-            val a0 = (i * 2.0 * PI / sides).toFloat()
-            val a1 = ((i + 1) * 2.0 * PI / sides).toFloat()
-            val c0 = cos(a0); val s0 = sin(a0)
-            val c1 = cos(a1); val s1 = sin(a1)
-            val v0 = Vec3(cx + c0 * rBot, yBot, cz + s0 * rBot)
-            val v1 = Vec3(cx + c1 * rBot, yBot, cz + s1 * rBot)
-            val v2 = Vec3(cx + c1 * rTop, yTop, cz + s1 * rTop)
-            val v3 = Vec3(cx + c0 * rTop, yTop, cz + s0 * rTop)
-            val nx = (c0 + c1) * 0.5f
-            val nz = (s0 + s1) * 0.5f
-            faces.add(QuadFace3D(v0, v1, v2, v3, baseCol, null, bias, 0f, nx, 0f, nz))
-        }
-        if (rTop > 0.05f) {
-            val rCap = rTop * 0.71f
-            faces.add(
-                QuadFace3D(
-                    Vec3(cx - rCap, yTop, cz - rCap),
-                    Vec3(cx + rCap, yTop, cz - rCap),
-                    Vec3(cx + rCap, yTop, cz + rCap),
-                    Vec3(cx - rCap, yTop, cz + rCap),
-                    capCol, null, bias, 0f, 0f, 1f, 0f
-                )
-            )
-        }
-    }
-
-    val sakthanMaroonRoof = Color(0xFF7F1D1D)
-    val sakthanMaroonDark = Color(0xFF451A03)
-
-    fun addArchedBarrelRoofBay3D(
-        x0: Float,
-        x1: Float,
-        z0: Float,
-        z1: Float,
-        eaveY: Float,
-        archRise: Float,
-        hasSkylightCenter: Boolean
-    ) {
-        val archSteps = 6
-        val spanX = x1 - x0
-        val zSegs = 3
-        val stepZ = (z1 - z0) / zSegs
-        for (a in 0 until archSteps) {
-            val t0 = a.toFloat() / archSteps
-            val t1 = (a + 1).toFloat() / archSteps
-            val sx0 = x0 + t0 * spanX
-            val sx1 = x0 + t1 * spanX
-            val h0 = eaveY + sin(t0 * PI.toFloat()) * archRise
-            val h1 = eaveY + sin(t1 * PI.toFloat()) * archRise
-            val isSkylightStrip = hasSkylightCenter && (a == 2 || a == 3)
-            val topCol = if (isSkylightStrip) MatRoofSkylight else sakthanMaroonRoof
-            val underCol = if (isSkylightStrip) Color(0xFFFDE68A) else MatRoofUnderTruss
-
-            for (zs in 0 until zSegs) {
-                val sz0 = z0 + zs * stepZ
-                val sz1 = sz0 + stepZ
-                faces.add(
-                    QuadFace3D(
-                        Vec3(sx0, h0, sz0),
-                        Vec3(sx1, h1, sz0),
-                        Vec3(sx1, h1, sz1),
-                        Vec3(sx0, h0, sz1),
-                        topCol, null, 2.2f, 0f, 0f, 1f, 0f
-                    )
-                )
-                faces.add(
-                    QuadFace3D(
-                        Vec3(sx0, h0 - 0.14f, sz1),
-                        Vec3(sx1, h1 - 0.14f, sz1),
-                        Vec3(sx1, h1 - 0.14f, sz0),
-                        Vec3(sx0, h0 - 0.14f, sz0),
-                        underCol, null, 2.6f, 0f, 0f, -1f, 0f
-                    )
-                )
-            }
-            faces.add(
-                QuadFace3D(
-                    Vec3(sx0, eaveY - 0.18f, z0),
-                    Vec3(sx1, eaveY - 0.18f, z0),
-                    Vec3(sx1, h1, z0),
-                    Vec3(sx0, h0, z0),
-                    sakthanMaroonDark, null, 2.1f, 0f, 0f, 0f, -1f
-                )
-            )
-            faces.add(
-                QuadFace3D(
-                    Vec3(sx1, eaveY - 0.18f, z1),
-                    Vec3(sx0, eaveY - 0.18f, z1),
-                    Vec3(sx0, h0, z1),
-                    Vec3(sx1, h1, z1),
-                    sakthanMaroonDark, null, 2.1f, 0f, 0f, 0f, 1f
-                )
-            )
-        }
-    }
-
-    fun addCompoundWallWithPilasters(
-        x0: Float,
-        z0: Float,
-        x1: Float,
-        z1: Float
-    ) {
-        val minX = minOf(x0, x1) - 0.24f
-        val maxX = maxOf(x0, x1) + 0.24f
-        val minZ = minOf(z0, z1) - 0.24f
-        val maxZ = maxOf(z0, z1) + 0.24f
-        // Laterite stone plinth + cream plastered masonry wall + terracotta coping cap
-        addBox3D(minX, 0.06f, minZ, maxX, 0.48f, maxZ, MatCreamPlaster, MatTerracottaDark, MatTerracottaDark)
-        addBox3D(minX + 0.04f, 0.48f, minZ + 0.04f, maxX - 0.04f, 2.08f, maxZ - 0.04f, MatCreamPlaster, MatCreamPlaster, MatCreamPlaster)
-        addBox3D(minX - 0.05f, 2.08f, minZ - 0.05f, maxX + 0.05f, 2.28f, maxZ + 0.05f, MatTerracottaPillar, MatTerracottaDark, MatTerracottaDark)
-
-        val dx = x1 - x0
-        val dz = z1 - z0
-        val len = hypot(dx, dz)
-        val steps = (len / 6.5f).toInt().coerceAtLeast(1)
-        for (i in 0..steps) {
-            val t = i.toFloat() / steps
-            val px = x0 + dx * t
-            val pz = z0 + dz * t
-            addBox3D(px - 0.34f, 0.06f, pz - 0.34f, px + 0.34f, 2.46f, pz + 0.34f, MatCreamPlaster, MatTerracottaPillar, MatTerracottaDark)
-        }
-    }
-
-    // =========================================================================
-    // 1. SINGLE LINEAR ROW OF 10 DRIVE-THROUGH BUS BAYS & 11 BOARDING ISLANDS
-    //    - 10 Bus Bays side-by-side in 1 line: bx = -13.5f + bIdx * 5.5f (bIdx in 0..9)
-    //    - 11 Passenger Boarding Islands: platCenterX = -16.25f + pIdx * 5.5f (pIdx in 0..10)
-    //    - Bay 8 (bIdx = 7) is centered at X = 25.0m (between islands at 22.25m and 27.75m),
-    //      where the Player Bus spawns at (X = 25.0m, Z = -176.0m)!
-    //    - West Entry Feeder Lane (X = -23.5m .. -16.9m) is 100% open & unobstructed!
-    // =========================================================================
-    for (pIdx in 0..10) {
-        val platCenterX = -16.25f + pIdx * 5.5f
-        val px0 = platCenterX - 0.65f
-        val px1 = platCenterX + 0.65f
-        val tactileTopCol = if (pIdx % 2 == 0) MatPlatformTileCharcoal else MatPlatformTileDark
-
-        // Raised 250mm Passenger Boarding Island (y = 0.06m .. 0.31m, Z = -182.0m .. -164.0m)
-        addBox3D(
-            px0, 0.06f, -182.0f,
-            px1, 0.31f, -164.0f,
-            topCol = tactileTopCol,
-            sideCol = MatCurbYellow,
-            frontBackCol = MatCurbBlack
-        )
-        // Stainless-steel & teakwood passenger waiting benches along the platform center
-        if (pIdx in 1..9) {
-            for (bz in floatArrayOf(-177.5f, -168.5f)) {
-                addBox3D(
-                    platCenterX - 0.30f, 0.31f, bz - 1.25f,
-                    platCenterX + 0.30f, 0.78f, bz + 1.25f,
-                    topCol = MatPlatformTileLight,
-                    sideCol = MatRoofUnderTruss,
-                    frontBackCol = MatRoofUnderTruss
-                )
-            }
-        }
-
-        // 8-Sided Cylindrical Tubular Steel Pillars painted Terracotta-Maroon (#A83E28)
-        for (pz in floatArrayOf(-180.5f, -173.0f, -165.5f)) {
-            addOctagonalFrustum3D(platCenterX, pz, 0.31f, 0.92f, 0.32f, 0.25f, MatCreamPlaster)
-            addOctagonalFrustum3D(platCenterX, pz, 0.92f, 5.20f, 0.21f, 0.19f, MatTerracottaPillar)
-            addOctagonalFrustum3D(platCenterX, pz, 5.20f, 6.08f, 0.19f, 0.54f, MatRoofUnderTruss)
-        }
-        // Longitudinal welded steel box-girder valley beam
-        addBox3D(
-            platCenterX - 0.20f, 5.86f, -182.8f,
-            platCenterX + 0.20f, 6.12f, -163.2f,
-            topCol = MatRoofUnderTruss,
-            sideCol = MatRoofUnderTruss,
-            frontBackCol = MatRoofUnderTruss
-        )
-    }
-
-    // 2. 10-Bay Arched Barrel-Vault Corrugated Steel Roof Canopy (#7F1D1D Deep Maroon) spanning X = -17.0m .. +39.2m
-    val canopyMinX = -17.0f
-    val canopyMaxX = 39.2f
-    val canopySpanW = (canopyMaxX - canopyMinX) / 8f
-    for (sIdx in 0 until 8) {
-        val cx0 = canopyMinX + sIdx * canopySpanW
-        val cx1 = cx0 + canopySpanW
-        val hasSkylight = (sIdx % 2 == 1)
-        addArchedBarrelRoofBay3D(
-            x0 = cx0,
-            x1 = cx1,
-            z0 = -183.2f,
-            z1 = -162.8f,
-            eaveY = 6.10f,
-            archRise = 0.88f,
-            hasSkylightCenter = hasSkylight
-        )
-        for (tz in floatArrayOf(-180.5f, -173.0f, -165.5f)) {
-            addBox3D(
-                cx0, 5.90f, tz - 0.14f,
-                cx1, 6.08f, tz + 0.14f,
-                topCol = MatRoofUnderTruss,
-                sideCol = MatRoofUnderTruss
-            )
-        }
-    }
-
-    // =========================================================================
-    // 3. SOUTH PASSENGER CONCOURSE PROMENADE AT REAR PERIMETER (Z = -213.2m .. -208.5m)
-    //    - Set behind the 26-meter-wide Rear Circulation Carriageway (Z = -208.0m .. -182.0m)
-    //      so buses have a massive, 100% obstacle-free carriageway behind all 10 bays!
-    // =========================================================================
-    addBox3D(
-        -23.5f, 0.06f, -213.2f,
-        39.2f, 0.32f, -208.5f,
-        topCol = MatPlatformTileDark,
-        sideCol = MatCurbYellow,
-        frontBackCol = MatCurbBlack
-    )
-
-    // =========================================================================
-    // 4. SCULPTED MULTI-BAY MAIN TERMINAL CONCOURSE BUILDING (WEST WING)
-    //    Located at X = -30.4m .. -24.0m (West of the West Entry Feeder Lane X = -23.5m .. -16.9m)
-    // =========================================================================
-    addBox3D(-30.4f, 0.06f, -210.0f, -24.0f, 0.48f, -146.0f, MatPlatformTileDark, MatPlatformTileCharcoal)
-    addBox3D(-30.1f, 0.48f, -209.5f, -24.8f, 4.20f, -146.5f, MatCreamPlaster, MatCreamPlaster)
-    var colZ = -206.0f
-    while (colZ <= -150.0f) {
-        addOctagonalFrustum3D(-24.3f, colZ, 0.48f, 4.20f, 0.24f, 0.22f, MatTerracottaPillar)
-        colZ += 6.0f
-    }
-    addBox3D(-30.4f, 4.20f, -210.0f, -23.9f, 4.55f, -146.0f, MatCreamPlaster, MatCreamPlaster)
-    addBox3D(-30.0f, 4.55f, -209.0f, -24.5f, 7.85f, -147.0f, MatPlatformTileDark, Color(0xFF1E293B))
-    var mulZ = -207.0f
-    while (mulZ <= -149.0f) {
-        addBox3D(-24.7f, 4.55f, mulZ - 0.12f, -24.2f, 7.85f, mulZ + 0.12f, MatCreamPlaster, MatCreamPlaster)
-        mulZ += 4.0f
-    }
-    val wRoofBaseY = 7.85f
-    val wRoofPeakY = 9.85f
-    faces.add(QuadFace3D(Vec3(-30.8f, wRoofBaseY, -210.5f), Vec3(-27.2f, wRoofPeakY, -208.0f), Vec3(-27.2f, wRoofPeakY, -148.0f), Vec3(-30.8f, wRoofBaseY, -145.5f), MatTerracottaPillar))
-    faces.add(QuadFace3D(Vec3(-23.6f, wRoofBaseY, -145.5f), Vec3(-27.2f, wRoofPeakY, -148.0f), Vec3(-27.2f, wRoofPeakY, -208.0f), Vec3(-23.6f, wRoofBaseY, -210.5f), MatTerracottaPillar))
-
-    // =========================================================================
-    // 5. TRUE 8-SIDED OCTAGONAL 12-METER CLOCK TOWER ON MEDIAN ISLAND (X = 15.8m, Z = -142.2m)
-    //    Separating the Left BUS ENTRY Gate (X = 1.0m..13.5m) and Right BUS EXIT Gate (X = 18.0m..33.5m)
-    // =========================================================================
-    val ctX = 15.8f
-    val ctZ = -142.2f
-    addOctagonalFrustum3D(ctX, ctZ, 0.06f, 0.85f, 1.85f, 1.72f, MatPlatformTileDark)
-    addOctagonalFrustum3D(ctX, ctZ, 0.85f, 3.60f, 1.58f, 1.46f, MatClockBrickRed)
-    addOctagonalFrustum3D(ctX, ctZ, 3.60f, 4.00f, 1.62f, 1.62f, MatCreamPlaster)
-    addOctagonalFrustum3D(ctX, ctZ, 4.00f, 6.80f, 1.42f, 1.32f, MatClockBrickRed)
-    addOctagonalFrustum3D(ctX, ctZ, 6.80f, 7.20f, 1.48f, 1.48f, MatCreamPlaster)
-    addOctagonalFrustum3D(ctX, ctZ, 7.20f, 9.55f, 1.34f, 1.28f, MatCreamPlaster)
-    addOctagonalFrustum3D(ctX, ctZ, 9.55f, 9.80f, 1.62f, 1.56f, MatTerracottaDark)
-    addOctagonalFrustum3D(ctX, ctZ, 9.80f, 11.45f, 1.56f, 0.18f, MatTerracottaPillar)
-    addOctagonalFrustum3D(ctX, ctZ, 11.45f, 12.20f, 0.16f, 0.03f, Color(0xFFFACC15))
-
-    // =========================================================================
-    // 6. TAPERED 8-SIDED 25-METER HIGH-MAST FLOODLIGHT TOWER AT SOUTH CONCOURSE APRON
-    //    Positioned on the South Perimeter Promenade (7.0m, -211.0m) 100% clear of the Rear Carriageway!
-    // =========================================================================
-    val mastX = 7.0f
-    val mastZ = -211.0f
-    addOctagonalFrustum3D(mastX, mastZ, 0.32f, 0.85f, 0.95f, 0.82f, MatCurbYellow)
-    addOctagonalFrustum3D(mastX, mastZ, 0.85f, 12.5f, 0.34f, 0.24f, MatRoofGalvanized)
-    addOctagonalFrustum3D(mastX, mastZ, 12.5f, 24.5f, 0.24f, 0.14f, MatPlatformTileLight)
-    addOctagonalFrustum3D(mastX, mastZ, 24.35f, 24.75f, 1.55f, 1.55f, MatRoofUnderTruss, sides = 12)
-    for (ledIdx in 0 until 12) {
-        val ang = Math.toRadians((ledIdx * 30).toDouble()).toFloat()
-        val lx = mastX + cos(ang) * 1.65f
-        val lz = mastZ + sin(ang) * 1.65f
-        addBox3D(
-            lx - 0.22f, 24.42f, lz - 0.22f,
-            lx + 0.22f, 24.95f, lz + 0.22f,
-            topCol = MatRoofUnderTruss,
-            sideCol = Color(0xFFFEF08A),
-            frontBackCol = Color(0xFFF8FAFC)
-        )
-    }
-
-    // =========================================================================
-    // 7. CONTINUOUS 4-SIDED PERIMETER COMPOUND WALL AROUND SAKTHAN BUS STAND
-    //    - North Wall (Z = -140.0m): Leaves BUS ENTRY Gate (X = 1.0m..13.5m)
-    //      and BUS EXIT Gate (X = 18.0m..33.5m) 100% open!
-    //    - East Wall (X = 40.2m): Leaves Rear Circulation Gate (Z = -202.0m..-186.0m) open!
-    //    - South Wall (Z = -214.0m, X = -31.0m..40.2m): Full masonry compound wall with pilasters!
-    //    - West Wall (X = -31.0m, Z = -214.0m..-140.0m): Full masonry compound wall with pilasters!
-    // =========================================================================
-    val exitZ = -140.0f
-    addCompoundWallWithPilasters(-31.0f, exitZ, 0.4f, exitZ)
-    addCompoundWallWithPilasters(33.8f, exitZ, 40.2f, exitZ)
-    addCompoundWallWithPilasters(40.2f, -186.0f, 40.2f, exitZ)
-    addCompoundWallWithPilasters(40.2f, -214.0f, 40.2f, -202.0f)
-    addCompoundWallWithPilasters(-31.0f, -214.0f, 40.2f, -214.0f)
-    addCompoundWallWithPilasters(-31.0f, -214.0f, -31.0f, exitZ)
-
-    // Sculpted gate pillars at the East Rear Circulation Gate (Z = -202.0m and Z = -186.0m at X = 40.15m)
-    for (rz in floatArrayOf(-202.0f, -186.0f)) {
-        addOctagonalFrustum3D(40.15f, rz, 0.06f, 0.85f, 0.46f, 0.40f, MatCreamPlaster)
-        addOctagonalFrustum3D(40.15f, rz, 0.85f, 3.10f, 0.36f, 0.32f, MatTerracottaPillar)
-    }
-
-    // =========================================================================
-    // 8. GRAND SAKTHAN THAMPURAN BUS STAND ENTRANCE ARCHWAY & DISTINCT MAROON-GOLD BOARDS
-    //    (Distinct from Railway Station Royal Blue #1E3A8A & Vadakke Stand Emerald-Teal #064E3B!)
-    // =========================================================================
-    for (gx in floatArrayOf(0.6f, 13.8f, 17.8f, 33.6f)) {
-        addOctagonalFrustum3D(gx, exitZ, 0.06f, 1.05f, 0.56f, 0.48f, MatCreamPlaster)
-        addOctagonalFrustum3D(gx, exitZ, 1.05f, 6.20f, 0.40f, 0.36f, MatTerracottaPillar)
-        addOctagonalFrustum3D(gx, exitZ, 6.20f, 7.75f, 0.46f, 0.42f, MatCreamPlaster)
-    }
-    // Lower Lintel Beams (5.40..5.68m) & Upper Crown Beams (7.52..7.78m) — no solid box across 5.70..7.50m!
-    addBox3D(0.2f, 5.40f, exitZ - 0.34f, 14.2f, 5.68f, exitZ + 0.34f, MatTerracottaPillar, sakthanMaroonRoof, sakthanMaroonDark)
-    addBox3D(0.2f, 7.52f, exitZ - 0.34f, 14.2f, 7.78f, exitZ + 0.34f, MatTerracottaPillar, sakthanMaroonRoof, sakthanMaroonDark)
-    addBox3D(17.4f, 5.40f, exitZ - 0.34f, 34.0f, 5.68f, exitZ + 0.34f, MatTerracottaPillar, sakthanMaroonRoof, sakthanMaroonDark)
-    addBox3D(17.4f, 7.52f, exitZ - 0.34f, 34.0f, 7.78f, exitZ + 0.34f, MatTerracottaPillar, sakthanMaroonRoof, sakthanMaroonDark)
-
-    // BOARD A1: Left Gate Overhead "BUS ENTRY • പ്രവേശനം" Signboard (Sakthan Maroon-Gold Theme, Badge "IN")
-    val sakthanEntryGateSign = createIndianRailwaysStationSignSpec(
-        cacheKey = "SAKTHAN_STAND_MAIN_ENTRY_GATE_SIGN_V3",
-        bgColorInt = 0xFF7F1D1D.toInt(),
-        borderColorInt = 0xFFF59E0B.toInt(),
-        accentBandColorInt = 0xFF451A03.toInt(),
-        malTitle = "⬇ ബസ് പ്രവേശനം • BUS ENTRY • SEC-02 ⬇",
-        engTitle = "SAKTHAN THAMPURAN BUS STAND — ENTRY TO SECTORS 01–10",
-        subTitle = "SH 75 / NH 544 TERMINAL • PROCEED TO REAR CARRIAGEWAY FOR BAYS 1–10",
-        titleColorInt = 0xFFFDE68A.toInt(),
-        subColorInt = android.graphics.Color.WHITE,
-        isDoubleSided = true,
-        bmpWidth = 960,
-        bmpHeight = 230,
-        badgeLabel = "IN",
-        badgeBgColorInt = 0xFFB45309.toInt()
-    )
-    // Single Unobstructed Double-Sided Gate Signboard (readable from both North & South!)
-    faces.add(
-        QuadFace3D(
-            Vec3(13.5f, 5.70f, exitZ),
-            Vec3(0.9f, 5.70f, exitZ),
-            Vec3(0.9f, 7.50f, exitZ),
-            Vec3(13.5f, 7.50f, exitZ),
-            baseColor = sakthanMaroonRoof,
-            biasDist = -2.20f,
-            signboard = sakthanEntryGateSign
-        )
-    )
-
-    // BOARD A2: Right Gate Overhead "BUS EXIT • പുറത്തേക്ക്" Signboard (Sakthan Maroon-Amber Theme, Badge "OUT")
-    val sakthanExitGateSign = createIndianRailwaysStationSignSpec(
-        cacheKey = "SAKTHAN_STAND_MAIN_EXIT_GATE_SIGN_V3",
-        bgColorInt = 0xFF881337.toInt(),
-        borderColorInt = 0xFFF59E0B.toInt(),
-        accentBandColorInt = 0xFF4C0519.toInt(),
-        malTitle = "⬆ പുറത്തേക്ക് • BUS EXIT • SEC-02 ⬆",
-        engTitle = "SAKTHAN THAMPURAN BUS STAND — EXIT TO M.O. ROAD",
-        subTitle = "TO SWARAJ ROUND (SEC-01) • RAILWAY STATION (TCR) • OLLUR / NH 544 (SEC-03)",
-        titleColorInt = 0xFFFDE68A.toInt(),
-        subColorInt = android.graphics.Color.WHITE,
-        isDoubleSided = true,
-        bmpWidth = 960,
-        bmpHeight = 230,
-        badgeLabel = "OUT",
-        badgeBgColorInt = 0xFFD97706.toInt()
-    )
-    // Single Unobstructed Double-Sided Exit Gate Signboard (readable from both South & North!)
-    faces.add(
-        QuadFace3D(
-            Vec3(18.1f, 5.70f, exitZ),
-            Vec3(33.3f, 5.70f, exitZ),
-            Vec3(33.3f, 7.50f, exitZ),
-            Vec3(18.1f, 7.50f, exitZ),
-            baseColor = sakthanMaroonRoof,
-            biasDist = -2.20f,
-            signboard = sakthanExitGateSign
-        )
-    )
-
-    // BOARD B: Grand 49-Meter Main Terminal Rooftop Nameboard on the 10-Bay Boarding Canopy Fascia
-    //          Positioned cleanly above the 6.10m..6.98m barrel-vault roof at Y = 7.02m..8.80m so the roof never occludes it!
-    val sakthanMainNameSign = createIndianRailwaysStationSignSpec(
-        cacheKey = "SAKTHAN_THAMPURAN_BUS_STAND_MAIN_NAME_BOARD_V3",
-        bgColorInt = 0xFF7F1D1D.toInt(),
-        borderColorInt = 0xFFF59E0B.toInt(),
-        accentBandColorInt = 0xFF451A03.toInt(),
-        malTitle = "ശക്തൻ തമ്പുരാൻ ബസ് സ്റ്റാൻഡ്, തൃശ്ശൂർ • SEC-02",
-        engTitle = "SAKTHAN THAMPURAN BUS STAND • THRISSUR",
-        subTitle = "SECTORS 01–10 (BAYS 1–10) • GURUVAYUR • PALAKKAD • KOCHI • KANJANI • PEECHI",
-        titleColorInt = 0xFFFDE68A.toInt(),
-        subColorInt = android.graphics.Color.WHITE,
-        isDoubleSided = true,
-        bmpWidth = 1024,
-        bmpHeight = 230,
-        badgeLabel = "BUS",
-        badgeBgColorInt = 0xFFB45309.toInt()
-    )
-    // Facing North (+Z, clearly visible from M.O. Road, Entry/Exit Gates & Front Apron)
-    faces.add(
-        QuadFace3D(
-            Vec3(35.0f, 7.02f, -162.6f),
-            Vec3(-14.0f, 7.02f, -162.6f),
-            Vec3(-14.0f, 8.80f, -162.6f),
-            Vec3(35.0f, 8.80f, -162.6f),
-            baseColor = sakthanMaroonRoof,
-            biasDist = -2.20f,
-            signboard = sakthanMainNameSign
-        )
-    )
-    // Facing South (-Z, visible from the Rear Circulation Carriageway behind all 10 Bays!)
-    faces.add(
-        QuadFace3D(
-            Vec3(-14.0f, 7.02f, -183.4f),
-            Vec3(35.0f, 7.02f, -183.4f),
-            Vec3(35.0f, 8.80f, -183.4f),
-            Vec3(-14.0f, 8.80f, -183.4f),
-            baseColor = sakthanMaroonRoof,
-            biasDist = -2.20f,
-            signboard = sakthanMainNameSign
-        )
-    )
-
-    // BOARD C: Double-Sided Sector & Route Destination Boards along Both Sides (North Z=-162.8m & South Z=-183.2m) of the 10-Bay Canopy
-    val sakthanSectorSpecs = arrayOf(
-        Triple("SEC 01–02 • BAYS 1 & 2", "GURUVAYUR • CHAVAKKAD • KANJANI (SH 75)", "ഗുരുവായൂർ • ചാവക്കാട് • കാഞ്ഞാണി"),
-        Triple("SEC 03–04 • BAYS 3 & 4", "PALAKKAD • MANNUTHY • ALATHUR (NH 544)", "പാലക്കാട് • മണ്ണുത്തി • ആലത്തൂർ"),
-        Triple("SEC 05–06 • BAYS 5 & 6", "KOCHI • CHALAKUDY • ANGAMALY (NH 544)", "കൊച്ചി • ചാലക്കുടി • അങ്കമാലി"),
-        Triple("SEC 07–08 • BAYS 7 & 8", "THRISSUR ROUND • RAILWAY STN • VADAKKE", "സ്വരാജ് റൗണ്ട് • റെയിൽവേ സ്റ്റേഷൻ • വടക്കേ സ്റ്റാൻഡ്"),
-        Triple("SEC 09–10 • BAYS 9 & 10", "TRIPRAYAR • KODUNGALLUR • IRINJALAKUDA", "തൃപ്രയാർ • കൊടുങ്ങല്ലൂർ • ഇരിഞ്ഞാലക്കുട")
-    )
-    for (sIdx in sakthanSectorSpecs.indices) {
-        val (secHeader, engDest, malDest) = sakthanSectorSpecs[sIdx]
-        val sx0 = -16.2f + sIdx * 11.2f
-        val sx1 = sx0 + 10.4f
-        val secSign = createIndianRailwaysStationSignSpec(
-            cacheKey = "SAKTHAN_SECTOR_BOARD_V3_$sIdx",
-            bgColorInt = 0xFF7F1D1D.toInt(),
-            borderColorInt = 0xFFF59E0B.toInt(),
-            accentBandColorInt = 0xFF451A03.toInt(),
-            malTitle = "$secHeader  •  $malDest",
-            engTitle = engDest,
-            subTitle = "SAKTHAN STAND SECTOR 0${sIdx * 2 + 1}/0${sIdx * 2 + 2} • DRIVE-THROUGH BAY",
-            titleColorInt = 0xFFFDE68A.toInt(),
-            subColorInt = android.graphics.Color.WHITE,
-            isDoubleSided = true,
-            bmpWidth = 768,
-            bmpHeight = 200,
-            badgeLabel = "S${sIdx * 2 + 1}",
-            badgeBgColorInt = 0xFFB45309.toInt()
-        )
-        // North Side of Canopy (facing departing buses & Front Apron)
-        faces.add(
-            QuadFace3D(
-                Vec3(sx1, 5.10f, -162.8f),
-                Vec3(sx0, 5.10f, -162.8f),
-                Vec3(sx0, 5.92f, -162.8f),
-                Vec3(sx1, 5.92f, -162.8f),
-                baseColor = sakthanMaroonRoof,
-                biasDist = -2.10f,
-                signboard = secSign
-            )
-        )
-        // South Side of Canopy (facing arriving buses on Rear Circulation Carriageway)
-        faces.add(
-            QuadFace3D(
-                Vec3(sx0, 5.10f, -183.2f),
-                Vec3(sx1, 5.10f, -183.2f),
-                Vec3(sx1, 5.92f, -183.2f),
-                Vec3(sx0, 5.92f, -183.2f),
-                baseColor = sakthanMaroonRoof,
-                biasDist = -2.10f,
-                signboard = secSign
-            )
-        )
-    }
-
-    faces
+    drawSakthanModernTerminalYard(rig, path, camEye)
 }
 
 internal fun collectSakthanTerminalSceneFaces(
     camEye: Vec3,
     outFaces: MutableList<QuadFace3D>
 ) {
-    val dxT = camEye.x - 10f
-    val dzT = camEye.z - (-178f)
-    if (dxT * dxT + dzT * dzT > 210f * 210f) return
-    outFaces.addAll(cachedSakthanTerminalFaces)
+    collectSakthanModernTerminalSceneFaces(camEye, outFaces)
+}
+
+internal fun collectAllSakthanTerminalStaticFaces(
+    outFaces: MutableList<QuadFace3D>
+) {
+    collectAllSakthanModernTerminalStaticFaces(outFaces)
 }
 
 internal fun prepareSortedSceneFaces(
@@ -5301,9 +4827,9 @@ private fun DrawScope.drawLive3DRearViewMirrorGlass(
             )
         }
 
-        // 2. Collect & Sort Visible Rear Road Spans within 175m behind the bus
-        val mirrorMaxDistSq = 175f * 175f
-        val mirrorSpans = ArrayList<ContiguousRoadSpan>(32)
+        // 2. Collect & Sort Visible Rear Road Spans within 105m behind the bus (fast 60fps cockpit mirror)
+        val mirrorMaxDistSq = 105f * 105f
+        val mirrorSpans = ArrayList<ContiguousRoadSpan>(20)
         for (road in state.roads) {
             val frames = road.frames
             if (frames.size < 2) continue
@@ -5331,7 +4857,7 @@ private fun DrawScope.drawLive3DRearViewMirrorGlass(
                     val camZMid = dx * mirrorFwd.x + dz * mirrorFwd.z
                     val camZ0 = (f0.pos.x - mirrorEye.x) * mirrorFwd.x + (f0.pos.z - mirrorEye.z) * mirrorFwd.z
                     val camZ1 = (f1.pos.x - mirrorEye.x) * mirrorFwd.x + (f1.pos.z - mirrorEye.z) * mirrorFwd.z
-                    if (camZMid > -18f || camZ0 > -18f || camZ1 > -18f) {
+                    if (camZMid > -16f || camZ0 > -16f || camZ1 > -16f) {
                         mirrorSpans.add(ContiguousRoadSpan(road, sIdx, eIdx, distSq))
                     }
                 }
@@ -5342,30 +4868,15 @@ private fun DrawScope.drawLive3DRearViewMirrorGlass(
 
         val mPath = Path()
 
-        // 3. Render Real 3D Ground Plazas, Shoulders, Asphalt Ribbons, Road Markings & Landmarks Behind the Bus
-        drawSakthan20BayTerminalYard(mirrorRig, mPath, mirrorEye)
-        drawThrissurLandmarkGroundPlazas(mirrorRig, mPath, mirrorEye, state.roads)
-        drawJunctionShoulders(mirrorRig, mPath, mirrorEye)
+        // 3. Render Lightweight 3D Shoulders, Asphalt Ribbons & Road Markings Behind the Bus (avoids 6,000-face CPU sort)
         for (span in mirrorSpans) {
             drawContinuousShouldersAndCurbs(mirrorRig, mPath, span)
         }
-        drawJunctionPlazas(mirrorRig, mPath, mirrorEye)
         for (span in mirrorSpans) {
             drawContinuousAsphaltRibbon(mirrorRig, mPath, span)
         }
         for (span in mirrorSpans) {
             drawContinuousRoadMarkings(mirrorRig, mPath, span)
-        }
-        drawJunctionEdgeFilletMarkings(mirrorRig, mirrorEye)
-        drawSwarajRound8ZebraCrossings(mirrorRig, mPath, mirrorEye, state.roads)
-
-        val mirrorRawFaces = ArrayList<QuadFace3D>(1800)
-        val mirrorSortedFaces = ArrayList<QuadFace3D>(1800)
-        collectSakthanTerminalSceneFaces(mirrorEye, mirrorRawFaces)
-        collectThrissurLandmarkSceneFaces(mirrorEye, state.roads, state.manikandanalSignal, mirrorRawFaces)
-        prepareSortedSceneFaces(mirrorRig, mirrorEye, mirrorRawFaces, mirrorSortedFaces)
-        for (i in 0 until mirrorSortedFaces.size) {
-            drawSceneFaceOrSignboard(mirrorRig, mPath, mirrorSortedFaces[i])
         }
 
         // 4. Render Player's Own Hino RM2 Bus Side Flank in 3D Perspective (Original Pearl White + 4-Band Livery)
